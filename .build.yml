@@ -7,7 +7,7 @@ sources:
 tasks:
   - build: |
       cd sanshainMaven
-      mvn compile
+      mvn compile -B
   - test: |
       cd sanshainMaven
-      mvn test
+      mvn test -B
