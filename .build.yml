@@ -3,7 +3,7 @@ packages:
   - openjdk17-src
   - maven
 sources:
-  - https://git.sr.ht/~youruser/SanshainMaven
+  - https://git.sr.ht/~taum/sanshainMaven
 tasks:
   - build: |
       cd SanshainMaven
