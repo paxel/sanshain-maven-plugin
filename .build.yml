@@ -6,8 +6,8 @@ sources:
   - https://git.sr.ht/~taum/sanshainMaven
 tasks:
   - build: |
-      cd SanshainMaven
+      cd sanshainMaven
       mvn compile
   - test: |
-      cd SanshainMaven
+      cd sanshainMaven
       mvn test
