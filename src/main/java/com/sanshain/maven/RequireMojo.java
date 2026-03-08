@@ -24,7 +24,7 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshainUrl", defaultValue = "http://localhost:8080")
     private String sanshainUrl;
 
-    @Parameter(defaultValue = "${project.build.directory}/sanshain-snippets", property = "outputDirectory")
+    @Parameter(defaultValue = "${project.build.directory}/generated-sources/sanshain", property = "outputDirectory")
     private File outputDirectory;
 
     @Parameter
@@ -53,7 +53,7 @@ public class RequireMojo extends AbstractMojo {
                 if (requireConfig != null) {
                     if (clientName == null) clientName = requireConfig.getClientName();
                     if (requirements == null) requirements = requireConfig.getRequirements();
-                    if (outputDirectory == null || outputDirectory.getPath().endsWith("target/sanshain-snippets")) {
+                    if (outputDirectory == null || outputDirectory.getPath().endsWith("target/generated-sources/sanshain")) {
                         if (requireConfig.getOutputDirectory() != null) {
                             outputDirectory = new File(requireConfig.getOutputDirectory());
                         }

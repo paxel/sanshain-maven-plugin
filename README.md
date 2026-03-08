@@ -34,9 +34,9 @@ The SanShain Maven Plugin allows microservices to interact with the SanShain ser
    openApiFile: src/main/resources/openapi.yaml
  
  require:
-   - clientName: order-service
-     outputDirectory: target/sanshain-snippets
-     requirements:
+  - clientName: order-service
+    outputDirectory: target/generated-sources/sanshain
+    requirements:
        - serviceName: user-service
          branch: main
          path: /users/{id}
@@ -72,7 +72,7 @@ This goal is typically used by a service provider to upload its OpenAPI definiti
 | Parameter | Property | Default | Description |
 |-----------|----------|---------|-------------|
 | `serviceName` | `serviceName` | - | **Required.** The name of the service. |
-| `branch` | `branch` | `main` | The branch/version of the service. |
+| `branch` | `branch` | (autodetected) | The branch/version of the service. Defaults to Git branch or `main`. |
 | `openApiFile` | `openApiFile` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file. |
 | `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
 
@@ -108,7 +108,7 @@ This goal is used by a client service to download only the necessary OpenAPI sni
 |-----------|----------|---------|-------------|
 | `clientName` | `clientName` | - | **Required.** The name of the client service. |
 | `requirements` | - | - | **Required.** List of requested endpoints. |
-| `outputDirectory` | `outputDirectory` | `${project.build.directory}/sanshain-snippets` | Where to save the downloaded snippets. |
+| `outputDirectory` | `outputDirectory` | `${project.build.directory}/generated-sources/sanshain` | Where to save the downloaded snippets. |
 | `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
 
 #### Example
@@ -182,6 +182,43 @@ If your service is both a provider (exposes an API) and a client (consumes other
             <configuration>
                 <serviceName>order-service</serviceName>
                 <branch>main</branch>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+
+## Integrating with OpenAPI Generator
+
+The downloaded snippets can be used by the `openapi-generator-maven-plugin` to generate client code. Since the generator typically expects a single OpenAPI file, you might need to combine them or run the generator for each snippet.
+
+The generated code should be placed in the `target` directory (e.g., `target/generated-sources/openapi`) so that it's correctly handled by the build process and ignored by version control.
+
+### Example: Generating a Client
+
+```xml
+<plugin>
+    <groupId>org.openapitools</groupId>
+    <artifactId>openapi-generator-maven-plugin</artifactId>
+    <version>7.0.0</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>generate</goal>
+            </goals>
+            <configuration>
+                <!-- Point to a snippet or a combined file in the sanshain output directory -->
+                <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service-main-users-id-get.yaml</inputSpec>
+                <generatorName>java</generatorName>
+                <library>resttemplate</library>
+                <output>${project.build.directory}/generated-sources/openapi</output>
+                <apiPackage>com.sanshain.client.user.api</apiPackage>
+                <modelPackage>com.sanshain.client.user.model</modelPackage>
+                <generateApiTests>false</generateApiTests>
+                <generateModelTests>false</generateModelTests>
+                <configOptions>
+                    <dateLibrary>java8</dateLibrary>
+                </configOptions>
             </configuration>
         </execution>
     </executions>

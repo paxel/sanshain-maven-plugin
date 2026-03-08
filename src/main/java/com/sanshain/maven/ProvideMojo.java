@@ -6,13 +6,20 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+
 import java.io.File;
+import java.io.IOException;
 
 /**
  * Goal which provides an OpenAPI specification to the SanShain service.
  */
 @Mojo(name = "provide", defaultPhase = LifecyclePhase.PACKAGE)
 public class ProvideMojo extends AbstractMojo {
+
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File baseDir;
 
     @Parameter(defaultValue = "${project.basedir}/sanshain.yaml", property = "configFile")
     private File configFile;
@@ -23,7 +30,7 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "serviceName")
     private String serviceName;
 
-    @Parameter(property = "branch", defaultValue = "main")
+    @Parameter(property = "branch")
     private String branch;
 
     @Parameter(property = "sanshainUrl", defaultValue = "http://localhost:8080")
@@ -38,13 +45,21 @@ public class ProvideMojo extends AbstractMojo {
             if (config.getProvide() != null) {
                 SanshainConfig.ProvideConfig provideConfig = config.getProvide();
                 if (serviceName == null) serviceName = provideConfig.getServiceName();
-                if (branch == null || "main".equals(branch)) {
-                    if (provideConfig.getBranch() != null) branch = provideConfig.getBranch();
+                if (branch == null) {
+                    branch = provideConfig.getBranch();
                 }
                 if (openApiFile == null || openApiFile.getPath().endsWith("target/openapi.yaml")) {
                      if (provideConfig.getOpenApiFile() != null) openApiFile = new File(provideConfig.getOpenApiFile());
                 }
             }
+        }
+
+        if (branch == null) {
+            branch = getGitBranch();
+        }
+
+        if (branch == null) {
+            branch = "main"; // default fallback
         }
 
         if (serviceName == null) {
@@ -57,5 +72,21 @@ public class ProvideMojo extends AbstractMojo {
         }
         // Implementation for uploading to SanShain service will go here
         getLog().info("OpenAPI file found: " + openApiFile.getAbsolutePath());
+    }
+
+    private String getGitBranch() {
+        try {
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            try (Repository repository = builder.readEnvironment()
+                    .findGitDir(baseDir)
+                    .build()) {
+                if (repository != null) {
+                    return repository.getBranch();
+                }
+            }
+        } catch (IOException e) {
+            getLog().debug("Could not determine git branch: " + e.getMessage());
+        }
+        return null;
     }
 }
