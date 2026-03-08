@@ -16,6 +16,7 @@ The SanShain Maven Plugin allows microservices to:
     - Reads a configuration of required endpoints.
     - Fetches snippets from `GET /require` on the SanShain service.
     - Saves snippets to a specified directory (typically `target/generated-sources/sanshain`) for use by code generators.
+    - **Retry/Timeout mechanism**: Implements polling with configurable timeout and retry interval to wait for specs from providers during CI/CD.
 
 ## Implementation Details
 

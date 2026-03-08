@@ -109,6 +109,8 @@ This goal is used by a client service to download only the necessary OpenAPI sni
 | `clientName` | `clientName` | - | **Required.** The name of the client service. |
 | `requirements` | - | - | **Required.** List of requested endpoints. |
 | `outputDirectory` | `outputDirectory` | `${project.build.directory}/generated-sources/sanshain` | Where to save the downloaded snippets. |
+| `timeout` | `timeout` | `300` | Maximum time (seconds) to wait for requirements. |
+| `retryInterval` | `retryInterval` | `10` | Time (seconds) between retries. |
 | `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
 
 #### Example

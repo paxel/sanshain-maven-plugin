@@ -36,6 +36,8 @@ public class SanshainConfig {
         private String clientName;
         private List<RequireMojo.EndpointRequirement> requirements;
         private String outputDirectory;
+        private int timeout;
+        private int retryInterval;
 
         public String getClientName() { return clientName; }
         public void setClientName(String clientName) { this.clientName = clientName; }
@@ -45,5 +47,11 @@ public class SanshainConfig {
 
         public String getOutputDirectory() { return outputDirectory; }
         public void setOutputDirectory(String outputDirectory) { this.outputDirectory = outputDirectory; }
+
+        public int getTimeout() { return timeout; }
+        public void setTimeout(int timeout) { this.timeout = timeout; }
+
+        public int getRetryInterval() { return retryInterval; }
+        public void setRetryInterval(int retryInterval) { this.retryInterval = retryInterval; }
     }
 }

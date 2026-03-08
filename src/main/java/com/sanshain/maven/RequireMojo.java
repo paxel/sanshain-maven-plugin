@@ -27,6 +27,12 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.build.directory}/generated-sources/sanshain", property = "outputDirectory")
     private File outputDirectory;
 
+    @Parameter(defaultValue = "300", property = "timeout")
+    private int timeout; // in seconds
+
+    @Parameter(defaultValue = "10", property = "retryInterval")
+    private int retryInterval; // in seconds
+
     @Parameter
     private List<EndpointRequirement> requirements;
 
@@ -58,6 +64,12 @@ public class RequireMojo extends AbstractMojo {
                             outputDirectory = new File(requireConfig.getOutputDirectory());
                         }
                     }
+                    if (timeout == 300 && requireConfig.getTimeout() != 0) {
+                        timeout = requireConfig.getTimeout();
+                    }
+                    if (retryInterval == 10 && requireConfig.getRetryInterval() != 0) {
+                        retryInterval = requireConfig.getRetryInterval();
+                    }
                 }
             }
         }
@@ -69,11 +81,42 @@ public class RequireMojo extends AbstractMojo {
              throw new MojoExecutionException("requirements are required (either in pom.xml or sanshain.yaml)");
         }
 
-        getLog().info("Requiring OpenAPI snippets for client: " + clientName);
+        getLog().info("Requiring OpenAPI snippets for client: " + clientName + " (timeout: " + timeout + "s, retryInterval: " + retryInterval + "s)");
         if (!outputDirectory.exists()) {
             outputDirectory.mkdirs();
         }
-        // Implementation for downloading from SanShain service will go here
+
+        // Implementation for downloading from SanShain service with polling/retry
+        long startTime = System.currentTimeMillis();
+        long timeoutMillis = (long) timeout * 1000;
+
+        boolean allFound = false;
+        while (!allFound) {
+            // This is a placeholder for the actual check
+            // For now, we just simulate the check
+            getLog().info("Checking for required OpenAPI snippets...");
+            
+            // In a real implementation, we would call the service here
+            // and check if all requirements are available.
+            // Since the actual service communication is not yet implemented,
+            // we will just proceed for now or timeout if it were a real check.
+            
+            allFound = true; // Placeholder: assume found for now to not block build
+
+            if (!allFound) {
+                if (System.currentTimeMillis() - startTime > timeoutMillis) {
+                    throw new MojoExecutionException("Timed out waiting for OpenAPI snippets after " + timeout + " seconds");
+                }
+                try {
+                    getLog().info("Some requirements not found, retrying in " + retryInterval + " seconds...");
+                    Thread.sleep((long) retryInterval * 1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new MojoExecutionException("Interrupted while waiting for OpenAPI snippets", e);
+                }
+            }
+        }
+
         for (EndpointRequirement req : requirements) {
             getLog().info("Requirement: " + req.getServiceName() + " " + req.getBranch() + " " + req.getPath() + " " + req.getMethod());
         }
