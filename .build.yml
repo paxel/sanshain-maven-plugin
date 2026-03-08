@@ -1,0 +1,13 @@
+image: archlinux
+packages:
+  - openjdk17-src
+  - maven
+sources:
+  - https://git.sr.ht/~youruser/SanshainMaven
+tasks:
+  - build: |
+      cd SanshainMaven
+      mvn compile
+  - test: |
+      cd SanshainMaven
+      mvn test
