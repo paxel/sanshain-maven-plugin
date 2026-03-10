@@ -30,9 +30,6 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "serviceName")
     private String serviceName;
 
-    @Parameter(property = "branch")
-    private String branch;
-
     @Parameter(property = "sanshainUrl", defaultValue = "http://localhost:8080")
     private String sanshainUrl;
 
@@ -45,19 +42,16 @@ public class ProvideMojo extends AbstractMojo {
             if (config.getProvide() != null) {
                 SanshainConfig.ProvideConfig provideConfig = config.getProvide();
                 if (serviceName == null) serviceName = provideConfig.getServiceName();
-                if (branch == null) {
-                    branch = provideConfig.getBranch();
-                }
                 if (openApiFile == null || openApiFile.getPath().endsWith("target/openapi.yaml")) {
                      if (provideConfig.getOpenApiFile() != null) openApiFile = new File(provideConfig.getOpenApiFile());
                 }
             }
         }
 
+        String branch = System.getenv("SANSHAIN_BRANCH");
         if (branch == null) {
             branch = getGitBranch();
         }
-
         if (branch == null) {
             branch = "main"; // default fallback
         }

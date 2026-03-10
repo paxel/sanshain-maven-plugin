@@ -47,17 +47,10 @@ public class RequireMojo extends AbstractMojo {
                 // Find the first requirement block matching this clientName if clientName is set,
                 // or just take the first one if only one exists.
                 SanshainConfig.RequireConfig requireConfig = null;
-                if (clientName != null) {
-                    requireConfig = config.getRequire().stream()
-                            .filter(r -> clientName.equals(r.getClientName()))
-                            .findFirst().orElse(null);
-                }
-                if (requireConfig == null && config.getRequire().size() == 1) {
+                if (config.getRequire().size() == 1) {
                     requireConfig = config.getRequire().get(0);
                 }
-
                 if (requireConfig != null) {
-                    if (clientName == null) clientName = requireConfig.getClientName();
                     if (requirements == null) requirements = requireConfig.getRequirements();
                     if (outputDirectory == null || outputDirectory.getPath().endsWith("target/generated-sources/sanshain")) {
                         if (requireConfig.getOutputDirectory() != null) {
@@ -74,6 +67,9 @@ public class RequireMojo extends AbstractMojo {
             }
         }
 
+        if (config != null && config.getClientName() != null && clientName == null) {
+            clientName = config.getClientName();
+        }
         if (clientName == null) {
              throw new MojoExecutionException("clientName is required (either in pom.xml or sanshain.yaml)");
         }
@@ -118,21 +114,18 @@ public class RequireMojo extends AbstractMojo {
         }
 
         for (EndpointRequirement req : requirements) {
-            getLog().info("Requirement: " + req.getServiceName() + " " + req.getBranch() + " " + req.getPath() + " " + req.getMethod());
+            getLog().info("Requirement: " + req.getServiceName() + " " + req.getPath() + " " + req.getMethod());
         }
     }
 
     public static class EndpointRequirement {
         private String serviceName;
-        private String branch;
         private String path;
         private String method;
 
         // Getters and Setters needed for Maven parameter injection
         public String getServiceName() { return serviceName; }
         public void setServiceName(String serviceName) { this.serviceName = serviceName; }
-        public String getBranch() { return branch; }
-        public void setBranch(String branch) { this.branch = branch; }
         public String getPath() { return path; }
         public void setPath(String path) { this.path = path; }
         public String getMethod() { return method; }

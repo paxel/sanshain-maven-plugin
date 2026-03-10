@@ -27,21 +27,21 @@ The SanShain Maven Plugin allows microservices to interact with the SanShain ser
  
  ```yaml
  sanshainUrl: http://localhost:8080
- 
+ clientName: order-service
+
  provide:
    serviceName: user-service
-   branch: main
    openApiFile: src/main/resources/openapi.yaml
- 
+
  require:
-  - clientName: order-service
-    outputDirectory: target/generated-sources/sanshain
+  - outputDirectory: target/generated-sources/sanshain
     requirements:
        - serviceName: user-service
-         branch: main
          path: /users/{id}
          method: get
  ```
+
+ The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
  
  If you use `sanshain.yaml`, your `pom.xml` can be as simple as:
  
@@ -72,9 +72,10 @@ This goal is typically used by a service provider to upload its OpenAPI definiti
 | Parameter | Property | Default | Description |
 |-----------|----------|---------|-------------|
 | `serviceName` | `serviceName` | - | **Required.** The name of the service. |
-| `branch` | `branch` | (autodetected) | The branch/version of the service. Defaults to Git branch or `main`. |
 | `openApiFile` | `openApiFile` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file. |
 | `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
+
+The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
 
 #### Example
 
@@ -90,7 +91,6 @@ This goal is typically used by a service provider to upload its OpenAPI definiti
             </goals>
             <configuration>
                 <serviceName>user-service</serviceName>
-                <branch>main</branch>
                 <openApiFile>${project.basedir}/src/main/resources/openapi.yaml</openApiFile>
             </configuration>
         </execution>
@@ -130,13 +130,11 @@ This goal is used by a client service to download only the necessary OpenAPI sni
                 <requirements>
                     <requirement>
                         <serviceName>user-service</serviceName>
-                        <branch>main</branch>
                         <path>/users/{id}</path>
                         <method>get</method>
                     </requirement>
                     <requirement>
                         <serviceName>inventory-service</serviceName>
-                        <branch>v1</branch>
                         <path>/stock/{sku}</path>
                         <method>get</method>
                     </requirement>
@@ -168,7 +166,6 @@ If your service is both a provider (exposes an API) and a client (consumes other
                 <requirements>
                     <requirement>
                         <serviceName>user-service</serviceName>
-                        <branch>main</branch>
                         <path>/users/{id}</path>
                         <method>get</method>
                     </requirement>
@@ -183,7 +180,6 @@ If your service is both a provider (exposes an API) and a client (consumes other
             </goals>
             <configuration>
                 <serviceName>order-service</serviceName>
-                <branch>main</branch>
             </configuration>
         </execution>
     </executions>
