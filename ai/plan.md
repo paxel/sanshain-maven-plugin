@@ -1,4 +1,4 @@
-# Implementation Plan: SanShain Maven Plugin — Feature Complete
+# Implementation Plan: Sanshain Maven Plugin — Feature Complete
 
 ## Current State
 - `ProvideMojo`: Reads config + OpenAPI file, detects Git branch via JGit. **No HTTP upload implemented.**

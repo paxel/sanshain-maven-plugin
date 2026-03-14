@@ -56,7 +56,7 @@ public class SanshainHttpClient {
                     HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
             if (status == 202) {
-                log.info("Specification accepted by SanShain service.");
+                log.info("Specification accepted by Sanshain service.");
             } else if (status == 400) {
                 throw new MojoExecutionException("Bad request: " + response.body());
             } else if (status == 409) {
@@ -65,7 +65,7 @@ public class SanshainHttpClient {
                 throw new MojoExecutionException("Unexpected response " + status + ": " + response.body());
             }
         } catch (IOException e) {
-            throw new MojoExecutionException("Failed to connect to SanShain service at " + baseUrl, e);
+            throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("Request interrupted", e);
@@ -114,7 +114,7 @@ public class SanshainHttpClient {
                 throw new MojoExecutionException("Unexpected response " + status + " from /require");
             }
         } catch (IOException e) {
-            throw new MojoExecutionException("Failed to connect to SanShain service at " + baseUrl, e);
+            throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("Request interrupted", e);

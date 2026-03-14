@@ -18,7 +18,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Goal which requires OpenAPI snippets from the SanShain service.
+ * Goal which requires OpenAPI snippets from the Sanshain service.
  */
 @Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
 public class RequireMojo extends AbstractMojo {

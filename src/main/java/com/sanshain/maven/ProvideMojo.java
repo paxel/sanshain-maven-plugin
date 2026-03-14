@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 /**
- * Goal which provides an OpenAPI specification to the SanShain service.
+ * Goal which provides an OpenAPI specification to the Sanshain service.
  */
 @Mojo(name = "provide", defaultPhase = LifecyclePhase.PACKAGE)
 public class ProvideMojo extends AbstractMojo {

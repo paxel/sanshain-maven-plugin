@@ -1,11 +1,11 @@
-# SanShain Maven Plugin
+# Sanshain Maven Plugin
 
-The SanShain Maven Plugin allows microservices to interact with the SanShain service to manage and distribute OpenAPI specifications during the build process.
+The Sanshain Maven Plugin allows microservices to interact with the Sanshain service to manage and distribute OpenAPI specifications during the build process.
 
 ## Goals
 
-- `sanshain:provide`: Uploads a full OpenAPI specification to the SanShain service. Defaults to the `package` phase.
-- `sanshain:require`: Downloads specific endpoint snippets from the SanShain service. Defaults to the `generate-sources` phase.
+- `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `package` phase.
+- `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `generate-sources` phase.
 
 ## Quick Start
 
@@ -13,7 +13,7 @@ Add the plugin to your `pom.xml`:
 
 ```xml
 <plugin>
-    <groupId>paxel.sanshain</groupId>
+    <groupId>io.github.pxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <executions>
@@ -103,7 +103,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 
 | Setting | `sanshain.yaml` | Maven Property | Env Variable | Default |
 |---------|-----------------|----------------|--------------|---------|
-| SanShain URL | `sanshainUrl` | `-Dsanshain.url` | `$SANSHAIN_URL` | `http://localhost:8080` |
+| Sanshain URL | `sanshainUrl` | `-Dsanshain.url` | `$SANSHAIN_URL` | `http://localhost:8080` |
 | Token | ❌ not in yaml | `-Dsanshain.token` | `$SANSHAIN_TOKEN` | — (optional) |
 | Timeout (seconds) | `timeout` | `-Dsanshain.timeout` | `$SANSHAIN_TIMEOUT` | `120` |
 | Compression | `compression` | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true` |
@@ -116,7 +116,7 @@ The branch is automatically detected from the local Git repository using JGit. Y
 
 ## Goal: `provide`
 
-Uploads the service's OpenAPI specification to the SanShain service.
+Uploads the service's OpenAPI specification to the Sanshain service.
 
 ### Parameters
 
@@ -124,7 +124,7 @@ Uploads the service's OpenAPI specification to the SanShain service.
 |-----------|----------|---------|-------------|
 | `serviceName` | `serviceName` | — | **Required.** The name of the service providing the API. |
 | `openApiFile` | `openApiFile` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file. |
-| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the SanShain service. |
+| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the Sanshain service. |
 | `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression` | `true` | Enable gzip compression for the upload. |
 | `serverId` | `sanshain.serverId` | `sanshain` | Server ID for `settings.xml` token lookup. |
@@ -146,7 +146,7 @@ Downloads OpenAPI snippets for specific endpoints that this service consumes. Th
 | Parameter | Property | Default | Description |
 |-----------|----------|---------|-------------|
 | `clientName` | `clientName` | — | **Required.** The name of the client service requesting the endpoints. |
-| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the SanShain service. |
+| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the Sanshain service. |
 | `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
 | `timeout` | `sanshain.timeout` | `120` | Global timeout in seconds for server long-polling. |
 | `compression` | `sanshain.compression` | `true` | Enable gzip compression for downloads. |
@@ -196,7 +196,7 @@ With a minimal `pom.xml` configuration:
 
 ```xml
 <plugin>
-    <groupId>paxel.sanshain</groupId>
+    <groupId>io.github.pxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <executions>
