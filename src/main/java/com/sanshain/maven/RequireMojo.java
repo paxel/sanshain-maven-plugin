@@ -5,8 +5,16 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.settings.Server;
+import org.apache.maven.settings.Settings;
+
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -15,120 +23,161 @@ import java.util.List;
 @Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
 public class RequireMojo extends AbstractMojo {
 
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File baseDir;
+
     @Parameter(defaultValue = "${project.basedir}/sanshain.yaml", property = "configFile")
     private File configFile;
 
     @Parameter(property = "clientName")
     private String clientName;
 
-    @Parameter(property = "sanshainUrl", defaultValue = "http://localhost:8080")
+    @Parameter(property = "sanshain.url")
     private String sanshainUrl;
 
-    @Parameter(defaultValue = "${project.build.directory}/generated-sources/sanshain", property = "outputDirectory")
-    private File outputDirectory;
+    @Parameter(property = "sanshain.token")
+    private String token;
 
-    @Parameter(defaultValue = "300", property = "timeout")
-    private int timeout; // in seconds
+    @Parameter(property = "sanshain.timeout")
+    private Integer timeout;
 
-    @Parameter(defaultValue = "10", property = "retryInterval")
-    private int retryInterval; // in seconds
+    @Parameter(property = "sanshain.compression")
+    private Boolean compression;
 
-    @Parameter
-    private List<EndpointRequirement> requirements;
+    @Parameter(property = "sanshain.serverId", defaultValue = "sanshain")
+    private String serverId;
+
+    @Parameter(defaultValue = "${settings}", readonly = true)
+    private Settings settings;
 
     public void execute() throws MojoExecutionException {
         SanshainConfig config = ConfigLoader.loadConfig(configFile);
-        if (config != null) {
-            if (config.getSanshainUrl() != null && (sanshainUrl == null || "http://localhost:8080".equals(sanshainUrl))) {
-                sanshainUrl = config.getSanshainUrl();
-            }
 
-            if (config.getRequire() != null) {
-                // Find the first requirement block matching this clientName if clientName is set,
-                // or just take the first one if only one exists.
-                SanshainConfig.RequireConfig requireConfig = null;
-                if (config.getRequire().size() == 1) {
-                    requireConfig = config.getRequire().get(0);
-                }
-                if (requireConfig != null) {
-                    if (requirements == null) requirements = requireConfig.getRequirements();
-                    if (outputDirectory == null || outputDirectory.getPath().endsWith("target/generated-sources/sanshain")) {
-                        if (requireConfig.getOutputDirectory() != null) {
-                            outputDirectory = new File(requireConfig.getOutputDirectory());
-                        }
-                    }
-                    if (timeout == 300 && requireConfig.getTimeout() != 0) {
-                        timeout = requireConfig.getTimeout();
-                    }
-                    if (retryInterval == 10 && requireConfig.getRetryInterval() != 0) {
-                        retryInterval = requireConfig.getRetryInterval();
-                    }
-                }
-            }
+        // Resolve sanshainUrl
+        if (sanshainUrl == null && config.getSanshainUrl() != null) {
+            sanshainUrl = config.getSanshainUrl();
+        }
+        if (sanshainUrl == null) {
+            sanshainUrl = "http://localhost:8080";
         }
 
-        if (config != null && config.getClientName() != null && clientName == null) {
+        // Resolve clientName
+        if (clientName == null && config.getClientName() != null) {
             clientName = config.getClientName();
         }
         if (clientName == null) {
-             throw new MojoExecutionException("clientName is required (either in pom.xml or sanshain.yaml)");
-        }
-        if (requirements == null || requirements.isEmpty()) {
-             throw new MojoExecutionException("requirements are required (either in pom.xml or sanshain.yaml)");
+            throw new MojoExecutionException("clientName is required (either in pom.xml or sanshain.yaml)");
         }
 
-        getLog().info("Requiring OpenAPI snippets for client: " + clientName + " (timeout: " + timeout + "s, retryInterval: " + retryInterval + "s)");
-        if (!outputDirectory.exists()) {
-            outputDirectory.mkdirs();
+        // Resolve token
+        String resolvedToken = resolveToken();
+
+        // Resolve global timeout (default 120)
+        int globalTimeout = resolveGlobalTimeout(config);
+
+        // Resolve compression
+        boolean resolvedCompression = resolveCompression(config);
+
+        // Resolve branch
+        String branch = System.getenv("SANSHAIN_BRANCH");
+        if (branch == null) {
+            branch = getGitBranch();
+        }
+        if (branch == null) {
+            branch = "main";
         }
 
-        // Implementation for downloading from SanShain service with polling/retry
-        long startTime = System.currentTimeMillis();
-        long timeoutMillis = (long) timeout * 1000;
+        // Get requires from config
+        List<SanshainConfig.RequireConfig> requires = config.getRequires();
+        if (requires == null || requires.isEmpty()) {
+            throw new MojoExecutionException("requires are required in sanshain.yaml");
+        }
 
-        boolean allFound = false;
-        while (!allFound) {
-            // This is a placeholder for the actual check
-            // For now, we just simulate the check
-            getLog().info("Checking for required OpenAPI snippets...");
-            
-            // In a real implementation, we would call the service here
-            // and check if all requirements are available.
-            // Since the actual service communication is not yet implemented,
-            // we will just proceed for now or timeout if it were a real check.
-            
-            allFound = true; // Placeholder: assume found for now to not block build
+        SanshainHttpClient client = new SanshainHttpClient(getLog());
 
-            if (!allFound) {
-                if (System.currentTimeMillis() - startTime > timeoutMillis) {
-                    throw new MojoExecutionException("Timed out waiting for OpenAPI snippets after " + timeout + " seconds");
-                }
+        for (SanshainConfig.RequireConfig req : requires) {
+            String reqServiceName = req.getServiceName();
+            int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
+
+            String outputDir = req.getOutputDirectory();
+            if (outputDir == null) {
+                outputDir = "target/generated-sources/sanshain";
+            }
+            File outputDirectory = new File(baseDir, outputDir);
+            if (!outputDirectory.exists()) {
+                outputDirectory.mkdirs();
+            }
+
+            List<SanshainConfig.EndpointConfig> endpoints = req.getEndpoints();
+            if (endpoints == null || endpoints.isEmpty()) {
+                getLog().warn("No endpoints defined for service: " + reqServiceName);
+                continue;
+            }
+
+            for (SanshainConfig.EndpointConfig endpoint : endpoints) {
+                String method = endpoint.getMethod();
+                String path = endpoint.getPath();
+
+                getLog().info("Requiring: " + reqServiceName + " " + method + " " + path +
+                        " (branch: " + branch + ", timeout: " + reqTimeout + "s)");
+
+                String yamlContent = client.getRequire(sanshainUrl, resolvedToken, clientName,
+                        reqServiceName, branch, path, method, reqTimeout, resolvedCompression);
+
+                // Save to file: {outputDirectory}/{serviceName}_{path}_{method}.yaml
+                String fileName = reqServiceName + "_" +
+                        path.replace("/", "_").replaceFirst("^_", "") +
+                        "_" + method + ".yaml";
+                Path outputFile = outputDirectory.toPath().resolve(fileName);
                 try {
-                    getLog().info("Some requirements not found, retrying in " + retryInterval + " seconds...");
-                    Thread.sleep((long) retryInterval * 1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new MojoExecutionException("Interrupted while waiting for OpenAPI snippets", e);
+                    Files.writeString(outputFile, yamlContent);
+                    getLog().info("Saved: " + outputFile);
+                } catch (IOException e) {
+                    throw new MojoExecutionException("Failed to write file: " + outputFile, e);
                 }
             }
         }
-
-        for (EndpointRequirement req : requirements) {
-            getLog().info("Requirement: " + req.getServiceName() + " " + req.getPath() + " " + req.getMethod());
-        }
     }
 
-    public static class EndpointRequirement {
-        private String serviceName;
-        private String path;
-        private String method;
+    private String resolveToken() {
+        String envToken = System.getenv("SANSHAIN_TOKEN");
+        if (envToken != null) return envToken;
 
-        // Getters and Setters needed for Maven parameter injection
-        public String getServiceName() { return serviceName; }
-        public void setServiceName(String serviceName) { this.serviceName = serviceName; }
-        public String getPath() { return path; }
-        public void setPath(String path) { this.path = path; }
-        public String getMethod() { return method; }
-        public void setMethod(String method) { this.method = method; }
+        if (settings != null) {
+            Server server = settings.getServer(serverId);
+            if (server != null && server.getPassword() != null) {
+                return server.getPassword();
+            }
+        }
+
+        return token;
+    }
+
+    private int resolveGlobalTimeout(SanshainConfig config) {
+        if (timeout != null) return timeout;
+        if (config.getTimeout() != null) return config.getTimeout();
+        return 120;
+    }
+
+    private boolean resolveCompression(SanshainConfig config) {
+        if (compression != null) return compression;
+        if (config.getCompression() != null) return config.getCompression();
+        return true;
+    }
+
+    private String getGitBranch() {
+        try {
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            try (Repository repository = builder.readEnvironment()
+                    .findGitDir(baseDir)
+                    .build()) {
+                if (repository != null) {
+                    return repository.getBranch();
+                }
+            }
+        } catch (IOException e) {
+            getLog().debug("Could not determine git branch: " + e.getMessage());
+        }
+        return null;
     }
 }
