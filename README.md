@@ -4,195 +4,226 @@ The SanShain Maven Plugin allows microservices to interact with the SanShain ser
 
 ## Goals
 
-- `sanshain:provide`: Uploads a full OpenAPI specification to the SanShain service.
-- `sanshain:require`: Downloads specific endpoint snippets from the SanShain service.
+- `sanshain:provide`: Uploads a full OpenAPI specification to the SanShain service. Defaults to the `package` phase.
+- `sanshain:require`: Downloads specific endpoint snippets from the SanShain service. Defaults to the `generate-sources` phase.
 
-## Configuration
- 
- Add the following to your `pom.xml`:
- 
- ```xml
- <plugin>
-     <groupId>com.sanshain</groupId>
-     <artifactId>sanshain-maven-plugin</artifactId>
-     <version>0.1.0-SNAPSHOT</version>
- </plugin>
- ```
- 
- ### External Configuration (`sanshain.yaml`)
- 
- To keep your `pom.xml` clean, you can use a `sanshain.yaml` file in your project's root directory. The plugin will automatically look for this file.
- 
- #### `sanshain.yaml` Structure
- 
- ```yaml
- sanshainUrl: http://localhost:8080
- clientName: order-service
+## Quick Start
 
- provide:
-   serviceName: user-service
-   openApiFile: src/main/resources/openapi.yaml
+Add the plugin to your `pom.xml`:
 
- require:
-  - outputDirectory: target/generated-sources/sanshain
-    requirements:
-       - serviceName: user-service
-         path: /users/{id}
-         method: get
- ```
+```xml
+<plugin>
+    <groupId>paxel.sanshain</groupId>
+    <artifactId>sanshain-maven-plugin</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>require</goal>
+                <goal>provide</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
 
- The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
- 
- If you use `sanshain.yaml`, your `pom.xml` can be as simple as:
- 
- ```xml
- <plugin>
-     <groupId>com.sanshain</groupId>
-     <artifactId>sanshain-maven-plugin</artifactId>
-     <version>0.1.0-SNAPSHOT</version>
-     <executions>
-         <execution>
-             <goals>
-                 <goal>require</goal>
-                 <goal>provide</goal>
-             </goals>
-         </execution>
-     </executions>
- </plugin>
- ```
- 
- You can override the configuration file location using the `<configFile>` parameter.
- 
- ### Goal: `provide`
+Then create a `sanshain.yaml` in your project root (see below).
 
-This goal is typically used by a service provider to upload its OpenAPI definition. It defaults to the `package` phase.
+## Configuration via `sanshain.yaml`
 
-#### Parameters
+The plugin automatically looks for a `sanshain.yaml` file in your project's root directory. This keeps your `pom.xml` clean.
+
+```yaml
+sanshainUrl: https://sanshain.example.com
+timeout: 120
+compression: true
+clientName: order-service
+
+provide:
+  serviceName: my-service
+  openApiFile: src/main/resources/openapi.yaml
+
+requires:
+  - serviceName: user-service
+    outputDirectory: target/generated-sources/sanshain
+    timeout: 60
+    endpoints:
+      - method: GET
+        path: /api/v1/users
+      - method: GET
+        path: /api/v1/users/{id}
+  - serviceName: inventory-service
+    outputDirectory: target/generated-sources/sanshain
+    endpoints:
+      - method: POST
+        path: /api/v1/orders
+```
+
+You can override the configuration file location using the `configFile` property:
+
+```xml
+<configuration>
+    <configFile>${project.basedir}/my-sanshain-config.yaml</configFile>
+</configuration>
+```
+
+> **Note:** The `token` is intentionally **not** stored in `sanshain.yaml`. See [Authentication](#authentication) below.
+
+## Authentication
+
+The plugin supports token-based authentication via `Authorization: Bearer <token>`. The token is resolved from the following sources (highest priority first):
+
+1. **Environment variable** `$SANSHAIN_TOKEN`
+2. **Maven `settings.xml`** — `<server>` element with matching `serverId` (default: `sanshain`)
+3. **Maven property** `-Dsanshain.token=...`
+
+If no token is configured, requests are sent without authentication (suitable for local development).
+
+### Token via `settings.xml`
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>sanshain</id>
+      <username>ignored</username>
+      <password>san_abc123...</password>
+    </server>
+  </servers>
+</settings>
+```
+
+The `<id>` must match the `serverId` parameter (default: `sanshain`). The `<password>` field holds the token.
+
+## Configuration Reference
+
+### Global Settings
+
+All global settings can be specified in `sanshain.yaml`, overridden via Maven properties, or set as environment variables.
+
+| Setting | `sanshain.yaml` | Maven Property | Env Variable | Default |
+|---------|-----------------|----------------|--------------|---------|
+| SanShain URL | `sanshainUrl` | `-Dsanshain.url` | `$SANSHAIN_URL` | `http://localhost:8080` |
+| Token | ❌ not in yaml | `-Dsanshain.token` | `$SANSHAIN_TOKEN` | — (optional) |
+| Timeout (seconds) | `timeout` | `-Dsanshain.timeout` | `$SANSHAIN_TIMEOUT` | `120` |
+| Compression | `compression` | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true` |
+| Client name | `clientName` | `-DclientName` | `$SANSHAIN_CLIENT_NAME` | — (required for `require`) |
+| Branch | — | — | `$SANSHAIN_BRANCH` | auto-detected from Git |
+
+### Branch Detection
+
+The branch is automatically detected from the local Git repository using JGit. You can override it by setting the `SANSHAIN_BRANCH` environment variable. If neither is available, it defaults to `main`.
+
+## Goal: `provide`
+
+Uploads the service's OpenAPI specification to the SanShain service.
+
+### Parameters
 
 | Parameter | Property | Default | Description |
 |-----------|----------|---------|-------------|
-| `serviceName` | `serviceName` | - | **Required.** The name of the service. |
+| `serviceName` | `serviceName` | — | **Required.** The name of the service providing the API. |
 | `openApiFile` | `openApiFile` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file. |
-| `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
+| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the SanShain service. |
+| `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
+| `compression` | `sanshain.compression` | `true` | Enable gzip compression for the upload. |
+| `serverId` | `sanshain.serverId` | `sanshain` | Server ID for `settings.xml` token lookup. |
 
-The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
+These parameters can also be provided via the `provide` section in `sanshain.yaml`:
 
-#### Example
-
-```xml
-<plugin>
-    <groupId>com.sanshain</groupId>
-    <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-    <executions>
-        <execution>
-            <goals>
-                <goal>provide</goal>
-            </goals>
-            <configuration>
-                <serviceName>user-service</serviceName>
-                <openApiFile>${project.basedir}/src/main/resources/openapi.yaml</openApiFile>
-            </configuration>
-        </execution>
-    </executions>
-</plugin>
+```yaml
+provide:
+  serviceName: my-service
+  openApiFile: src/main/resources/openapi.yaml
 ```
 
-### Goal: `require`
+## Goal: `require`
 
-This goal is used by a client service to download only the necessary OpenAPI snippets for the endpoints it consumes. It defaults to the `generate-sources` phase.
+Downloads OpenAPI snippets for specific endpoints that this service consumes. The server uses long-polling — the plugin makes a single HTTP request per endpoint and waits for the server to respond (no client-side retry loop).
 
-#### Parameters
+### Parameters
 
 | Parameter | Property | Default | Description |
 |-----------|----------|---------|-------------|
-| `clientName` | `clientName` | - | **Required.** The name of the client service. |
-| `requirements` | - | - | **Required.** List of requested endpoints. |
-| `outputDirectory` | `outputDirectory` | `${project.build.directory}/generated-sources/sanshain` | Where to save the downloaded snippets. |
-| `timeout` | `timeout` | `300` | Maximum time (seconds) to wait for requirements. |
-| `retryInterval` | `retryInterval` | `10` | Time (seconds) between retries. |
-| `sanshainUrl` | `sanshainUrl` | `http://localhost:8080` | URL of the SanShain service. |
+| `clientName` | `clientName` | — | **Required.** The name of the client service requesting the endpoints. |
+| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the SanShain service. |
+| `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
+| `timeout` | `sanshain.timeout` | `120` | Global timeout in seconds for server long-polling. |
+| `compression` | `sanshain.compression` | `true` | Enable gzip compression for downloads. |
+| `serverId` | `sanshain.serverId` | `sanshain` | Server ID for `settings.xml` token lookup. |
 
-#### Example
+The required endpoints are defined in the `requires` section of `sanshain.yaml`:
+
+```yaml
+requires:
+  - serviceName: user-service
+    outputDirectory: target/generated-sources/sanshain
+    timeout: 60          # optional, overrides global timeout for this service
+    endpoints:
+      - method: GET
+        path: /api/v1/users/{id}
+      - method: GET
+        path: /api/v1/users
+```
+
+Each endpoint snippet is saved as `{outputDirectory}/{serviceName}_{path}_{method}.yaml` (path slashes are replaced with underscores).
+
+### How Long-Polling Works
+
+The `timeout` parameter is sent to the server as a query parameter. The server waits up to that many seconds for the requested specification to become available. The client HTTP timeout is set to `timeout + 30s` to allow for network overhead. If the server times out (returns 404), the build fails with a descriptive error.
+
+## Combined Example
+
+If your service both provides an API and consumes other APIs, configure everything in `sanshain.yaml`:
+
+```yaml
+sanshainUrl: https://sanshain.example.com
+clientName: order-service
+
+provide:
+  serviceName: order-service
+  openApiFile: src/main/resources/openapi.yaml
+
+requires:
+  - serviceName: user-service
+    outputDirectory: target/generated-sources/sanshain
+    endpoints:
+      - method: GET
+        path: /users/{id}
+```
+
+With a minimal `pom.xml` configuration:
 
 ```xml
 <plugin>
-    <groupId>com.sanshain</groupId>
+    <groupId>paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <executions>
         <execution>
             <goals>
                 <goal>require</goal>
+                <goal>provide</goal>
             </goals>
-            <configuration>
-                <clientName>order-service</clientName>
-                <requirements>
-                    <requirement>
-                        <serviceName>user-service</serviceName>
-                        <path>/users/{id}</path>
-                        <method>get</method>
-                    </requirement>
-                    <requirement>
-                        <serviceName>inventory-service</serviceName>
-                        <path>/stock/{sku}</path>
-                        <method>get</method>
-                    </requirement>
-                </requirements>
-            </configuration>
         </execution>
     </executions>
 </plugin>
 ```
 
-### Combined Example
+## CI Integration
 
-If your service is both a provider (exposes an API) and a client (consumes other APIs), you can configure both goals in separate executions. This is a common scenario in microservice architectures.
+For CI environments, use environment variables to configure the plugin without modifying `sanshain.yaml`:
 
-```xml
-<plugin>
-    <groupId>com.sanshain</groupId>
-    <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-    <executions>
-        <!-- 1. Download requirements before generating sources -->
-        <execution>
-            <id>fetch-requirements</id>
-            <goals>
-                <goal>require</goal>
-            </goals>
-            <configuration>
-                <clientName>order-service</clientName>
-                <requirements>
-                    <requirement>
-                        <serviceName>user-service</serviceName>
-                        <path>/users/{id}</path>
-                        <method>get</method>
-                    </requirement>
-                </requirements>
-            </configuration>
-        </execution>
-        <!-- 2. Provide own OpenAPI spec after packaging -->
-        <execution>
-            <id>provide-api</id>
-            <goals>
-                <goal>provide</goal>
-            </goals>
-            <configuration>
-                <serviceName>order-service</serviceName>
-            </configuration>
-        </execution>
-    </executions>
-</plugin>
+```bash
+export SANSHAIN_URL=https://sanshain.example.com
+export SANSHAIN_TOKEN=san_abc123...
+export SANSHAIN_BRANCH=feature/my-branch  # optional, auto-detected from Git
+mvn verify
 ```
 
 ## Integrating with OpenAPI Generator
 
-The downloaded snippets can be used by the `openapi-generator-maven-plugin` to generate client code. Since the generator typically expects a single OpenAPI file, you might need to combine them or run the generator for each snippet.
-
-The generated code should be placed in the `target` directory (e.g., `target/generated-sources/openapi`) so that it's correctly handled by the build process and ignored by version control.
-
-### Example: Generating a Client
+The downloaded snippets can be used by the `openapi-generator-maven-plugin` to generate client code:
 
 ```xml
 <plugin>
@@ -205,23 +236,28 @@ The generated code should be placed in the `target` directory (e.g., `target/gen
                 <goal>generate</goal>
             </goals>
             <configuration>
-                <!-- Point to a snippet or a combined file in the sanshain output directory -->
-                <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service-main-users-id-get.yaml</inputSpec>
+                <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service_api_v1_users_{id}_GET.yaml</inputSpec>
                 <generatorName>java</generatorName>
                 <library>resttemplate</library>
                 <output>${project.build.directory}/generated-sources/openapi</output>
-                <apiPackage>com.sanshain.client.user.api</apiPackage>
-                <modelPackage>com.sanshain.client.user.model</modelPackage>
+                <apiPackage>com.example.client.user.api</apiPackage>
+                <modelPackage>com.example.client.user.model</modelPackage>
                 <generateApiTests>false</generateApiTests>
                 <generateModelTests>false</generateModelTests>
-                <configOptions>
-                    <dateLibrary>java8</dateLibrary>
-                </configOptions>
             </configuration>
         </execution>
     </executions>
 </plugin>
 ```
+
+## Compression
+
+Gzip compression is enabled by default (`compression: true`).
+
+- **Provide (upload):** The request body is gzip-compressed and sent with `Content-Encoding: gzip`.
+- **Require (download):** The request includes `Accept-Encoding: gzip`, and the response is automatically decompressed if the server responds with gzip.
+
+To disable compression, set `compression: false` in `sanshain.yaml` or use `-Dsanshain.compression=false`.
 
 ## License
 
