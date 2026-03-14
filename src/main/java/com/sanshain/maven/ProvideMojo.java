@@ -52,7 +52,7 @@ public class ProvideMojo extends AbstractMojo {
     private Settings settings;
 
     public void execute() throws MojoExecutionException {
-        SanshainConfig config = ConfigLoader.loadConfig(configFile);
+        SanshainConfig config = new SanshainConfig().loadConfig(configFile);
 
         // Resolve sanshainUrl
         if (sanshainUrl == null && config.getSanshainUrl() != null) {

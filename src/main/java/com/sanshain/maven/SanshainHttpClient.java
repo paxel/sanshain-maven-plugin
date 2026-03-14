@@ -16,16 +16,34 @@ import java.util.zip.GZIPOutputStream;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 
+/**
+ * HTTP client for communicating with the Sanshain service.
+ */
 public class SanshainHttpClient {
 
     private final HttpClient httpClient;
     private final Log log;
 
+    /**
+     * Constructs a new SanshainHttpClient.
+     * @param log the Maven log
+     */
     public SanshainHttpClient(Log log) {
         this.httpClient = HttpClient.newBuilder().build();
         this.log = log;
     }
 
+    /**
+     * Uploads an OpenAPI specification to the Sanshain service.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param serviceName the name of the service providing the API
+     * @param branch      the Git branch name
+     * @param openapiYaml the content of the OpenAPI specification
+     * @param compression true if GZIP compression should be used
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
     public void postProvide(String baseUrl, String token, String serviceName, String branch,
                             String openapiYaml, boolean compression) throws MojoExecutionException {
         String json = "{" +
@@ -72,6 +90,21 @@ public class SanshainHttpClient {
         }
     }
 
+    /**
+     * Downloads an OpenAPI snippet for a specific endpoint from the Sanshain service.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param clientName  the name of the client requesting the endpoint
+     * @param serviceName the name of the service providing the API
+     * @param branch      the Git branch name
+     * @param path        the API path
+     * @param method      the HTTP method
+     * @param timeout     the timeout in seconds
+     * @param compression true if GZIP compression should be used
+     * @return the content of the downloaded OpenAPI snippet
+     * @throws MojoExecutionException if the request fails or the endpoint is not found
+     */
     public String getRequire(String baseUrl, String token, String clientName, String serviceName,
                              String branch, String path, String method, int timeout,
                              boolean compression) throws MojoExecutionException {
