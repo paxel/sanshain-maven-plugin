@@ -101,14 +101,14 @@ The `<id>` must match the `serverId` parameter (default: `sanshain`). The `<pass
 
 All global settings can be specified in `sanshain.yaml`, overridden via Maven properties, or set as environment variables.
 
-| Setting | `sanshain.yaml` | Maven Property | Env Variable | Default |
-|---------|-----------------|----------------|--------------|---------|
-| Sanshain URL | `sanshainUrl` | `-Dsanshain.url` | `$SANSHAIN_URL` | `http://localhost:8080` |
-| Token | ❌ not in yaml | `-Dsanshain.token` | `$SANSHAIN_TOKEN` | — (optional) |
-| Timeout (seconds) | `timeout` | `-Dsanshain.timeout` | `$SANSHAIN_TIMEOUT` | `120` |
-| Compression | `compression` | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true` |
-| Client name | `clientName` | `-DclientName` | `$SANSHAIN_CLIENT_NAME` | — (required for `require`) |
-| Branch | — | — | `$SANSHAIN_BRANCH` | auto-detected from Git |
+| Setting           | `sanshain.yaml` | Maven Property           | Env Variable            | Default                    |
+|-------------------|-----------------|--------------------------|-------------------------|----------------------------|
+| Sanshain URL      | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`    |
+| Token             | ❌ not in yaml   | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)               |
+| Timeout (seconds) | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                      |
+| Compression       | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                     |
+| Client name       | `clientName`    | `-DclientName`           | `$SANSHAIN_CLIENT_NAME` | — (required for `require`) |
+| Branch            | —               | —                        | `$SANSHAIN_BRANCH`      | auto-detected from Git     |
 
 ### Branch Detection
 
@@ -120,14 +120,14 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 
 ### Parameters
 
-| Parameter | Property | Default | Description |
-|-----------|----------|---------|-------------|
-| `serviceName` | `serviceName` | — | **Required.** The name of the service providing the API. |
-| `openApiFile` | `openApiFile` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file. |
-| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the Sanshain service. |
-| `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
-| `compression` | `sanshain.compression` | `true` | Enable gzip compression for the upload. |
-| `serverId` | `sanshain.serverId` | `sanshain` | Server ID for `settings.xml` token lookup. |
+| Parameter     | Property               | Default                                   | Description                                                   |
+|---------------|------------------------|-------------------------------------------|---------------------------------------------------------------|
+| `serviceName` | `serviceName`          | —                                         | **Required.** The name of the service providing the API.      |
+| `openApiFile` | `openApiFile`          | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
+| `sanshainUrl` | `sanshain.url`         | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
+| `token`       | `sanshain.token`       | —                                         | Authentication token (prefer `settings.xml` or env variable). |
+| `compression` | `sanshain.compression` | `true`                                    | Enable gzip compression for the upload.                       |
+| `serverId`    | `sanshain.serverId`    | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
 
 These parameters can also be provided via the `provide` section in `sanshain.yaml`:
 
@@ -143,14 +143,14 @@ Downloads OpenAPI snippets for specific endpoints that this service consumes. Th
 
 ### Parameters
 
-| Parameter | Property | Default | Description |
-|-----------|----------|---------|-------------|
-| `clientName` | `clientName` | — | **Required.** The name of the client service requesting the endpoints. |
-| `sanshainUrl` | `sanshain.url` | `http://localhost:8080` | URL of the Sanshain service. |
-| `token` | `sanshain.token` | — | Authentication token (prefer `settings.xml` or env variable). |
-| `timeout` | `sanshain.timeout` | `120` | Global timeout in seconds for server long-polling. |
-| `compression` | `sanshain.compression` | `true` | Enable gzip compression for downloads. |
-| `serverId` | `sanshain.serverId` | `sanshain` | Server ID for `settings.xml` token lookup. |
+| Parameter     | Property               | Default                 | Description                                                            |
+|---------------|------------------------|-------------------------|------------------------------------------------------------------------|
+| `clientName`  | `clientName`           | —                       | **Required.** The name of the client service requesting the endpoints. |
+| `sanshainUrl` | `sanshain.url`         | `http://localhost:8080` | URL of the Sanshain service.                                           |
+| `token`       | `sanshain.token`       | —                       | Authentication token (prefer `settings.xml` or env variable).          |
+| `timeout`     | `sanshain.timeout`     | `120`                   | Global timeout in seconds for server long-polling.                     |
+| `compression` | `sanshain.compression` | `true`                  | Enable gzip compression for downloads.                                 |
+| `serverId`    | `sanshain.serverId`    | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -196,7 +196,7 @@ With a minimal `pom.xml` configuration:
 
 ```xml
 <plugin>
-    <groupId>io.github.pxel.sanshain</groupId>
+    <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <executions>
