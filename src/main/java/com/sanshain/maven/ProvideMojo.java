@@ -140,7 +140,7 @@ public class ProvideMojo extends AbstractMojo {
                     return repository.getBranch();
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             getLog().debug("Could not determine git branch: " + e.getMessage());
         }
         return null;

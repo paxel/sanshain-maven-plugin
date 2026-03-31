@@ -114,7 +114,25 @@ public class RequireMojo extends AbstractMojo {
                 continue;
             }
 
-            for (SanshainConfig.EndpointConfig endpoint : endpoints) {
+            if (endpoints.size() >= 2) {
+                // Use /require-bundle for multiple endpoints (deduplicated schemas)
+                getLog().info("Requiring bundle: " + reqServiceName + " (" + endpoints.size() +
+                        " endpoints, branch: " + branch + ", timeout: " + reqTimeout + "s)");
+
+                String yamlContent = client.postRequireBundle(sanshainUrl, resolvedToken, clientName,
+                        reqServiceName, branch, endpoints, reqTimeout, resolvedCompression);
+
+                String fileName = reqServiceName + "_bundle.yaml";
+                Path outputFile = outputDirectory.toPath().resolve(fileName);
+                try {
+                    Files.writeString(outputFile, yamlContent);
+                    getLog().info("Saved bundle: " + outputFile);
+                } catch (IOException e) {
+                    throw new MojoExecutionException("Failed to write file: " + outputFile, e);
+                }
+            } else {
+                // Single endpoint: use individual /require GET call
+                SanshainConfig.EndpointConfig endpoint = endpoints.get(0);
                 String method = endpoint.getMethod();
                 String path = endpoint.getPath();
 
@@ -124,7 +142,6 @@ public class RequireMojo extends AbstractMojo {
                 String yamlContent = client.getRequire(sanshainUrl, resolvedToken, clientName,
                         reqServiceName, branch, path, method, reqTimeout, resolvedCompression);
 
-                // Save to file: {outputDirectory}/{serviceName}_{path}_{method}.yaml
                 String fileName = reqServiceName + "_" +
                         path.replace("/", "_").replaceFirst("^_", "") +
                         "_" + method + ".yaml";
@@ -175,7 +192,7 @@ public class RequireMojo extends AbstractMojo {
                     return repository.getBranch();
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             getLog().debug("Could not determine git branch: " + e.getMessage());
         }
         return null;

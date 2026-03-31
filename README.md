@@ -13,9 +13,9 @@ Add the plugin to your `pom.xml`:
 
 ```xml
 <plugin>
-    <groupId>io.github.pxel.sanshain</groupId>
+    <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.2.1</version>
+    <version>0.3.0</version>
     <executions>
         <execution>
             <goals>
@@ -141,6 +141,13 @@ provide:
 
 Downloads OpenAPI snippets for specific endpoints that this service consumes. The server uses long-polling — the plugin makes a single HTTP request per endpoint and waits for the server to respond (no client-side retry loop).
 
+### Automatic Bundling
+
+When a service has **2 or more endpoints** configured, the plugin automatically uses the `/require-bundle` endpoint instead of making individual requests. This returns a single merged OpenAPI YAML with **deduplicated schemas and components**, solving the problem of duplicate DTOs when generating client code from multiple endpoints of the same service.
+
+- **1 endpoint** → individual `GET /require` call, saved as `{serviceName}_{path}_{method}.yaml`
+- **2+ endpoints** → single `POST /require-bundle` call, saved as `{serviceName}_bundle.yaml`
+
 ### Parameters
 
 | Parameter     | Property               | Default                 | Description                                                            |
@@ -166,11 +173,13 @@ requires:
         path: /api/v1/users
 ```
 
-Each endpoint snippet is saved as `{outputDirectory}/{serviceName}_{path}_{method}.yaml` (path slashes are replaced with underscores).
+For a single endpoint, the snippet is saved as `{outputDirectory}/{serviceName}_{path}_{method}.yaml` (path slashes are replaced with underscores).
+
+For multiple endpoints (2+), the merged bundle is saved as `{outputDirectory}/{serviceName}_bundle.yaml`.
 
 ### How Long-Polling Works
 
-The `timeout` parameter is sent to the server as a query parameter. The server waits up to that many seconds for the requested specification to become available. The client HTTP timeout is set to `timeout + 30s` to allow for network overhead. If the server times out (returns 404), the build fails with a descriptive error.
+The `timeout` parameter is sent to the server as a query parameter (for individual requests) or in the JSON body (for bundle requests). The server waits up to that many seconds for the requested specification to become available. The client HTTP timeout is set to `timeout + 30s` to allow for network overhead. If the server times out (returns 404), the build fails with a descriptive error.
 
 ## Combined Example
 
@@ -190,6 +199,8 @@ requires:
     endpoints:
       - method: GET
         path: /users/{id}
+      - method: GET
+        path: /users
 ```
 
 With a minimal `pom.xml` configuration:
@@ -198,7 +209,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.3.0</version>
     <executions>
         <execution>
             <goals>
@@ -209,6 +220,8 @@ With a minimal `pom.xml` configuration:
     </executions>
 </plugin>
 ```
+
+In this example, `user-service` has 2 endpoints, so the plugin will automatically use `/require-bundle` and save the result as `target/generated-sources/sanshain/user-service_bundle.yaml`.
 
 ## CI Integration
 
@@ -223,7 +236,9 @@ mvn verify
 
 ## Integrating with OpenAPI Generator
 
-The downloaded snippets can be used by the `openapi-generator-maven-plugin` to generate client code:
+The downloaded snippets can be used by the `openapi-generator-maven-plugin` to generate client code.
+
+For a **bundled** result (multiple endpoints from the same service):
 
 ```xml
 <plugin>
@@ -236,7 +251,7 @@ The downloaded snippets can be used by the `openapi-generator-maven-plugin` to g
                 <goal>generate</goal>
             </goals>
             <configuration>
-                <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service_api_v1_users_{id}_GET.yaml</inputSpec>
+                <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service_bundle.yaml</inputSpec>
                 <generatorName>java</generatorName>
                 <library>resttemplate</library>
                 <output>${project.build.directory}/generated-sources/openapi</output>
@@ -250,12 +265,22 @@ The downloaded snippets can be used by the `openapi-generator-maven-plugin` to g
 </plugin>
 ```
 
+For a **single endpoint** result:
+
+```xml
+<configuration>
+    <inputSpec>${project.build.directory}/generated-sources/sanshain/user-service_api_v1_users_{id}_GET.yaml</inputSpec>
+    <!-- ... other config ... -->
+</configuration>
+```
+
 ## Compression
 
 Gzip compression is enabled by default (`compression: true`).
 
 - **Provide (upload):** The request body is gzip-compressed and sent with `Content-Encoding: gzip`.
 - **Require (download):** The request includes `Accept-Encoding: gzip`, and the response is automatically decompressed if the server responds with gzip.
+- **Require-bundle:** Both the request body and response support gzip compression.
 
 To disable compression, set `compression: false` in `sanshain.yaml` or use `-Dsanshain.compression=false`.
 

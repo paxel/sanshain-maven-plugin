@@ -1,5 +1,9 @@
 package com.sanshain.maven;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -10,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -23,6 +28,7 @@ public class SanshainHttpClient {
 
     private final HttpClient httpClient;
     private final Log log;
+    private final ObjectMapper objectMapper;
 
     /**
      * Constructs a new SanshainHttpClient.
@@ -31,6 +37,7 @@ public class SanshainHttpClient {
     public SanshainHttpClient(Log log) {
         this.httpClient = HttpClient.newBuilder().build();
         this.log = log;
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -46,11 +53,7 @@ public class SanshainHttpClient {
      */
     public void postProvide(String baseUrl, String token, String serviceName, String branch,
                             String openapiYaml, boolean compression) throws MojoExecutionException {
-        String json = "{" +
-                "\"servicename\":" + jsonEscape(serviceName) + "," +
-                "\"branch\":" + jsonEscape(branch) + "," +
-                "\"openapi_yaml\":" + jsonEscape(openapiYaml) +
-                "}";
+        String json = buildProvideJson(serviceName, branch, openapiYaml);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/provide"))
@@ -154,6 +157,72 @@ public class SanshainHttpClient {
         }
     }
 
+    /**
+     * Requests a merged OpenAPI specification for multiple endpoints from the same service.
+     * Uses the /require-bundle endpoint which returns a single YAML with deduplicated schemas.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param clientName  the name of the client requesting the endpoints
+     * @param serviceName the name of the service providing the API
+     * @param branch      the Git branch name
+     * @param endpoints   the list of endpoints to request
+     * @param timeout     the timeout in seconds
+     * @param compression true if GZIP compression should be used
+     * @return the merged OpenAPI YAML content
+     * @throws MojoExecutionException if the request fails or endpoints are not found
+     */
+    public String postRequireBundle(String baseUrl, String token, String clientName, String serviceName,
+                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
+                                    int timeout, boolean compression) throws MojoExecutionException {
+        String json = buildRequireBundleJson(clientName, serviceName, branch, endpoints, timeout);
+
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/require-bundle"))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(timeout + 30));
+
+        if (token != null && !token.isEmpty()) {
+            requestBuilder.header("Authorization", "Bearer " + token);
+        }
+
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        if (compression) {
+            body = gzipCompress(body);
+            requestBuilder.header("Content-Encoding", "gzip");
+            requestBuilder.header("Accept-Encoding", "gzip");
+        }
+
+        requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
+
+        try {
+            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            int status = response.statusCode();
+            if (status == 200) {
+                byte[] responseBody = response.body();
+                String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
+                if ("gzip".equalsIgnoreCase(contentEncoding)) {
+                    responseBody = gzipDecompress(responseBody);
+                }
+                return new String(responseBody, StandardCharsets.UTF_8);
+            } else if (status == 400) {
+                throw new MojoExecutionException("Bad request to /require-bundle: " + new String(response.body(), StandardCharsets.UTF_8));
+            } else if (status == 404) {
+                throw new MojoExecutionException(
+                        "One or more endpoints not found for service: " + serviceName +
+                        " (branch: " + branch + ") — server timed out after " + timeout + "s");
+            } else {
+                throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle");
+            }
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MojoExecutionException("Request interrupted", e);
+        }
+    }
+
     private static byte[] gzipCompress(byte[] data) throws MojoExecutionException {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -177,13 +246,59 @@ public class SanshainHttpClient {
         }
     }
 
-    private static String jsonEscape(String value) {
-        return "\"" + value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t") + "\"";
+    private String buildProvideJson(String serviceName, String branch, String openapiYaml) throws MojoExecutionException {
+        ProvidePayload payload = new ProvidePayload();
+        payload.servicename = serviceName;
+        payload.branch = branch;
+        payload.openapiYaml = openapiYaml;
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new MojoExecutionException("Failed to build JSON for /provide", e);
+        }
+    }
+
+    private String buildRequireBundleJson(String clientName, String serviceName, String branch,
+                                          List<SanshainConfig.EndpointConfig> endpoints,
+                                          int timeout) throws MojoExecutionException {
+        RequireBundlePayload payload = new RequireBundlePayload();
+        payload.clientname = clientName;
+        payload.servicename = serviceName;
+        payload.branch = branch;
+        payload.timeout = timeout;
+        payload.endpoints = endpoints.stream()
+                .map(ep -> {
+                    RequireBundleEndpoint e = new RequireBundleEndpoint();
+                    e.path = ep.getPath();
+                    e.method = ep.getMethod();
+                    return e;
+                })
+                .toList();
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new MojoExecutionException("Failed to build JSON for /require-bundle", e);
+        }
+    }
+
+    static class ProvidePayload {
+        public String servicename;
+        public String branch;
+        @JsonProperty("openapi_yaml")
+        public String openapiYaml;
+    }
+
+    static class RequireBundlePayload {
+        public String clientname;
+        public String servicename;
+        public String branch;
+        public List<RequireBundleEndpoint> endpoints;
+        public int timeout;
+    }
+
+    static class RequireBundleEndpoint {
+        public String path;
+        public String method;
     }
 
     private static String urlEncode(String value) {

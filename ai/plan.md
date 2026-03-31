@@ -102,7 +102,7 @@ Note: `token` is intentionally absent from `sanshain.yaml` — it comes from `se
 - Expected responses: 202 (OK), 400 (Bad Request), 409 (Conflict on protected branch)
 - Error handling with descriptive log messages
 
-### 2.2 `RequireMojo` — GET /require
+### 2.2 `RequireMojo` — GET /require (single endpoint)
 - HTTP GET to `{sanshainUrl}/require` with query parameters:
   - `clientname` = clientName
   - `servicename` = requirement.serviceName
@@ -117,12 +117,39 @@ Note: `token` is intentionally absent from `sanshain.yaml` — it comes from `se
 - Response 200: Save YAML snippet to file at `{outputDirectory}/{serviceName}_{path}_{method}.yaml` (replace path slashes with underscores)
 - Response 404 (after server timeout): Throw `MojoExecutionException`
 - Client HTTP timeout = server timeout + 30s buffer
+- **Used only when a service has exactly 1 endpoint configured.**
 
-### 2.3 HTTP Client
+### 2.3 `RequireMojo` — POST /require-bundle (multiple endpoints)
+- When a `RequireConfig` has **2 or more endpoints**, the plugin uses `POST /require-bundle` instead of individual GET calls.
+- HTTP POST to `{sanshainUrl}/require-bundle`
+- Request body (JSON):
+  ```json
+  {
+    "clientname": "<clientName>",
+    "servicename": "<serviceName>",
+    "branch": "<branch>",
+    "endpoints": [
+      {"path": "/api/v1/users", "method": "GET"},
+      {"path": "/api/v1/users/{id}", "method": "GET"}
+    ],
+    "timeout": 120
+  }
+  ```
+- Header: `Authorization: Bearer <token>` (if token is set)
+- Header: `Content-Type: application/json`
+- Compression: request body gzip-compressed + `Accept-Encoding: gzip` (if compression=true)
+- Response 200: Single merged OpenAPI YAML with **deduplicated schemas/components**. Saved as `{outputDirectory}/{serviceName}_bundle.yaml`
+- Response 400: Bad request (empty endpoints, missing fields)
+- Response 404: One or more endpoints not found after timeout
+- Client HTTP timeout = server timeout + 30s buffer
+- **Solves the duplicate DTO problem** when generating client code from multiple endpoints of the same service.
+
+### 2.4 HTTP Client
 - `java.net.http.HttpClient` (Java 11+) — no additional dependency needed
 - Custom helper class `SanshainHttpClient.java`:
   - `postProvide(url, token, serviceName, branch, openapiYaml, compression)` → void (throws on error)
   - `getRequire(url, token, clientName, serviceName, branch, path, method, timeout, compression)` → String (YAML content)
+  - `postRequireBundle(url, token, clientName, serviceName, branch, endpoints, timeout, compression)` → String (merged YAML content)
   - Gzip compression/decompression handled internally
   - Logging via Maven log
 
