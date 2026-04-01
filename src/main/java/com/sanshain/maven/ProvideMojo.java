@@ -48,10 +48,24 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.serverId", defaultValue = "sanshain")
     private String serverId;
 
+    @Parameter(property = "sanshain.skip", defaultValue = "false")
+    private boolean skip;
+
+    @Parameter(property = "sanshain.provide.skip", defaultValue = "false")
+    private boolean skipProvide;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
     public void execute() throws MojoExecutionException {
+        if (skip || skipProvide) {
+            getLog().info("Skipping sanshain:provide (" + (skipProvide ? "sanshain.provide.skip" : "sanshain.skip") + "=true)");
+            return;
+        }
+
+        getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
+        getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
+
         SanshainConfig config = new SanshainConfig().loadConfig(configFile);
 
         // Resolve sanshainUrl
@@ -73,6 +87,9 @@ public class ProvideMojo extends AbstractMojo {
 
         // Resolve token: env > settings.xml > maven property
         String resolvedToken = resolveToken();
+        if (resolvedToken == null) {
+            getLog().warn("No authentication token configured. Requests will be unauthenticated.");
+        }
 
         // Resolve compression
         boolean resolvedCompression = resolveCompression(config);
@@ -89,6 +106,13 @@ public class ProvideMojo extends AbstractMojo {
         if (serviceName == null) {
             throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
         }
+
+        getLog().debug("Resolved sanshainUrl: " + sanshainUrl);
+        getLog().debug("Resolved serviceName: " + serviceName);
+        getLog().debug("Resolved compression: " + resolvedCompression);
+        getLog().debug("Resolved branch: " + branch);
+        getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
+        getLog().debug("OpenAPI file: " + openApiFile.getAbsolutePath());
 
         getLog().info("Providing OpenAPI spec for service: " + serviceName + " (branch: " + branch + ")");
         if (!openApiFile.exists()) {

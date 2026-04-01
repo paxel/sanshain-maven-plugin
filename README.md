@@ -128,6 +128,8 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 | `token`       | `sanshain.token`       | —                                         | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression` | `true`                                    | Enable gzip compression for the upload.                       |
 | `serverId`    | `sanshain.serverId`    | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
+| `skip`        | `sanshain.skip`        | `false`                                   | Skip execution of all sanshain goals.                         |
+| `skipProvide` | `sanshain.provide.skip`| `false`                                   | Skip execution of the provide goal only.                      |
 
 These parameters can also be provided via the `provide` section in `sanshain.yaml`:
 
@@ -158,6 +160,8 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `timeout`     | `sanshain.timeout`     | `120`                   | Global timeout in seconds for server long-polling.                     |
 | `compression` | `sanshain.compression` | `true`                  | Enable gzip compression for downloads.                                 |
 | `serverId`    | `sanshain.serverId`    | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
+| `skip`        | `sanshain.skip`        | `false`                 | Skip execution of all sanshain goals.                                  |
+| `skipRequire` | `sanshain.require.skip`| `false`                 | Skip execution of the require goal only.                               |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -283,6 +287,37 @@ Gzip compression is enabled by default (`compression: true`).
 - **Require-bundle:** Both the request body and response support gzip compression.
 
 To disable compression, set `compression: false` in `sanshain.yaml` or use `-Dsanshain.compression=false`.
+
+## Debugging
+
+To see detailed debug output from the plugin, run Maven with the `-X` flag:
+
+```bash
+mvn -X clean install
+```
+
+This will log:
+- Resolved configuration values (URL, service name, branch, compression, token presence)
+- HTTP request details (method, URL, body size, compression)
+- HTTP response details (status code, content encoding, body size)
+- Git branch detection results
+
+## Skipping Execution
+
+To temporarily disable the plugin without removing it from your `pom.xml`, use the `sanshain.skip` property:
+
+```bash
+mvn clean install -Dsanshain.skip=true
+```
+
+This skips both `provide` and `require` goals.
+
+To skip only a specific goal:
+
+```bash
+mvn clean install -Dsanshain.provide.skip=true   # skip only provide
+mvn clean install -Dsanshain.require.skip=true   # skip only require
+```
 
 ## License
 

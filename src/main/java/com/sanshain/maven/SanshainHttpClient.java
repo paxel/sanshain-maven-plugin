@@ -72,10 +72,15 @@ public class SanshainHttpClient {
 
         requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
 
+        log.debug("POST " + baseUrl + "/provide");
+        log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+
         try {
             HttpResponse<String> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
+            log.debug("Response status: " + status);
+            log.debug("Response body: " + response.body());
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
             } else if (status == 400) {
@@ -131,13 +136,17 @@ public class SanshainHttpClient {
             requestBuilder.header("Accept-Encoding", "gzip");
         }
 
+        log.debug("GET " + url);
+
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
+            String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
+            log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
+            log.debug("Response body size: " + response.body().length + " bytes");
             if (status == 200) {
                 byte[] responseBody = response.body();
-                String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
                 if ("gzip".equalsIgnoreCase(contentEncoding)) {
                     responseBody = gzipDecompress(responseBody);
                 }
@@ -195,13 +204,18 @@ public class SanshainHttpClient {
 
         requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
 
+        log.debug("POST " + baseUrl + "/require-bundle");
+        log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
+            String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
+            log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
+            log.debug("Response body size: " + response.body().length + " bytes");
             if (status == 200) {
                 byte[] responseBody = response.body();
-                String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
                 if ("gzip".equalsIgnoreCase(contentEncoding)) {
                     responseBody = gzipDecompress(responseBody);
                 }

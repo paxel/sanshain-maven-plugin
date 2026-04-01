@@ -47,10 +47,24 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.serverId", defaultValue = "sanshain")
     private String serverId;
 
+    @Parameter(property = "sanshain.skip", defaultValue = "false")
+    private boolean skip;
+
+    @Parameter(property = "sanshain.require.skip", defaultValue = "false")
+    private boolean skipRequire;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
     public void execute() throws MojoExecutionException {
+        if (skip || skipRequire) {
+            getLog().info("Skipping sanshain:require (" + (skipRequire ? "sanshain.require.skip" : "sanshain.skip") + "=true)");
+            return;
+        }
+
+        getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
+        getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
+
         SanshainConfig config = new SanshainConfig().loadConfig(configFile);
 
         // Resolve sanshainUrl
@@ -71,6 +85,9 @@ public class RequireMojo extends AbstractMojo {
 
         // Resolve token
         String resolvedToken = resolveToken();
+        if (resolvedToken == null) {
+            getLog().warn("No authentication token configured. Requests will be unauthenticated.");
+        }
 
         // Resolve global timeout (default 120)
         int globalTimeout = resolveGlobalTimeout(config);
@@ -86,6 +103,13 @@ public class RequireMojo extends AbstractMojo {
         if (branch == null) {
             branch = "main";
         }
+
+        getLog().debug("Resolved sanshainUrl: " + sanshainUrl);
+        getLog().debug("Resolved clientName: " + clientName);
+        getLog().debug("Resolved compression: " + resolvedCompression);
+        getLog().debug("Resolved branch: " + branch);
+        getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
+        getLog().debug("Resolved global timeout: " + globalTimeout + "s");
 
         // Get requires from config
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
