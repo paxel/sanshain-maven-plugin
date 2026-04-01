@@ -4,7 +4,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 
 ## Goals
 
-- `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `package` phase.
+- `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `initialize` phase.
 - `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `generate-sources` phase.
 
 ## Quick Start

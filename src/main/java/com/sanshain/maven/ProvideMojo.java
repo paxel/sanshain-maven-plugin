@@ -18,7 +18,7 @@ import java.nio.file.Files;
 /**
  * Goal which provides an OpenAPI specification to the Sanshain service.
  */
-@Mojo(name = "provide", defaultPhase = LifecyclePhase.PACKAGE)
+@Mojo(name = "provide", defaultPhase = LifecyclePhase.INITIALIZE)
 public class ProvideMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
