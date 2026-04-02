@@ -3,6 +3,8 @@ package com.sanshain.maven;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.settings.Server;
+import org.apache.maven.settings.Settings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -285,6 +287,38 @@ public class RequireMojoTest {
 
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "sanshainUrl", null);
+        mojo.execute();
+
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")));
+    }
+
+    @Test
+    public void testSanshainUrlFromSettings() throws Exception {
+        String yaml = "clientName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "sanshainUrl", null);
+
+        Settings settings = new Settings();
+        Server server = new Server();
+        server.setId("sanshain");
+        org.codehaus.plexus.util.xml.Xpp3Dom config = new org.codehaus.plexus.util.xml.Xpp3Dom("configuration");
+        org.codehaus.plexus.util.xml.Xpp3Dom urlNode = new org.codehaus.plexus.util.xml.Xpp3Dom("sanshainUrl");
+        urlNode.setValue(baseUrl);
+        config.addChild(urlNode);
+        server.setConfiguration(config);
+        settings.addServer(server);
+        setField(mojo, "settings", settings);
+
         mojo.execute();
 
         wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")));

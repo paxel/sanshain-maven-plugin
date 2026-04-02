@@ -67,12 +67,16 @@ public class RequireMojo extends AbstractMojo {
 
         SanshainConfig config = new SanshainConfig().loadConfig(configFile);
 
-        // Resolve sanshainUrl
-        if (sanshainUrl == null && config.getSanshainUrl() != null) {
-            sanshainUrl = config.getSanshainUrl();
-        }
+        // Resolve sanshainUrl: maven property > settings.xml > yaml > default
         if (sanshainUrl == null) {
-            sanshainUrl = "http://localhost:8080";
+            String settingsUrl = resolveUrlFromSettings();
+            if (settingsUrl != null) {
+                sanshainUrl = settingsUrl;
+            } else if (config.getSanshainUrl() != null) {
+                sanshainUrl = config.getSanshainUrl();
+            } else {
+                sanshainUrl = "http://localhost:8080";
+            }
         }
 
         // Resolve clientName
@@ -192,6 +196,29 @@ public class RequireMojo extends AbstractMojo {
         }
 
         return token;
+    }
+
+    private String resolveUrlFromSettings() {
+        if (settings == null) return null;
+        Server server = settings.getServer(serverId);
+        if (server == null) return null;
+        return getServerConfigProperty(server, "sanshainUrl");
+    }
+
+    private String getServerConfigProperty(Server server, String property) {
+        Object configuration = server.getConfiguration();
+        if (configuration == null) return null;
+        // Configuration is typically an Xpp3Dom; use reflection to avoid compile-time dependency
+        try {
+            java.lang.reflect.Method getChild = configuration.getClass().getMethod("getChild", String.class);
+            Object child = getChild.invoke(configuration, property);
+            if (child == null) return null;
+            java.lang.reflect.Method getValue = child.getClass().getMethod("getValue");
+            Object value = getValue.invoke(child);
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private int resolveGlobalTimeout(SanshainConfig config) {

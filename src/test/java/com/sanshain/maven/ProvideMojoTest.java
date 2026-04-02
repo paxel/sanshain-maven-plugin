@@ -3,6 +3,8 @@ package com.sanshain.maven;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.settings.Server;
+import org.apache.maven.settings.Settings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -235,6 +237,97 @@ public class ProvideMojoTest {
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withHeader("Authorization", equalTo("Bearer my-token")));
+    }
+
+    @Test
+    public void testSanshainUrlFromSettings() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "provide:\n" +
+                "  serviceName: my-service\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "sanshainUrl", null);
+
+        // Create settings with server configuration containing sanshainUrl
+        Settings settings = new Settings();
+        Server server = new Server();
+        server.setId("sanshain");
+        server.setPassword("my-token");
+        org.codehaus.plexus.util.xml.Xpp3Dom config = new org.codehaus.plexus.util.xml.Xpp3Dom("configuration");
+        org.codehaus.plexus.util.xml.Xpp3Dom urlNode = new org.codehaus.plexus.util.xml.Xpp3Dom("sanshainUrl");
+        urlNode.setValue(baseUrl);
+        config.addChild(urlNode);
+        server.setConfiguration(config);
+        settings.addServer(server);
+        setField(mojo, "settings", settings);
+
+        mojo.execute();
+
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testMavenPropertyUrlOverridesSettings() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "provide:\n" +
+                "  serviceName: my-service\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        // sanshainUrl is already set to baseUrl by createMojo
+
+        // Create settings pointing to a different URL (should be ignored)
+        Settings settings = new Settings();
+        Server server = new Server();
+        server.setId("sanshain");
+        org.codehaus.plexus.util.xml.Xpp3Dom config = new org.codehaus.plexus.util.xml.Xpp3Dom("configuration");
+        org.codehaus.plexus.util.xml.Xpp3Dom urlNode = new org.codehaus.plexus.util.xml.Xpp3Dom("sanshainUrl");
+        urlNode.setValue("http://should-not-be-used:9999");
+        config.addChild(urlNode);
+        server.setConfiguration(config);
+        settings.addServer(server);
+        setField(mojo, "settings", settings);
+
+        mojo.execute();
+
+        // Should use the maven property URL (baseUrl), not the settings URL
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testSettingsUrlOverridesYamlUrl() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        // YAML has a different URL that would fail
+        String yaml = "sanshainUrl: http://yaml-url-should-not-be-used:9999\n" +
+                "provide:\n" +
+                "  serviceName: my-service\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "sanshainUrl", null);
+
+        // Settings URL should win over YAML
+        Settings settings = new Settings();
+        Server server = new Server();
+        server.setId("sanshain");
+        org.codehaus.plexus.util.xml.Xpp3Dom config = new org.codehaus.plexus.util.xml.Xpp3Dom("configuration");
+        org.codehaus.plexus.util.xml.Xpp3Dom urlNode = new org.codehaus.plexus.util.xml.Xpp3Dom("sanshainUrl");
+        urlNode.setValue(baseUrl);
+        config.addChild(urlNode);
+        server.setConfiguration(config);
+        settings.addServer(server);
+        setField(mojo, "settings", settings);
+
+        mojo.execute();
+
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
     }
 
     @Test

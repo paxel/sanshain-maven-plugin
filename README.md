@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
     <executions>
         <execution>
             <goals>
@@ -79,7 +79,9 @@ The plugin supports token-based authentication via `Authorization: Bearer <token
 
 If no token is configured, requests are sent without authentication (suitable for local development).
 
-### Token via `settings.xml`
+### Token and URL via `settings.xml`
+
+Both the authentication token and the Sanshain service URL can be configured in `settings.xml`. This is the recommended approach for defining where the Sanshain service is running, as it keeps infrastructure configuration out of the repository.
 
 ```xml
 <settings>
@@ -88,12 +90,24 @@ If no token is configured, requests are sent without authentication (suitable fo
       <id>sanshain</id>
       <username>ignored</username>
       <password>san_abc123...</password>
+      <configuration>
+        <sanshainUrl>https://sanshain.example.com</sanshainUrl>
+      </configuration>
     </server>
   </servers>
 </settings>
 ```
 
-The `<id>` must match the `serverId` parameter (default: `sanshain`). The `<password>` field holds the token.
+The `<id>` must match the `serverId` parameter (default: `sanshain`). The `<password>` field holds the token. The `<sanshainUrl>` in the `<configuration>` block sets the service URL.
+
+**URL resolution order** (highest priority first):
+1. Maven property `-Dsanshain.url` (e.g. on the command line or in `pom.xml`)
+2. `settings.xml` server `<configuration><sanshainUrl>` (recommended for shared infrastructure)
+3. Environment variable `$SANSHAIN_URL`
+4. `sanshain.yaml` file in the project root
+5. Default: `http://localhost:8080`
+
+This means that if all sources are configured at the same time, the Maven property wins. If no Maven property is set, `settings.xml` takes precedence over the environment variable, which in turn overrides the value from `sanshain.yaml`. If none of these are set, the plugin falls back to `http://localhost:8080`.
 
 ## Configuration Reference
 
@@ -101,14 +115,15 @@ The `<id>` must match the `serverId` parameter (default: `sanshain`). The `<pass
 
 All global settings can be specified in `sanshain.yaml`, overridden via Maven properties, or set as environment variables.
 
-| Setting           | `sanshain.yaml` | Maven Property           | Env Variable            | Default                    |
-|-------------------|-----------------|--------------------------|-------------------------|----------------------------|
-| Sanshain URL      | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`    |
-| Token             | ❌ not in yaml   | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)               |
-| Timeout (seconds) | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                      |
-| Compression       | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                     |
-| Client name       | `clientName`    | `-DclientName`           | `$SANSHAIN_CLIENT_NAME` | — (required for `require`) |
-| Branch            | —               | —                        | `$SANSHAIN_BRANCH`      | auto-detected from Git     |
+| Setting                     | `sanshain.yaml` | Maven Property           | Env Variable            | Default                                            |
+|-----------------------------|-----------------|--------------------------|-------------------------|----------------------------------------------------|
+| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
+| Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
+| Token                       | -               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
+| Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
+| Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
+| Client name                 | `clientName`    | `-DclientName`           | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
+| Branch                      | —               | —                        | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 
 ### Branch Detection
 
@@ -120,16 +135,16 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 
 ### Parameters
 
-| Parameter     | Property               | Default                                   | Description                                                   |
-|---------------|------------------------|-------------------------------------------|---------------------------------------------------------------|
-| `serviceName` | `serviceName`          | —                                         | **Required.** The name of the service providing the API.      |
-| `openApiFile` | `openApiFile`          | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
-| `sanshainUrl` | `sanshain.url`         | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
-| `token`       | `sanshain.token`       | —                                         | Authentication token (prefer `settings.xml` or env variable). |
-| `compression` | `sanshain.compression` | `true`                                    | Enable gzip compression for the upload.                       |
-| `serverId`    | `sanshain.serverId`    | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
-| `skip`        | `sanshain.skip`        | `false`                                   | Skip execution of all sanshain goals.                         |
-| `skipProvide` | `sanshain.provide.skip`| `false`                                   | Skip execution of the provide goal only.                      |
+| Parameter     | Property                | Default                                   | Description                                                   |
+|---------------|-------------------------|-------------------------------------------|---------------------------------------------------------------|
+| `serviceName` | `serviceName`           | —                                         | **Required.** The name of the service providing the API.      |
+| `openApiFile` | `openApiFile`           | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
+| `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
+| `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
+| `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
+| `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
+| `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
 
 These parameters can also be provided via the `provide` section in `sanshain.yaml`:
 
@@ -152,16 +167,16 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 
 ### Parameters
 
-| Parameter     | Property               | Default                 | Description                                                            |
-|---------------|------------------------|-------------------------|------------------------------------------------------------------------|
-| `clientName`  | `clientName`           | —                       | **Required.** The name of the client service requesting the endpoints. |
-| `sanshainUrl` | `sanshain.url`         | `http://localhost:8080` | URL of the Sanshain service.                                           |
-| `token`       | `sanshain.token`       | —                       | Authentication token (prefer `settings.xml` or env variable).          |
-| `timeout`     | `sanshain.timeout`     | `120`                   | Global timeout in seconds for server long-polling.                     |
-| `compression` | `sanshain.compression` | `true`                  | Enable gzip compression for downloads.                                 |
-| `serverId`    | `sanshain.serverId`    | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
-| `skip`        | `sanshain.skip`        | `false`                 | Skip execution of all sanshain goals.                                  |
-| `skipRequire` | `sanshain.require.skip`| `false`                 | Skip execution of the require goal only.                               |
+| Parameter     | Property                | Default                 | Description                                                            |
+|---------------|-------------------------|-------------------------|------------------------------------------------------------------------|
+| `clientName`  | `clientName`            | —                       | **Required.** The name of the client service requesting the endpoints. |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                           |
+| `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).          |
+| `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                     |
+| `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                 |
+| `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
+| `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                  |
+| `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                               |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -213,7 +228,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
     <executions>
         <execution>
             <goals>
