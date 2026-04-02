@@ -27,10 +27,10 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.basedir}/sanshain.yaml", property = "configFile")
     private File configFile;
 
-    @Parameter(defaultValue = "${project.build.directory}/openapi.yaml", property = "openApiFile")
+    @Parameter(defaultValue = "${project.build.directory}/openapi.yaml", property = "sanshain.openapi.file")
     private File openApiFile;
 
-    @Parameter(property = "serviceName")
+    @Parameter(property = "sanshain.service.name")
     private String serviceName;
 
     @Parameter(property = "sanshain.url")
@@ -56,6 +56,9 @@ public class ProvideMojo extends AbstractMojo {
 
     @Parameter(property = "sanshain.dry.run", defaultValue = "false")
     private boolean dryRun;
+
+    @Parameter(property = "sanshain.branch")
+    private String branch;
 
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
@@ -101,8 +104,10 @@ public class ProvideMojo extends AbstractMojo {
         // Resolve compression
         boolean resolvedCompression = resolveCompression(config);
 
-        // Resolve branch
-        String branch = System.getenv("SANSHAIN_BRANCH");
+        // Resolve branch: maven property > env > git > default
+        if (branch == null) {
+            branch = System.getenv("SANSHAIN_BRANCH");
+        }
         if (branch == null) {
             branch = getGitBranch();
         }

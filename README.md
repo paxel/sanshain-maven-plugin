@@ -122,13 +122,13 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Token                       | -               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
 | Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
-| Client name                 | `clientName`    | `-DclientName`           | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
-| Branch                      | —               | —                        | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
+| Client name                 | `clientName`    | `-Dsanshain.client.name` | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
+| Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 
 ### Branch Detection
 
-The branch is automatically detected from the local Git repository using JGit. You can override it by setting the `SANSHAIN_BRANCH` environment variable. If neither is available, it defaults to `main`.
+The branch is automatically detected from the local Git repository using JGit. You can override it via `-Dsanshain.branch` or the `SANSHAIN_BRANCH` environment variable. The Maven property takes precedence over the environment variable. If neither is available, it defaults to `main`.
 
 ## Goal: `provide`
 
@@ -138,8 +138,8 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 
 | Parameter     | Property                | Default                                   | Description                                                   |
 |---------------|-------------------------|-------------------------------------------|---------------------------------------------------------------|
-| `serviceName` | `serviceName`           | —                                         | **Required.** The name of the service providing the API.      |
-| `openApiFile` | `openApiFile`           | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
+| `serviceName` | `sanshain.service.name` | —                                         | **Required.** The name of the service providing the API.      |
+| `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
@@ -169,16 +169,16 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 
 ### Parameters
 
-| Parameter     | Property                | Default                 | Description                                                            |
-|---------------|-------------------------|-------------------------|------------------------------------------------------------------------|
-| `clientName`  | `clientName`            | —                       | **Required.** The name of the client service requesting the endpoints. |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                           |
-| `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).          |
-| `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                     |
-| `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                 |
-| `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
-| `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                  |
-| `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                               |
+| Parameter     | Property                | Default                 | Description                                                                  |
+|---------------|-------------------------|-------------------------|------------------------------------------------------------------------------|
+| `clientName`  | `sanshain.client.name`  | —                       | **Required.** The name of the client service requesting the endpoints.       |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
+| `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
+| `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
+| `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
+| `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                                   |
+| `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
+| `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
 | `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
