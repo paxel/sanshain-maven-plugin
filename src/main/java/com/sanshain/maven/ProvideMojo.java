@@ -54,6 +54,9 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.provide.skip", defaultValue = "false")
     private boolean skipProvide;
 
+    @Parameter(property = "sanshain.dry.run", defaultValue = "false")
+    private boolean dryRun;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
@@ -131,7 +134,11 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         SanshainHttpClient client = new SanshainHttpClient(getLog());
-        client.postProvide(sanshainUrl, resolvedToken, serviceName, branch, openapiYaml, resolvedCompression);
+        if (dryRun) {
+            getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
+        }
+
+        client.postProvide(sanshainUrl, resolvedToken, serviceName, branch, openapiYaml, resolvedCompression, dryRun);
     }
 
     private String resolveToken() {

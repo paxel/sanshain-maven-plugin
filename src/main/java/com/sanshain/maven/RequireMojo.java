@@ -53,6 +53,9 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.require.skip", defaultValue = "false")
     private boolean skipRequire;
 
+    @Parameter(property = "sanshain.dry.run", defaultValue = "false")
+    private boolean dryRun;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
@@ -123,6 +126,10 @@ public class RequireMojo extends AbstractMojo {
 
         SanshainHttpClient client = new SanshainHttpClient(getLog());
 
+        if (dryRun) {
+            getLog().info("Dry-run mode enabled — endpoints will be validated but no dependencies recorded.");
+        }
+
         for (SanshainConfig.RequireConfig req : requires) {
             String reqServiceName = req.getServiceName();
             int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
@@ -148,7 +155,7 @@ public class RequireMojo extends AbstractMojo {
                         " endpoints, branch: " + branch + ", timeout: " + reqTimeout + "s)");
 
                 String yamlContent = client.postRequireBundle(sanshainUrl, resolvedToken, clientName,
-                        reqServiceName, branch, endpoints, reqTimeout, resolvedCompression);
+                        reqServiceName, branch, endpoints, reqTimeout, resolvedCompression, dryRun);
 
                 String fileName = reqServiceName + "_bundle.yaml";
                 Path outputFile = outputDirectory.toPath().resolve(fileName);
@@ -168,7 +175,7 @@ public class RequireMojo extends AbstractMojo {
                         " (branch: " + branch + ", timeout: " + reqTimeout + "s)");
 
                 String yamlContent = client.getRequire(sanshainUrl, resolvedToken, clientName,
-                        reqServiceName, branch, path, method, reqTimeout, resolvedCompression);
+                        reqServiceName, branch, path, method, reqTimeout, resolvedCompression, dryRun);
 
                 String fileName = reqServiceName + "_" +
                         path.replace("/", "_").replaceFirst("^_", "") +

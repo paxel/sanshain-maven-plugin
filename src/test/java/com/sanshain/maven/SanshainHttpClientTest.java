@@ -48,7 +48,7 @@ public class SanshainHttpClientTest {
 
         assertDoesNotThrow(() ->
                 client.postProvide(baseUrl, "token123", "my-service", "main",
-                        "openapi: 3.0.0", false));
+                        "openapi: 3.0.0", false, false));
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withHeader("Content-Type", equalTo("application/json"))
@@ -60,7 +60,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", false);
+        client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", false, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withoutHeader("Authorization"));
@@ -71,7 +71,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        client.postProvide(baseUrl, "", "my-service", "main", "openapi: 3.0.0", false);
+        client.postProvide(baseUrl, "", "my-service", "main", "openapi: 3.0.0", false, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withoutHeader("Authorization"));
@@ -82,7 +82,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", true);
+        client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", true, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withHeader("Content-Encoding", equalTo("gzip")));
@@ -94,7 +94,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(400).withBody("Missing field")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false));
+                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
         assertTrue(ex.getMessage().contains("Bad request"));
         assertTrue(ex.getMessage().contains("Missing field"));
     }
@@ -105,7 +105,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(409).withBody("Protected branch")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false));
+                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
         assertTrue(ex.getMessage().contains("Conflict"));
     }
 
@@ -115,14 +115,14 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(500).withBody("Server error")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false));
+                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
         assertTrue(ex.getMessage().contains("Unexpected response 500"));
     }
 
     @Test
     public void testPostProvideConnectionFailure() {
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.postProvide("http://localhost:1", null, "my-service", "main", "yaml", false));
+                client.postProvide("http://localhost:1", null, "my-service", "main", "yaml", false, false));
         assertTrue(ex.getMessage().contains("Failed to connect"));
     }
 
@@ -131,7 +131,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        client.postProvide(baseUrl, null, "my-service", "feature/test", "openapi: 3.0.0\ninfo:", false);
+        client.postProvide(baseUrl, null, "my-service", "feature/test", "openapi: 3.0.0\ninfo:", false, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.servicename", equalTo("my-service")))
@@ -145,7 +145,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yamlWithSpecialChars = "description: \"quotes \\\"escaped\\\" and tabs\\t\"";
-        client.postProvide(baseUrl, null, "my-service", "main", yamlWithSpecialChars, false);
+        client.postProvide(baseUrl, null, "my-service", "main", yamlWithSpecialChars, false, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.openapi_yaml")));
@@ -159,7 +159,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
 
         String result = client.getRequire(baseUrl, "token", "client", "service",
-                "main", "/api/users", "GET", 10, false);
+                "main", "/api/users", "GET", 10, false, false);
 
         assertEquals("openapi: 3.0.0", result);
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
@@ -177,7 +177,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(get(urlPathEqualTo("/require"))
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
-        client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false);
+        client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false, false);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withoutHeader("Authorization"));
@@ -192,7 +192,7 @@ public class SanshainHttpClientTest {
                         .withBody(compressed)));
 
         String result = client.getRequire(baseUrl, null, "client", "service",
-                "main", "/api", "GET", 10, true);
+                "main", "/api", "GET", 10, true, false);
 
         assertEquals("openapi: 3.0.0", result);
     }
@@ -202,7 +202,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(get(urlPathEqualTo("/require"))
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
-        client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, true);
+        client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, true, false);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withHeader("Accept-Encoding", equalTo("gzip")));
@@ -214,9 +214,8 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(404)));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false));
+                client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false, false));
         assertTrue(ex.getMessage().contains("Endpoint not found"));
-        assertTrue(ex.getMessage().contains("timed out"));
     }
 
     @Test
@@ -225,7 +224,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(500)));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false));
+                client.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false, false));
         assertTrue(ex.getMessage().contains("Unexpected response 500"));
     }
 
@@ -235,7 +234,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
         client.getRequire(baseUrl, null, "my client", "my service",
-                "feature/branch", "/api/v1/users/{id}", "GET", 10, false);
+                "feature/branch", "/api/v1/users/{id}", "GET", 10, false, false);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withQueryParam("clientname", equalTo("my client"))
@@ -259,7 +258,7 @@ public class SanshainHttpClientTest {
         ep2.setPath("/api/v1/users/{id}");
 
         String result = client.postRequireBundle(baseUrl, "token", "client", "service",
-                "main", List.of(ep1, ep2), 120, false);
+                "main", List.of(ep1, ep2), 120, false, false);
 
         assertEquals("merged openapi yaml", result);
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
@@ -284,7 +283,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         client.postRequireBundle(baseUrl, null, "client", "service", "main",
-                List.of(ep), 60, false);
+                List.of(ep), 60, false, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
                 .withoutHeader("Authorization"));
@@ -300,7 +299,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         client.postRequireBundle(baseUrl, null, "client", "service", "main",
-                List.of(ep), 60, true);
+                List.of(ep), 60, true, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
                 .withHeader("Content-Encoding", equalTo("gzip"))
@@ -320,7 +319,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         String result = client.postRequireBundle(baseUrl, null, "client", "service",
-                "main", List.of(ep), 60, true);
+                "main", List.of(ep), 60, true, false);
 
         assertEquals("merged yaml", result);
     }
@@ -336,7 +335,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundle(baseUrl, null, "client", "service", "main",
-                        List.of(ep), 60, false));
+                        List.of(ep), 60, false, false));
         assertTrue(ex.getMessage().contains("Bad request"));
         assertTrue(ex.getMessage().contains("Empty endpoints"));
     }
@@ -352,7 +351,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundle(baseUrl, null, "client", "service", "main",
-                        List.of(ep), 60, false));
+                        List.of(ep), 60, false, false));
         assertTrue(ex.getMessage().contains("not found"));
     }
 
@@ -367,7 +366,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundle(baseUrl, null, "client", "service", "main",
-                        List.of(ep), 60, false));
+                        List.of(ep), 60, false, false));
         assertTrue(ex.getMessage().contains("Unexpected response 500"));
     }
 
@@ -379,7 +378,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundle("http://localhost:1", null, "client", "service",
-                        "main", List.of(ep), 60, false));
+                        "main", List.of(ep), 60, false, false));
         assertTrue(ex.getMessage().contains("Failed to connect"));
     }
 

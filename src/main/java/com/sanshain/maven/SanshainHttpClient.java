@@ -52,8 +52,8 @@ public class SanshainHttpClient {
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public void postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression) throws MojoExecutionException {
-        String json = buildProvideJson(serviceName, branch, openapiYaml);
+                            String openapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
+        String json = buildProvideJson(serviceName, branch, openapiYaml, dryRun);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/provide"))
@@ -84,10 +84,13 @@ public class SanshainHttpClient {
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
             } else if (status == 400) {
+                log.error("Provide failed (400 Bad Request): " + response.body());
                 throw new MojoExecutionException("Bad request: " + response.body());
             } else if (status == 409) {
+                log.error("Provide failed (409 Conflict): " + response.body());
                 throw new MojoExecutionException("Conflict on protected branch: " + response.body());
             } else {
+                log.error("Provide failed (" + status + "): " + response.body());
                 throw new MojoExecutionException("Unexpected response " + status + ": " + response.body());
             }
         } catch (IOException e) {
@@ -115,14 +118,15 @@ public class SanshainHttpClient {
      */
     public String getRequire(String baseUrl, String token, String clientName, String serviceName,
                              String branch, String path, String method, int timeout,
-                             boolean compression) throws MojoExecutionException {
+                             boolean compression, boolean dryRun) throws MojoExecutionException {
         String url = baseUrl + "/require?" +
                 "clientname=" + urlEncode(clientName) +
                 "&servicename=" + urlEncode(serviceName) +
                 "&branch=" + urlEncode(branch) +
                 "&path=" + urlEncode(path) +
                 "&method=" + urlEncode(method) +
-                "&timeout=" + timeout;
+                "&timeout=" + timeout +
+                "&dry_run=" + dryRun;
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -152,11 +156,15 @@ public class SanshainHttpClient {
                 }
                 return new String(responseBody, StandardCharsets.UTF_8);
             } else if (status == 404) {
+                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                log.error("Require failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "Endpoint not found: " + serviceName + " " + method + " " + path +
-                        " (branch: " + branch + ") — server timed out after " + timeout + "s");
+                        " (branch: " + branch + "): " + errorBody);
             } else {
-                throw new MojoExecutionException("Unexpected response " + status + " from /require");
+                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                log.error("Require failed (" + status + "): " + errorBody);
+                throw new MojoExecutionException("Unexpected response " + status + " from /require: " + errorBody);
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
@@ -183,8 +191,8 @@ public class SanshainHttpClient {
      */
     public String postRequireBundle(String baseUrl, String token, String clientName, String serviceName,
                                     String branch, List<SanshainConfig.EndpointConfig> endpoints,
-                                    int timeout, boolean compression) throws MojoExecutionException {
-        String json = buildRequireBundleJson(clientName, serviceName, branch, endpoints, timeout);
+                                    int timeout, boolean compression, boolean dryRun) throws MojoExecutionException {
+        String json = buildRequireBundleJson(clientName, serviceName, branch, endpoints, timeout, dryRun);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/require-bundle"))
@@ -221,13 +229,19 @@ public class SanshainHttpClient {
                 }
                 return new String(responseBody, StandardCharsets.UTF_8);
             } else if (status == 400) {
-                throw new MojoExecutionException("Bad request to /require-bundle: " + new String(response.body(), StandardCharsets.UTF_8));
+                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                log.error("Require-bundle failed (400 Bad Request): " + errorBody);
+                throw new MojoExecutionException("Bad request to /require-bundle: " + errorBody);
             } else if (status == 404) {
+                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                log.error("Require-bundle failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "One or more endpoints not found for service: " + serviceName +
-                        " (branch: " + branch + ") — server timed out after " + timeout + "s");
+                        " (branch: " + branch + "): " + errorBody);
             } else {
-                throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle");
+                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                log.error("Require-bundle failed (" + status + "): " + errorBody);
+                throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle: " + errorBody);
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
@@ -260,11 +274,12 @@ public class SanshainHttpClient {
         }
     }
 
-    private String buildProvideJson(String serviceName, String branch, String openapiYaml) throws MojoExecutionException {
+    private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun) throws MojoExecutionException {
         ProvidePayload payload = new ProvidePayload();
         payload.servicename = serviceName;
         payload.branch = branch;
         payload.openapiYaml = openapiYaml;
+        payload.dryRun = dryRun;
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -274,12 +289,13 @@ public class SanshainHttpClient {
 
     private String buildRequireBundleJson(String clientName, String serviceName, String branch,
                                           List<SanshainConfig.EndpointConfig> endpoints,
-                                          int timeout) throws MojoExecutionException {
+                                          int timeout, boolean dryRun) throws MojoExecutionException {
         RequireBundlePayload payload = new RequireBundlePayload();
         payload.clientname = clientName;
         payload.servicename = serviceName;
         payload.branch = branch;
         payload.timeout = timeout;
+        payload.dryRun = dryRun;
         payload.endpoints = endpoints.stream()
                 .map(ep -> {
                     RequireBundleEndpoint e = new RequireBundleEndpoint();
@@ -300,6 +316,8 @@ public class SanshainHttpClient {
         public String branch;
         @JsonProperty("openapi_yaml")
         public String openapiYaml;
+        @JsonProperty("dry_run")
+        public boolean dryRun;
     }
 
     static class RequireBundlePayload {
@@ -308,6 +326,8 @@ public class SanshainHttpClient {
         public String branch;
         public List<RequireBundleEndpoint> endpoints;
         public int timeout;
+        @JsonProperty("dry_run")
+        public boolean dryRun;
     }
 
     static class RequireBundleEndpoint {

@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.5.0</version>
+    <version>0.6.0</version>
     <executions>
         <execution>
             <goals>
@@ -124,6 +124,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Client name                 | `clientName`    | `-DclientName`           | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
 | Branch                      | —               | —                        | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
+| Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 
 ### Branch Detection
 
@@ -145,6 +146,7 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 | `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
+| `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
 
 These parameters can also be provided via the `provide` section in `sanshain.yaml`:
 
@@ -177,6 +179,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                             |
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                  |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                               |
+| `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -228,7 +231,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.5.0</version>
+    <version>0.6.0</version>
     <executions>
         <execution>
             <goals>
@@ -242,6 +245,27 @@ With a minimal `pom.xml` configuration:
 
 In this example, `user-service` has 2 endpoints, so the plugin will automatically use `/require-bundle` and save the result as `target/generated-sources/sanshain/user-service_bundle.yaml`.
 
+## Dry-Run Mode
+
+The plugin supports a dry-run mode that validates requests against the Sanshain service without persisting any data. No specs are stored, and no client dependencies are recorded. This is useful for CI pipelines that need to verify a feature branch would be valid against the main branch before merging.
+
+Enable dry-run mode via the Maven property:
+
+```bash
+mvn verify -Dsanshain.dry.run=true
+```
+
+In dry-run mode:
+- **`provide`**: The OpenAPI spec is parsed and validated (including conflict detection on protected branches), but nothing is stored.
+- **`require`**: Endpoint lookups are performed, but no client dependencies are recorded.
+
+## Error Responses
+
+Starting with Sanshain service 0.6.0, error responses include descriptive messages explaining why the request failed. The plugin logs these messages at `ERROR` level before failing the build, making it easier to diagnose issues:
+
+- **409 Conflict on `provide`**: Includes the method, path, branch, and service name (e.g., "DTO changed for GET /users on protected branch 'main' of service 'my-svc'").
+- **404 Not Found on `require`/`require-bundle`**: Includes the missing endpoint details (method, path, service name, branch).
+
 ## CI Integration
 
 For CI environments, use environment variables to configure the plugin without modifying `sanshain.yaml`:
@@ -251,6 +275,13 @@ export SANSHAIN_URL=https://sanshain.example.com
 export SANSHAIN_TOKEN=san_abc123...
 export SANSHAIN_BRANCH=feature/my-branch  # optional, auto-detected from Git
 mvn verify
+```
+
+To validate that a feature branch would be compatible with master before merging (dry-run):
+
+```bash
+export SANSHAIN_BRANCH=master
+mvn verify -Dsanshain.dry.run=true
 ```
 
 ## Integrating with OpenAPI Generator
