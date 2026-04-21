@@ -22,6 +22,7 @@ public class SanshainConfigTest {
                 "clientName: test-client\n" +
                 "timeout: 60\n" +
                 "compression: false\n" +
+                "insecure: true\n" +
                 "provide:\n" +
                 "  serviceName: my-service\n" +
                 "  openApiFile: src/main/resources/openapi.yaml\n" +
@@ -43,6 +44,7 @@ public class SanshainConfigTest {
         assertEquals("test-client", config.getClientName());
         assertEquals(60, config.getTimeout());
         assertFalse(config.getCompression());
+        assertTrue(config.getInsecure());
 
         assertNotNull(config.getProvide());
         assertEquals("my-service", config.getProvide().getServiceName());
@@ -134,11 +136,13 @@ public class SanshainConfigTest {
         config.setClientName("client");
         config.setTimeout(30);
         config.setCompression(true);
+        config.setInsecure(true);
 
         assertEquals("https://test.com", config.getSanshainUrl());
         assertEquals("client", config.getClientName());
         assertEquals(30, config.getTimeout());
         assertTrue(config.getCompression());
+        assertTrue(config.getInsecure());
 
         SanshainConfig.ProvideConfig provide = new SanshainConfig.ProvideConfig();
         provide.setServiceName("svc");

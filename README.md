@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.6.0</version>
+    <version>0.7.0</version>
     <executions>
         <execution>
             <goals>
@@ -122,6 +122,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Token                       | -               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
 | Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
+| Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
 | Client name                 | `clientName`    | `-Dsanshain.client.name` | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
@@ -143,6 +144,7 @@ Uploads the service's OpenAPI specification to the Sanshain service.
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
+| `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                |
 | `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
@@ -176,6 +178,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
 | `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
 | `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
+| `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |
 | `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                                   |
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
@@ -231,7 +234,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.6.0</version>
+    <version>0.7.0</version>
     <executions>
         <execution>
             <goals>

@@ -19,6 +19,9 @@ import java.util.zip.GZIPOutputStream;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.security.cert.X509Certificate;
+import javax.net.ssl.X509TrustManager;
+
 public class SanshainHttpClientTest {
 
     private WireMockServer wireMock;
@@ -27,6 +30,7 @@ public class SanshainHttpClientTest {
 
     @BeforeEach
     public void setUp() {
+        System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
         wireMock = new WireMockServer(WireMockConfiguration.wireMockConfig().dynamicPort());
         wireMock.start();
         baseUrl = "http://localhost:" + wireMock.port();
@@ -36,6 +40,7 @@ public class SanshainHttpClientTest {
 
     @AfterEach
     public void tearDown() {
+        System.clearProperty("jdk.internal.httpclient.disableHostnameVerification");
         wireMock.stop();
     }
 
@@ -380,6 +385,41 @@ public class SanshainHttpClientTest {
                 client.postRequireBundle("http://localhost:1", null, "client", "service",
                         "main", List.of(ep), 60, false, false));
         assertTrue(ex.getMessage().contains("Failed to connect"));
+    }
+
+    @Test
+    public void testRedirectSupport() throws MojoExecutionException {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse()
+                        .withStatus(308)
+                        .withHeader("Location", baseUrl + "/new-require")));
+        wireMock.stubFor(get(urlPathEqualTo("/new-require"))
+                .willReturn(aResponse().withStatus(200).withBody("redirected yaml")));
+
+        String result = client.getRequire(baseUrl, null, "client", "service",
+                "main", "/api", "GET", 10, false, false);
+
+        assertEquals("redirected yaml", result);
+    }
+
+    @Test
+    public void testInsecureSsl() throws MojoExecutionException {
+        WireMockServer httpsMock = new WireMockServer(WireMockConfiguration.wireMockConfig()
+                .dynamicHttpsPort());
+        httpsMock.start();
+        try {
+            String httpsBaseUrl = "https://localhost:" + httpsMock.httpsPort();
+            httpsMock.stubFor(get(urlPathEqualTo("/require"))
+                    .willReturn(aResponse().withStatus(200).withBody("secure yaml")));
+
+            SanshainHttpClient insecureClient = new SanshainHttpClient(Mockito.mock(Log.class), true);
+            String result = insecureClient.getRequire(httpsBaseUrl, null, "client", "service",
+                    "main", "/api", "GET", 10, false, false);
+
+            assertEquals("secure yaml", result);
+        } finally {
+            httpsMock.stop();
+        }
     }
 
     private static byte[] gzipCompress(byte[] data) throws IOException {

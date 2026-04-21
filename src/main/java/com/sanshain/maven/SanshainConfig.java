@@ -18,6 +18,7 @@ public class SanshainConfig {
     private String clientName;
     private Integer timeout;
     private Boolean compression;
+    private Boolean insecure;
     private ProvideConfig provide;
     @JsonProperty("requires")
     private List<RequireConfig> requires;
@@ -61,6 +62,10 @@ public class SanshainConfig {
         String compression = System.getenv("SANSHAIN_COMPRESSION");
         if (compression != null) {
             config.setCompression(Boolean.parseBoolean(compression));
+        }
+        String insecure = System.getenv("SANSHAIN_INSECURE");
+        if (insecure != null) {
+            config.setInsecure(Boolean.parseBoolean(insecure));
         }
     }
 
@@ -111,6 +116,18 @@ public class SanshainConfig {
      * @param compression true if compression should be enabled
      */
     public void setCompression(Boolean compression) { this.compression = compression; }
+
+    /**
+     * Gets whether to ignore SSL certificate errors.
+     * @return true if SSL errors should be ignored
+     */
+    public Boolean getInsecure() { return insecure; }
+
+    /**
+     * Sets whether to ignore SSL certificate errors.
+     * @param insecure true if SSL errors should be ignored
+     */
+    public void setInsecure(Boolean insecure) { this.insecure = insecure; }
 
     /**
      * Gets the configuration for the provide goal.

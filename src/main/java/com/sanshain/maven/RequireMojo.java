@@ -44,6 +44,9 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.compression")
     private Boolean compression;
 
+    @Parameter(property = "sanshain.insecure")
+    private Boolean insecure;
+
     @Parameter(property = "sanshain.serverId", defaultValue = "sanshain")
     private String serverId;
 
@@ -105,6 +108,9 @@ public class RequireMojo extends AbstractMojo {
         // Resolve compression
         boolean resolvedCompression = resolveCompression(config);
 
+        // Resolve insecure
+        boolean resolvedInsecure = resolveInsecure(config);
+
         // Resolve branch: maven property > env > git > default
         if (branch == null) {
             branch = System.getenv("SANSHAIN_BRANCH");
@@ -119,6 +125,7 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved sanshainUrl: " + sanshainUrl);
         getLog().debug("Resolved clientName: " + clientName);
         getLog().debug("Resolved compression: " + resolvedCompression);
+        getLog().debug("Resolved insecure: " + resolvedInsecure);
         getLog().debug("Resolved branch: " + branch);
         getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
         getLog().debug("Resolved global timeout: " + globalTimeout + "s");
@@ -129,7 +136,7 @@ public class RequireMojo extends AbstractMojo {
             throw new MojoExecutionException("requires are required in sanshain.yaml");
         }
 
-        SanshainHttpClient client = new SanshainHttpClient(getLog());
+        SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
 
         if (dryRun) {
             getLog().info("Dry-run mode enabled — endpoints will be validated but no dependencies recorded.");
@@ -243,6 +250,12 @@ public class RequireMojo extends AbstractMojo {
         if (compression != null) return compression;
         if (config.getCompression() != null) return config.getCompression();
         return true;
+    }
+
+    private boolean resolveInsecure(SanshainConfig config) {
+        if (insecure != null) return insecure;
+        if (config.getInsecure() != null) return config.getInsecure();
+        return false;
     }
 
     private String getGitBranch() {

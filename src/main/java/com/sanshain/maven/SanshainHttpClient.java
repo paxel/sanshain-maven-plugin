@@ -13,10 +13,19 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
@@ -35,9 +44,53 @@ public class SanshainHttpClient {
      * @param log the Maven log
      */
     public SanshainHttpClient(Log log) {
-        this.httpClient = HttpClient.newBuilder().build();
+        this(log, false);
+    }
+
+    /**
+     * Constructs a new SanshainHttpClient.
+     * @param log      the Maven log
+     * @param insecure true if SSL certificate errors should be ignored
+     */
+    public SanshainHttpClient(Log log, boolean insecure) {
         this.log = log;
         this.objectMapper = new ObjectMapper();
+        this.httpClient = createHttpClient(insecure);
+    }
+
+    private HttpClient createHttpClient(boolean insecure) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NORMAL);
+
+        if (insecure) {
+            log.warn("SSL certificate validation is disabled (insecure=true)");
+            try {
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, new TrustManager[]{new InsecureTrustManager()}, new SecureRandom());
+                builder.sslContext(sslContext);
+                SSLParameters sslParameters = sslContext.getDefaultSSLParameters();
+                // Disable hostname verification
+                sslParameters.setEndpointIdentificationAlgorithm(null);
+                builder.sslParameters(sslParameters);
+            } catch (NoSuchAlgorithmException | KeyManagementException e) {
+                log.error("Failed to initialize insecure SSL context", e);
+            }
+        }
+
+        return builder.build();
+    }
+
+    private static class InsecureTrustManager implements X509TrustManager {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
     }
 
     /**
