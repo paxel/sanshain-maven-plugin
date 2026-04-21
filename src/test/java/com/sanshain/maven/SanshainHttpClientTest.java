@@ -30,7 +30,6 @@ public class SanshainHttpClientTest {
 
     @BeforeEach
     public void setUp() {
-        System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
         wireMock = new WireMockServer(WireMockConfiguration.wireMockConfig().dynamicPort());
         wireMock.start();
         baseUrl = "http://localhost:" + wireMock.port();
@@ -40,7 +39,6 @@ public class SanshainHttpClientTest {
 
     @AfterEach
     public void tearDown() {
-        System.clearProperty("jdk.internal.httpclient.disableHostnameVerification");
         wireMock.stop();
     }
 

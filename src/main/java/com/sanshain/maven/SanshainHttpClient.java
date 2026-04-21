@@ -25,7 +25,10 @@ import java.util.zip.GZIPOutputStream;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.net.Socket;
+import javax.net.ssl.SSLEngine;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
@@ -80,12 +83,24 @@ public class SanshainHttpClient {
         return builder.build();
     }
 
-    private static class InsecureTrustManager implements X509TrustManager {
+    private static class InsecureTrustManager extends X509ExtendedTrustManager {
         @Override
         public void checkClientTrusted(X509Certificate[] chain, String authType) {}
 
         @Override
         public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) {}
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {}
 
         @Override
         public X509Certificate[] getAcceptedIssuers() {
