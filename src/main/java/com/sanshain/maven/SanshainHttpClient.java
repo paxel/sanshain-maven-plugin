@@ -144,22 +144,23 @@ public class SanshainHttpClient {
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
 
         try {
-            HttpResponse<String> response = httpClient.send(requestBuilder.build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
+            String responseBody = sanitize(extractResponseBody(response));
             log.debug("Response status: " + status);
-            log.debug("Response body: " + response.body());
+            log.debug("Response body: " + responseBody);
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
             } else if (status == 400) {
-                log.error("Provide failed (400 Bad Request): " + response.body());
-                throw new MojoExecutionException("Bad request: " + response.body());
+                log.error("Provide failed (400 Bad Request): " + responseBody);
+                throw new MojoExecutionException("Bad request: " + responseBody);
             } else if (status == 409) {
-                log.error("Provide failed (409 Conflict): " + response.body());
-                throw new MojoExecutionException("Conflict on protected branch: " + response.body());
+                log.error("Provide failed (409 Conflict): " + responseBody);
+                throw new MojoExecutionException("Conflict on protected branch: " + responseBody);
             } else {
-                log.error("Provide failed (" + status + "): " + response.body());
-                throw new MojoExecutionException("Unexpected response " + status + ": " + response.body());
+                log.error("Provide failed (" + status + "): " + responseBody);
+                throw new MojoExecutionException("Unexpected response " + status + ": " + responseBody);
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
@@ -203,22 +204,23 @@ public class SanshainHttpClient {
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
 
         try {
-            HttpResponse<String> response = httpClient.send(requestBuilder.build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
+            String responseBody = sanitize(extractResponseBody(response));
             log.debug("Response status: " + status);
-            log.debug("Response body: " + response.body());
+            log.debug("Response body: " + responseBody);
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
             } else if (status == 400) {
-                log.error("Provide failed (400 Bad Request): " + response.body());
-                throw new MojoExecutionException("Bad request: " + response.body());
+                log.error("Provide failed (400 Bad Request): " + responseBody);
+                throw new MojoExecutionException("Bad request: " + responseBody);
             } else if (status == 409) {
-                log.error("Provide failed (409 Conflict): " + response.body());
-                throw new MojoExecutionException("Conflict on protected branch: " + response.body());
+                log.error("Provide failed (409 Conflict): " + responseBody);
+                throw new MojoExecutionException("Conflict on protected branch: " + responseBody);
             } else {
-                log.error("Provide failed (" + status + "): " + response.body());
-                throw new MojoExecutionException("Unexpected response " + status + ": " + response.body());
+                log.error("Provide failed (" + status + "): " + responseBody);
+                throw new MojoExecutionException("Unexpected response " + status + ": " + responseBody);
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + url, e);
@@ -284,19 +286,15 @@ public class SanshainHttpClient {
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
             log.debug("Response body size: " + response.body().length + " bytes");
             if (status == 200) {
-                byte[] responseBody = response.body();
-                if ("gzip".equalsIgnoreCase(contentEncoding)) {
-                    responseBody = gzipDecompress(responseBody);
-                }
-                return new String(responseBody, StandardCharsets.UTF_8);
+                return extractResponseBody(response);
             } else if (status == 404) {
-                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "Endpoint not found: " + serviceName + " " + method + " " + path +
                         " (branch: " + branch + "): " + errorBody);
             } else {
-                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require failed (" + status + "): " + errorBody);
                 throw new MojoExecutionException("Unexpected response " + status + " from /require: " + errorBody);
             }
@@ -357,23 +355,19 @@ public class SanshainHttpClient {
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
             log.debug("Response body size: " + response.body().length + " bytes");
             if (status == 200) {
-                byte[] responseBody = response.body();
-                if ("gzip".equalsIgnoreCase(contentEncoding)) {
-                    responseBody = gzipDecompress(responseBody);
-                }
-                return new String(responseBody, StandardCharsets.UTF_8);
+                return extractResponseBody(response);
             } else if (status == 400) {
-                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require-bundle failed (400 Bad Request): " + errorBody);
                 throw new MojoExecutionException("Bad request to /require-bundle: " + errorBody);
             } else if (status == 404) {
-                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require-bundle failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "One or more endpoints not found for service: " + serviceName +
                         " (branch: " + branch + "): " + errorBody);
             } else {
-                String errorBody = new String(response.body(), StandardCharsets.UTF_8);
+                String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require-bundle failed (" + status + "): " + errorBody);
                 throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle: " + errorBody);
             }
@@ -406,6 +400,28 @@ public class SanshainHttpClient {
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to gzip decompress data", e);
         }
+    }
+
+    private String extractResponseBody(HttpResponse<byte[]> response) throws MojoExecutionException {
+        byte[] body = response.body();
+        if (body == null || body.length == 0) {
+            return "";
+        }
+        String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
+        if ("gzip".equalsIgnoreCase(contentEncoding)) {
+            body = gzipDecompress(body);
+        }
+        return new String(body, StandardCharsets.UTF_8);
+    }
+
+    private String sanitize(String text) {
+        if (text == null) return "";
+        // Limit length
+        if (text.length() > 1000) {
+            text = text.substring(0, 1000) + "... (truncated)";
+        }
+        // Replace non-printable characters except common whitespace
+        return text.replaceAll("[^\\p{Print}\\p{Space}]", "?");
     }
 
     private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun) throws MojoExecutionException {
