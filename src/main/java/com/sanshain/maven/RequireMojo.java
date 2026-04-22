@@ -20,13 +20,13 @@ import java.util.List;
 /**
  * Goal which requires OpenAPI snippets from the Sanshain service.
  */
-@Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
+@Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES, requiresProject = false)
 public class RequireMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File baseDir;
 
-    @Parameter(defaultValue = "${project.basedir}/sanshain.yaml", property = "configFile")
+    @Parameter(property = "configFile")
     private File configFile;
 
     @Parameter(property = "sanshain.service.name")
@@ -66,6 +66,13 @@ public class RequireMojo extends AbstractMojo {
     private Settings settings;
 
     public void execute() throws MojoExecutionException {
+        if (baseDir == null) {
+            baseDir = new File(".");
+        }
+        if (configFile == null) {
+            configFile = new File(baseDir, "sanshain.yaml");
+        }
+
         if (skip || skipRequire) {
             getLog().info("Skipping sanshain:require (" + (skipRequire ? "sanshain.require.skip" : "sanshain.skip") + "=true)");
             return;

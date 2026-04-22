@@ -262,7 +262,8 @@ public class SanshainHttpClient {
                 "&path=" + urlEncode(path) +
                 "&method=" + urlEncode(method) +
                 "&timeout=" + timeout +
-                "&dry_run=" + dryRun;
+                "&dry_run=" + dryRun +
+                "&api_type=" + urlEncode(apiType != null ? apiType : "openapi");
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -430,6 +431,7 @@ public class SanshainHttpClient {
         payload.branch = branch;
         payload.openapiYaml = openapiYaml;
         payload.dryRun = dryRun;
+        payload.apiType = "openapi";
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -446,7 +448,7 @@ public class SanshainHttpClient {
         payload.branch = branch;
         payload.timeout = timeout;
         payload.dryRun = dryRun;
-        payload.apiType = apiType;
+        payload.apiType = apiType != null ? apiType : "openapi";
         payload.endpoints = endpoints.stream()
                 .map(ep -> {
                     RequireBundleEndpoint e = new RequireBundleEndpoint();
@@ -468,6 +470,7 @@ public class SanshainHttpClient {
         payload.branch = branch;
         payload.asyncapiYaml = asyncapiYaml;
         payload.dryRun = dryRun;
+        payload.apiType = "asyncapi";
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -481,6 +484,7 @@ public class SanshainHttpClient {
         payload.branch = branch;
         payload.protoContent = protoContent;
         payload.dryRun = dryRun;
+        payload.apiType = "proto";
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -495,6 +499,8 @@ public class SanshainHttpClient {
         public String asyncapiYaml;
         @JsonProperty("dry_run")
         public boolean dryRun;
+        @JsonProperty("api_type")
+        public String apiType;
     }
 
     static class ProvideProtoPayload {
@@ -504,6 +510,8 @@ public class SanshainHttpClient {
         public String protoContent;
         @JsonProperty("dry_run")
         public boolean dryRun;
+        @JsonProperty("api_type")
+        public String apiType;
     }
 
     static class ProvidePayload {
@@ -513,6 +521,8 @@ public class SanshainHttpClient {
         public String openapiYaml;
         @JsonProperty("dry_run")
         public boolean dryRun;
+        @JsonProperty("api_type")
+        public String apiType;
     }
 
     static class RequireBundlePayload {

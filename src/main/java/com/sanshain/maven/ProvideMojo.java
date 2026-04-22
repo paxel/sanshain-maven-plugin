@@ -18,16 +18,16 @@ import java.nio.file.Files;
 /**
  * Goal which provides an OpenAPI specification to the Sanshain service.
  */
-@Mojo(name = "provide", defaultPhase = LifecyclePhase.INITIALIZE)
+@Mojo(name = "provide", defaultPhase = LifecyclePhase.INITIALIZE, requiresProject = false)
 public class ProvideMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File baseDir;
 
-    @Parameter(defaultValue = "${project.basedir}/sanshain.yaml", property = "configFile")
+    @Parameter(property = "configFile")
     private File configFile;
 
-    @Parameter(defaultValue = "${project.build.directory}/openapi.yaml", property = "sanshain.openapi.file")
+    @Parameter(property = "sanshain.openapi.file")
     private File openApiFile;
 
     @Parameter(property = "sanshain.service.name")
@@ -67,6 +67,16 @@ public class ProvideMojo extends AbstractMojo {
     private Settings settings;
 
     public void execute() throws MojoExecutionException {
+        if (baseDir == null) {
+            baseDir = new File(".");
+        }
+        if (configFile == null) {
+            configFile = new File(baseDir, "sanshain.yaml");
+        }
+        if (openApiFile == null) {
+            openApiFile = new File(new File(baseDir, "target"), "openapi.yaml");
+        }
+
         if (skip || skipProvide) {
             getLog().info("Skipping sanshain:provide (" + (skipProvide ? "sanshain.provide.skip" : "sanshain.skip") + "=true)");
             return;
