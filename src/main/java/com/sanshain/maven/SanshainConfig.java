@@ -15,11 +15,14 @@ import java.util.List;
  */
 public class SanshainConfig {
     private String sanshainUrl;
-    private String clientName;
+    private String serviceName;
     private Integer timeout;
     private Boolean compression;
     private Boolean insecure;
+    private Boolean bestEffort;
     private ProvideConfig provide;
+    @JsonProperty("provides")
+    private List<ProvideConfig> provides;
     @JsonProperty("requires")
     private List<RequireConfig> requires;
 
@@ -51,9 +54,12 @@ public class SanshainConfig {
         if (url != null) {
             config.setSanshainUrl(url);
         }
-        String clientName = System.getenv("SANSHAIN_CLIENT_NAME");
-        if (clientName != null) {
-            config.setClientName(clientName);
+        String serviceName = System.getenv("SANSHAIN_SERVICE_NAME");
+        if (serviceName == null) {
+            serviceName = System.getenv("SANSHAIN_CLIENT_NAME");
+        }
+        if (serviceName != null) {
+            config.setServiceName(serviceName);
         }
         String timeout = System.getenv("SANSHAIN_TIMEOUT");
         if (timeout != null) {
@@ -66,6 +72,10 @@ public class SanshainConfig {
         String insecure = System.getenv("SANSHAIN_INSECURE");
         if (insecure != null) {
             config.setInsecure(Boolean.parseBoolean(insecure));
+        }
+        String bestEffort = System.getenv("SANSHAIN_BEST_EFFORT");
+        if (bestEffort != null) {
+            config.setBestEffort(Boolean.parseBoolean(bestEffort));
         }
     }
 
@@ -82,16 +92,30 @@ public class SanshainConfig {
     public void setSanshainUrl(String sanshainUrl) { this.sanshainUrl = sanshainUrl; }
 
     /**
-     * Gets the name of the client.
-     * @return the name of the client
+     * Gets the name of the service/client.
+     * @return the name of the service
      */
-    public String getClientName() { return clientName; }
+    public String getServiceName() { return serviceName; }
 
     /**
-     * Sets the name of the client.
+     * Sets the name of the service/client.
+     * @param serviceName the name of the service
+     */
+    public void setServiceName(String serviceName) { this.serviceName = serviceName; }
+
+    /**
+     * Gets the name of the client (alias for serviceName).
+     * @return the name of the client
+     */
+    @JsonProperty("clientName")
+    public String getClientName() { return serviceName; }
+
+    /**
+     * Sets the name of the client (alias for serviceName).
      * @param clientName the name of the client
      */
-    public void setClientName(String clientName) { this.clientName = clientName; }
+    @JsonProperty("clientName")
+    public void setClientName(String clientName) { this.serviceName = clientName; }
 
     /**
      * Gets the timeout in seconds.
@@ -128,6 +152,18 @@ public class SanshainConfig {
      * @param insecure true if SSL errors should be ignored
      */
     public void setInsecure(Boolean insecure) { this.insecure = insecure; }
+    
+    /**
+     * Gets whether to continue on Sanshain errors.
+     * @return true if errors should be logged as warnings
+     */
+    public Boolean getBestEffort() { return bestEffort; }
+
+    /**
+     * Sets whether to continue on Sanshain errors.
+     * @param bestEffort true if errors should be logged as warnings
+     */
+    public void setBestEffort(Boolean bestEffort) { this.bestEffort = bestEffort; }
 
     /**
      * Gets the configuration for the provide goal.
@@ -154,35 +190,101 @@ public class SanshainConfig {
     public void setRequires(List<RequireConfig> requires) { this.requires = requires; }
 
     /**
-     * Configuration for uploading an OpenAPI specification.
+     * Gets the list of provided service configurations.
+     * @return the list of provided service configurations
+     */
+    public List<ProvideConfig> getProvides() { return provides; }
+
+    /**
+     * Sets the list of provided service configurations.
+     * @param provides the list of provided service configurations
+     */
+    public void setProvides(List<ProvideConfig> provides) { this.provides = provides; }
+
+    /**
+     * Configuration for uploading an API specification.
      */
     public static class ProvideConfig {
-        private String serviceName;
+        private String file;
+        private String apiType;
+        private String branch;
+
+        // Backward compatibility fields
         private String openApiFile;
+        private String asyncApiFile;
+        private String protoFile;
 
         /**
-         * Gets the name of the service providing the API.
-         * @return the name of the service providing the API
+         * Gets the path to the specification file.
+         * @return the path to the specification file
          */
-        public String getServiceName() { return serviceName; }
+        public String getFile() { return file; }
 
         /**
-         * Sets the name of the service providing the API.
-         * @param serviceName the name of the service providing the API
+         * Sets the path to the specification file.
+         * @param file the path to the specification file
          */
-        public void setServiceName(String serviceName) { this.serviceName = serviceName; }
+        public void setFile(String file) { this.file = file; }
 
         /**
-         * Gets the path to the OpenAPI specification file.
+         * Gets the type of API (openapi, asyncapi, proto).
+         * @return the type of API
+         */
+        public String getApiType() { return apiType; }
+
+        /**
+         * Sets the type of API (openapi, asyncapi, proto).
+         * @param apiType the type of API
+         */
+        public void setApiType(String apiType) { this.apiType = apiType; }
+
+        /**
+         * Gets the branch name.
+         * @return the branch name
+         */
+        public String getBranch() { return branch; }
+
+        /**
+         * Sets the branch name.
+         * @param branch the branch name
+         */
+        public void setBranch(String branch) { this.branch = branch; }
+
+        /**
+         * Gets the path to the OpenAPI specification file (backward compatibility).
          * @return the path to the OpenAPI specification file
          */
         public String getOpenApiFile() { return openApiFile; }
 
         /**
-         * Sets the path to the OpenAPI specification file.
+         * Sets the path to the OpenAPI specification file (backward compatibility).
          * @param openApiFile the path to the OpenAPI specification file
          */
         public void setOpenApiFile(String openApiFile) { this.openApiFile = openApiFile; }
+
+        /**
+         * Gets the path to the AsyncAPI specification file (backward compatibility).
+         * @return the path to the AsyncAPI specification file
+         */
+        public String getAsyncApiFile() { return asyncApiFile; }
+
+        /**
+         * Sets the path to the AsyncAPI specification file (backward compatibility).
+         * @param asyncApiFile the path to the AsyncAPI specification file
+         */
+        public void setAsyncApiFile(String asyncApiFile) { this.asyncApiFile = asyncApiFile; }
+
+        /**
+         * Gets the path to the Protocol Buffers specification file (backward compatibility).
+         * @return the path to the Protocol Buffers specification file
+         */
+        public String getProtoFile() { return protoFile; }
+
+        /**
+         * Sets the path to the Protocol Buffers specification file (backward compatibility).
+         * @param protoFile the path to the Protocol Buffers specification file
+         */
+        public void setProtoFile(String protoFile) { this.protoFile = protoFile; }
     }
 
     /**
@@ -190,6 +292,7 @@ public class SanshainConfig {
      */
     public static class RequireConfig {
         private String serviceName;
+        private String apiType;
         private String outputDirectory;
         private Integer timeout;
         private List<EndpointConfig> endpoints;
@@ -205,6 +308,18 @@ public class SanshainConfig {
          * @param serviceName the name of the service being required
          */
         public void setServiceName(String serviceName) { this.serviceName = serviceName; }
+
+        /**
+         * Gets the type of API being required (openapi, asyncapi, proto).
+         * @return the type of API being required
+         */
+        public String getApiType() { return apiType; }
+
+        /**
+         * Sets the type of API being required (openapi, asyncapi, proto).
+         * @param apiType the type of API being required
+         */
+        public void setApiType(String apiType) { this.apiType = apiType; }
 
         /**
          * Gets the directory to save the downloaded snippets.

@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.7.0</version>
+    <version>1.0.0</version>
     <executions>
         <execution>
             <goals>
@@ -35,17 +35,19 @@ The plugin automatically looks for a `sanshain.yaml` file in your project's root
 
 ```yaml
 sanshainUrl: https://sanshain.example.com
+serviceName: order-service
 timeout: 120
 compression: true
-clientName: order-service
+bestEffort: true
 
-provide:
-  serviceName: my-service
-  openApiFile: src/main/resources/openapi.yaml
+provides:
+  - file: src/main/resources/openapi.yaml
+  - file: src/main/resources/order.proto
+    apiType: proto
 
 requires:
   - serviceName: user-service
-    outputDirectory: target/generated-sources/sanshain
+    outputDirectory: target/generated-sources/sanshain/user-service
     timeout: 60
     endpoints:
       - method: GET
@@ -53,7 +55,7 @@ requires:
       - method: GET
         path: /api/v1/users/{id}
   - serviceName: inventory-service
-    outputDirectory: target/generated-sources/sanshain
+    outputDirectory: target/generated-sources/sanshain/inventory-service
     endpoints:
       - method: POST
         path: /api/v1/orders
@@ -123,7 +125,8 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
-| Client name                 | `clientName`    | `-Dsanshain.client.name` | `$SANSHAIN_CLIENT_NAME` | — (required for `require`)                         |
+| Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false`                                            |
+| Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 
@@ -133,29 +136,33 @@ The branch is automatically detected from the local Git repository using JGit. Y
 
 ## Goal: `provide`
 
-Uploads the service's OpenAPI specification to the Sanshain service.
+Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to the Sanshain service.
 
 ### Parameters
 
 | Parameter     | Property                | Default                                   | Description                                                   |
 |---------------|-------------------------|-------------------------------------------|---------------------------------------------------------------|
 | `serviceName` | `sanshain.service.name` | —                                         | **Required.** The name of the service providing the API.      |
-| `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the OpenAPI YAML file.                                |
+| `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                        |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
 | `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                |
+| `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on Sanshain errors.                      |
 | `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
 
-These parameters can also be provided via the `provide` section in `sanshain.yaml`:
+These parameters can also be provided via the `provides` list in `sanshain.yaml`:
 
 ```yaml
-provide:
-  serviceName: my-service
-  openApiFile: src/main/resources/openapi.yaml
+serviceName: my-service
+provides:
+  - file: src/main/resources/openapi.yaml
+    apiType: openapi
+  - file: src/main/resources/events.yaml
+    apiType: asyncapi
 ```
 
 ## Goal: `require`
@@ -173,7 +180,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 
 | Parameter     | Property                | Default                 | Description                                                                  |
 |---------------|-------------------------|-------------------------|------------------------------------------------------------------------------|
-| `clientName`  | `sanshain.client.name`  | —                       | **Required.** The name of the client service requesting the endpoints.       |
+| `serviceName` | `sanshain.service.name` | —                       | **Required.** The name of the client service requesting the endpoints.       |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
 | `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
 | `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
@@ -212,15 +219,14 @@ If your service both provides an API and consumes other APIs, configure everythi
 
 ```yaml
 sanshainUrl: https://sanshain.example.com
-clientName: order-service
+serviceName: order-service
 
-provide:
-  serviceName: order-service
-  openApiFile: src/main/resources/openapi.yaml
+provides:
+  - file: src/main/resources/openapi.yaml
 
 requires:
   - serviceName: user-service
-    outputDirectory: target/generated-sources/sanshain
+    outputDirectory: target/generated-sources/sanshain/user-service
     endpoints:
       - method: GET
         path: /users/{id}
@@ -234,7 +240,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>0.7.0</version>
+    <version>1.0.0</version>
     <executions>
         <execution>
             <goals>
