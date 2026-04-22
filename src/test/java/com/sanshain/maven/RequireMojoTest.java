@@ -49,7 +49,7 @@ public class RequireMojoTest {
         setField(mojo, "baseDir", tempDir.toFile());
         setField(mojo, "configFile", configPath.toFile());
         setField(mojo, "sanshainUrl", baseUrl);
-        setField(mojo, "clientName", "test-client");
+        setField(mojo, "serviceName", "test-client");
         setField(mojo, "token", null);
         setField(mojo, "timeout", null);
         setField(mojo, "compression", false);
@@ -67,7 +67,7 @@ public class RequireMojoTest {
     @Test
     public void testSingleEndpointUsesGetRequire() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    outputDirectory: output\n" +
@@ -94,7 +94,7 @@ public class RequireMojoTest {
     @Test
     public void testMultipleEndpointsUsesRequireBundle() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    outputDirectory: output\n" +
@@ -143,7 +143,7 @@ public class RequireMojoTest {
                 "        path: /api\n";
 
         RequireMojo mojo = createMojo(yaml);
-        setField(mojo, "clientName", null);
+        setField(mojo, "serviceName", null);
 
         assertThrows(Exception.class, () -> mojo.execute());
     }
@@ -151,7 +151,7 @@ public class RequireMojoTest {
     @Test
     public void testEmptyEndpointsSkipsService() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    endpoints: []\n";
@@ -167,7 +167,7 @@ public class RequireMojoTest {
     @Test
     public void testDefaultOutputDirectory() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    endpoints:\n" +
@@ -187,7 +187,7 @@ public class RequireMojoTest {
     @Test
     public void testPerServiceTimeout() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "timeout: 60\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
@@ -210,7 +210,7 @@ public class RequireMojoTest {
     @Test
     public void testGlobalTimeoutUsedWhenNoPerServiceTimeout() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "timeout: 45\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
@@ -232,7 +232,7 @@ public class RequireMojoTest {
     @Test
     public void testDefaultTimeoutIs120() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    endpoints:\n" +
@@ -253,7 +253,7 @@ public class RequireMojoTest {
     @Test
     public void testMavenPropertyTimeoutOverridesConfig() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "timeout: 45\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
@@ -275,7 +275,7 @@ public class RequireMojoTest {
     @Test
     public void testSanshainUrlFromConfig() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    endpoints:\n" +
@@ -294,7 +294,7 @@ public class RequireMojoTest {
 
     @Test
     public void testSanshainUrlFromSettings() throws Exception {
-        String yaml = "clientName: test-client\n" +
+        String yaml = "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
                 "    outputDirectory: output\n" +
@@ -327,7 +327,7 @@ public class RequireMojoTest {
     @Test
     public void testMultipleServicesProcessed() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "clientName: test-client\n" +
+                "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: service-a\n" +
                 "    outputDirectory: output\n" +

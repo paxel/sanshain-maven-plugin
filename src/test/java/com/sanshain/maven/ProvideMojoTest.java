@@ -101,8 +101,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
@@ -125,10 +125,11 @@ public class ProvideMojoTest {
 
     @Test
     public void testExecuteOpenApiFileNotFoundThrows() throws Exception {
-        String yaml = "sanshainUrl: " + baseUrl + "\n";
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "provide:\n" +
+                "  openApiFile: nonexistent.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
-        setField(mojo, "openApiFile", new File(tempDir.toFile(), "nonexistent.yaml"));
 
         assertThrows(Exception.class, () -> mojo.execute());
     }
@@ -139,8 +140,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: config-service\n" +
                 "provide:\n" +
-                "  serviceName: config-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -157,8 +158,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -171,8 +172,8 @@ public class ProvideMojoTest {
     @Test
     public void testDefaultSanshainUrl() throws Exception {
         // When no URL is configured anywhere, defaults to http://localhost:8080
-        String yaml = "provide:\n" +
-                "  serviceName: my-service\n" +
+        String yaml = "serviceName: my-service\n" +
+                "provide:\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -189,8 +190,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -209,8 +210,8 @@ public class ProvideMojoTest {
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
                 "compression: false\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -227,8 +228,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(202)));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -244,8 +245,8 @@ public class ProvideMojoTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        String yaml = "provide:\n" +
-                "  serviceName: my-service\n" +
+        String yaml = "serviceName: my-service\n" +
+                "provide:\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -274,8 +275,8 @@ public class ProvideMojoTest {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
 
-        String yaml = "provide:\n" +
-                "  serviceName: my-service\n" +
+        String yaml = "serviceName: my-service\n" +
+                "provide:\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -306,8 +307,8 @@ public class ProvideMojoTest {
 
         // YAML has a different URL that would fail
         String yaml = "sanshainUrl: http://yaml-url-should-not-be-used:9999\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
@@ -336,8 +337,8 @@ public class ProvideMojoTest {
                 .willReturn(aResponse().withStatus(400).withBody("Bad request")));
 
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: openapi.yaml\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");

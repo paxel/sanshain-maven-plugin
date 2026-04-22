@@ -19,12 +19,11 @@ public class SanshainConfigTest {
     @Test
     public void testLoadFullConfig() throws IOException, MojoExecutionException {
         String yaml = "sanshainUrl: https://api.sanshain.com\n" +
-                "clientName: test-client\n" +
+                "serviceName: my-service\n" +
                 "timeout: 60\n" +
                 "compression: false\n" +
                 "insecure: true\n" +
                 "provide:\n" +
-                "  serviceName: my-service\n" +
                 "  openApiFile: src/main/resources/openapi.yaml\n" +
                 "requires:\n" +
                 "  - serviceName: other-service\n" +
@@ -37,17 +36,15 @@ public class SanshainConfigTest {
                 "        path: /api/v1/users\n";
         Path configPath = tempDir.resolve("sanshain.yaml");
         Files.writeString(configPath, yaml);
-
         SanshainConfig config = new SanshainConfig().loadConfig(configPath.toFile());
 
         assertEquals("https://api.sanshain.com", config.getSanshainUrl());
-        assertEquals("test-client", config.getClientName());
+        assertEquals("my-service", config.getServiceName());
         assertEquals(60, config.getTimeout());
         assertFalse(config.getCompression());
         assertTrue(config.getInsecure());
 
         assertNotNull(config.getProvide());
-        assertEquals("my-service", config.getProvide().getServiceName());
         assertEquals("src/main/resources/openapi.yaml", config.getProvide().getOpenApiFile());
 
         assertNotNull(config.getRequires());
@@ -145,10 +142,8 @@ public class SanshainConfigTest {
         assertTrue(config.getInsecure());
 
         SanshainConfig.ProvideConfig provide = new SanshainConfig.ProvideConfig();
-        provide.setServiceName("svc");
         provide.setOpenApiFile("api.yaml");
         config.setProvide(provide);
-        assertEquals("svc", config.getProvide().getServiceName());
         assertEquals("api.yaml", config.getProvide().getOpenApiFile());
 
         SanshainConfig.EndpointConfig ep = new SanshainConfig.EndpointConfig();
