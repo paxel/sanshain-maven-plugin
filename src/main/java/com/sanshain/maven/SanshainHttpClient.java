@@ -142,6 +142,7 @@ public class SanshainHttpClient {
 
         log.debug("POST " + baseUrl + "/provide");
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+        log.debug("Request body (uncompressed): " + json);
 
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
@@ -149,6 +150,7 @@ public class SanshainHttpClient {
             int status = response.statusCode();
             String responseBody = sanitize(extractResponseBody(response));
             log.debug("Response status: " + status);
+            logResponseHeaders(response);
             log.debug("Response body: " + responseBody);
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
@@ -202,6 +204,7 @@ public class SanshainHttpClient {
 
         log.debug("POST " + url);
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+        log.debug("Request body (uncompressed): " + json);
 
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
@@ -209,6 +212,7 @@ public class SanshainHttpClient {
             int status = response.statusCode();
             String responseBody = sanitize(extractResponseBody(response));
             log.debug("Response status: " + status);
+            logResponseHeaders(response);
             log.debug("Response body: " + responseBody);
             if (status == 202) {
                 log.info("Specification accepted by Sanshain service.");
@@ -285,7 +289,9 @@ public class SanshainHttpClient {
             int status = response.statusCode();
             String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
+            logResponseHeaders(response);
             log.debug("Response body size: " + response.body().length + " bytes");
+            log.debug("Response body (uncompressed): " + sanitize(extractResponseBody(response)));
             if (status == 200) {
                 return extractResponseBody(response);
             } else if (status == 404) {
@@ -347,6 +353,7 @@ public class SanshainHttpClient {
 
         log.debug("POST " + baseUrl + "/require-bundle");
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+        log.debug("Request body (uncompressed): " + json);
 
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
@@ -354,7 +361,9 @@ public class SanshainHttpClient {
             int status = response.statusCode();
             String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
+            logResponseHeaders(response);
             log.debug("Response body size: " + response.body().length + " bytes");
+            log.debug("Response body (uncompressed): " + sanitize(extractResponseBody(response)));
             if (status == 200) {
                 return extractResponseBody(response);
             } else if (status == 400) {
@@ -413,6 +422,14 @@ public class SanshainHttpClient {
             body = gzipDecompress(body);
         }
         return new String(body, StandardCharsets.UTF_8);
+    }
+
+    private void logResponseHeaders(HttpResponse<?> response) {
+        response.headers().map().forEach((name, values) -> {
+            for (String value : values) {
+                log.debug("Response header: " + name + ": " + value);
+            }
+        });
     }
 
     private String sanitize(String text) {
