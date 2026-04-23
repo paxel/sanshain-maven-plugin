@@ -161,6 +161,7 @@ public class RequireMojo extends AbstractMojo {
             String reqServiceName = req.getServiceName();
             int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
             String apiType = req.getApiType();
+            String reqBranch = req.getBranch() != null ? req.getBranch() : branch;
 
             String outputDir = req.getOutputDirectory();
             if (outputDir == null) {
@@ -180,12 +181,12 @@ public class RequireMojo extends AbstractMojo {
             if (endpoints.size() >= 2) {
                 // Use /require-bundle for multiple endpoints (deduplicated schemas)
                 getLog().info("Requiring bundle: " + reqServiceName + " (" + endpoints.size() +
-                        " endpoints, branch: " + branch + ", timeout: " + reqTimeout + "s" +
+                        " endpoints, branch: " + reqBranch + ", timeout: " + reqTimeout + "s" +
                         (apiType != null ? ", type: " + apiType : "") + ")");
 
                 try {
                     String yamlContent = client.postRequireBundle(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, branch, endpoints, reqTimeout, resolvedCompression, dryRun, apiType);
+                            reqServiceName, reqBranch, endpoints, reqTimeout, resolvedCompression, dryRun, apiType);
 
                     String ext = "yaml";
                     if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
@@ -209,12 +210,12 @@ public class RequireMojo extends AbstractMojo {
                 String path = endpoint.getPath();
 
                 getLog().info("Requiring: " + reqServiceName + " " + method + " " + path +
-                        " (branch: " + branch + ", timeout: " + reqTimeout + "s" +
+                        " (branch: " + reqBranch + ", timeout: " + reqTimeout + "s" +
                         (apiType != null ? ", type: " + apiType : "") + ")");
 
                 try {
                     String yamlContent = client.getRequire(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, branch, path, method, reqTimeout, resolvedCompression, dryRun, apiType);
+                            reqServiceName, reqBranch, path, method, reqTimeout, resolvedCompression, dryRun, apiType);
 
                     String ext = "yaml";
                     if ("proto".equalsIgnoreCase(apiType)) ext = "proto";

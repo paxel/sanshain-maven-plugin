@@ -305,6 +305,7 @@ public class SanshainConfig {
 
         private String serviceName;
         private String apiType;
+        private String branch;
         private String outputDirectory;
         private Integer timeout;
         private List<EndpointConfig> endpoints;
@@ -332,6 +333,18 @@ public class SanshainConfig {
          * @param apiType the type of API being required
          */
         public void setApiType(String apiType) { this.apiType = apiType; }
+
+        /**
+         * Gets the branch to require from.
+         * @return the branch name, or null to use the default branch
+         */
+        public String getBranch() { return branch; }
+
+        /**
+         * Sets the branch to require from.
+         * @param branch the branch name
+         */
+        public void setBranch(String branch) { this.branch = branch; }
 
         /**
          * Gets the directory to save the downloaded snippets.
