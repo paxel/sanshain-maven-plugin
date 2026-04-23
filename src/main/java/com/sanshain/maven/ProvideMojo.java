@@ -24,6 +24,9 @@ import java.util.Map;
 @Mojo(name = "provide", defaultPhase = LifecyclePhase.INITIALIZE, requiresProject = false)
 public class ProvideMojo extends AbstractMojo {
 
+    /** Creates a new instance of the provide goal. */
+    public ProvideMojo() {}
+
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File baseDir;
 

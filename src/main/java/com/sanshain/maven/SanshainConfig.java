@@ -14,6 +14,10 @@ import java.util.List;
  * Maps directly to the sanshain.yaml structure.
  */
 public class SanshainConfig {
+
+    /** Creates a new default configuration instance. */
+    public SanshainConfig() {}
+
     private String sanshainUrl;
     private String serviceName;
     private Integer timeout;
@@ -205,6 +209,10 @@ public class SanshainConfig {
      * Configuration for uploading an API specification.
      */
     public static class ProvideConfig {
+
+        /** Creates a new default provide configuration. */
+        public ProvideConfig() {}
+
         private String file;
         private String apiType;
         private String branch;
@@ -291,6 +299,10 @@ public class SanshainConfig {
      * Configuration for requiring endpoints from another service.
      */
     public static class RequireConfig {
+
+        /** Creates a new default require configuration. */
+        public RequireConfig() {}
+
         private String serviceName;
         private String apiType;
         private String outputDirectory;
@@ -362,6 +374,10 @@ public class SanshainConfig {
      * Configuration for a single API endpoint.
      */
     public static class EndpointConfig {
+
+        /** Creates a new default endpoint configuration. */
+        public EndpointConfig() {}
+
         private String method;
         private String path;
 

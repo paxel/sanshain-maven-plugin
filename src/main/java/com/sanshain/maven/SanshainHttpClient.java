@@ -117,6 +117,7 @@ public class SanshainHttpClient {
      * @param branch      the Git branch name
      * @param openapiYaml the content of the OpenAPI specification
      * @param compression true if GZIP compression should be used
+     * @param dryRun      true to perform a dry run without persisting
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public void postProvide(String baseUrl, String token, String serviceName, String branch,
@@ -172,12 +173,36 @@ public class SanshainHttpClient {
         }
     }
 
+    /**
+     * Uploads an AsyncAPI specification to the Sanshain service.
+     *
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param serviceName  the name of the service providing the API
+     * @param branch       the Git branch name
+     * @param asyncapiYaml the content of the AsyncAPI specification
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to perform a dry run without persisting
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
     public void postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
                                     String asyncapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
         String json = buildProvideAsyncApiJson(serviceName, branch, asyncapiYaml, dryRun);
         postProvideInternal(baseUrl + "/provide/asyncapi", token, json, compression);
     }
 
+    /**
+     * Uploads a Protocol Buffers specification to the Sanshain service.
+     *
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param serviceName  the name of the service providing the API
+     * @param branch       the Git branch name
+     * @param protoContent the content of the Protocol Buffers specification
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to perform a dry run without persisting
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
     public void postProvideProto(String baseUrl, String token, String serviceName, String branch,
                                  String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
         String json = buildProvideProtoJson(serviceName, branch, protoContent, dryRun);
@@ -246,6 +271,8 @@ public class SanshainHttpClient {
      * @param method      the HTTP method
      * @param timeout     the timeout in seconds
      * @param compression true if GZIP compression should be used
+     * @param dryRun      true to perform a dry run without persisting
+     * @param apiType     the type of API (openapi, asyncapi, proto)
      * @return the content of the downloaded OpenAPI snippet
      * @throws MojoExecutionException if the request fails or the endpoint is not found
      */
@@ -325,6 +352,8 @@ public class SanshainHttpClient {
      * @param endpoints   the list of endpoints to request
      * @param timeout     the timeout in seconds
      * @param compression true if GZIP compression should be used
+     * @param dryRun      true to perform a dry run without persisting
+     * @param apiType     the type of API (openapi, asyncapi, proto)
      * @return the merged OpenAPI YAML content
      * @throws MojoExecutionException if the request fails or endpoints are not found
      */

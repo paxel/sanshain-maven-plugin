@@ -26,6 +26,9 @@ import java.util.Map;
 @Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES, requiresProject = false)
 public class RequireMojo extends AbstractMojo {
 
+    /** Creates a new instance of the require goal. */
+    public RequireMojo() {}
+
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File baseDir;
 

@@ -90,9 +90,22 @@ public class ProvideMojoTest {
         Method getGitBranchMethod = ProvideMojo.class.getDeclaredMethod("getGitBranch");
         getGitBranchMethod.setAccessible(true);
 
-        // No git repo -> should return null (or throw is caught internally)
+        // No git repo -> should return null unless CI environment variables provide a branch
         String branch = (String) getGitBranchMethod.invoke(mojo);
-        assertNull(branch);
+        boolean ciEnvironment = System.getenv("GITHUB_REF_NAME") != null
+                || System.getenv("GITHUB_HEAD_REF") != null
+                || System.getenv("CI_COMMIT_REF_NAME") != null
+                || System.getenv("GIT_BRANCH") != null
+                || System.getenv("BRANCH_NAME") != null
+                || System.getenv("BITBUCKET_BRANCH") != null
+                || System.getenv("BUILD_SOURCEBRANCH") != null
+                || System.getenv("TRAVIS_BRANCH") != null
+                || System.getenv("CIRCLE_BRANCH") != null;
+        if (ciEnvironment) {
+            assertNotNull(branch, "In CI environment, branch should be detected from env vars");
+        } else {
+            assertNull(branch);
+        }
     }
 
     @Test
