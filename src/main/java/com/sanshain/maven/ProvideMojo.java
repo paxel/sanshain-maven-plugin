@@ -8,12 +8,15 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Map;
 
 /**
  * Goal which provides an OpenAPI specification to the Sanshain service.
@@ -311,17 +314,135 @@ public class ProvideMojo extends AbstractMojo {
     }
 
     private String getGitBranch() {
+        // Check CI environment variables first
+        String ciBranch = detectBranchFromCIEnvironment();
+        if (ciBranch != null) {
+            getLog().debug("Detected branch from CI environment: " + ciBranch);
+            return ciBranch;
+        }
+
         try {
             FileRepositoryBuilder builder = new FileRepositoryBuilder();
             try (Repository repository = builder.readEnvironment()
                     .findGitDir(baseDir)
                     .build()) {
                 if (repository != null) {
-                    return repository.getBranch();
+                    String branch = repository.getBranch();
+                    // getBranch() returns a SHA when HEAD is detached (common in CI)
+                    if (branch != null && branch.matches("[0-9a-f]{40}")) {
+                        getLog().debug("HEAD is detached at " + branch + ", resolving branch from refs");
+                        String resolved = resolveBranchFromDetachedHead(repository, ObjectId.fromString(branch));
+                        if (resolved != null) {
+                            getLog().debug("Resolved detached HEAD to branch: " + resolved);
+                            return resolved;
+                        }
+                        getLog().debug("Could not resolve detached HEAD to a branch name via refs, trying git CLI");
+                        String cliBranch = resolveBranchFromGitCli();
+                        if (cliBranch != null) {
+                            getLog().debug("Resolved detached HEAD to branch via git CLI: " + cliBranch);
+                            return cliBranch;
+                        }
+                        return null;
+                    }
+                    return branch;
                 }
             }
         } catch (IOException | IllegalArgumentException e) {
             getLog().debug("Could not determine git branch: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private String detectBranchFromCIEnvironment() {
+        // GitHub Actions
+        String ref = System.getenv("GITHUB_HEAD_REF");
+        if (ref != null && !ref.isEmpty()) return ref;
+        ref = System.getenv("GITHUB_REF_NAME");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        // GitLab CI
+        ref = System.getenv("CI_COMMIT_BRANCH");
+        if (ref != null && !ref.isEmpty()) return ref;
+        ref = System.getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        // Jenkins
+        ref = System.getenv("GIT_BRANCH");
+        if (ref != null && !ref.isEmpty()) {
+            // Jenkins often prefixes with "origin/"
+            if (ref.startsWith("origin/")) return ref.substring("origin/".length());
+            return ref;
+        }
+        ref = System.getenv("BRANCH_NAME");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        // Bitbucket Pipelines
+        ref = System.getenv("BITBUCKET_BRANCH");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        // Azure DevOps
+        ref = System.getenv("BUILD_SOURCEBRANCH");
+        if (ref != null && !ref.isEmpty()) {
+            if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length());
+            return ref;
+        }
+
+        // Travis CI
+        ref = System.getenv("TRAVIS_BRANCH");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        // CircleCI
+        ref = System.getenv("CIRCLE_BRANCH");
+        if (ref != null && !ref.isEmpty()) return ref;
+
+        return null;
+    }
+
+    private String resolveBranchFromGitCli() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("git", "branch", "-a", "--contains", "HEAD");
+            pb.directory(baseDir);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String output = new String(process.getInputStream().readAllBytes());
+            process.waitFor();
+            for (String rawLine : output.split("\n")) {
+                String line = rawLine.trim();
+                if (line.isEmpty() || line.startsWith("(") || line.startsWith("* (")) continue;
+                if (line.startsWith("* ")) line = line.substring(2);
+                if (line.startsWith("remotes/origin/")) {
+                    String candidate = line.substring("remotes/origin/".length());
+                    if (!"HEAD".equals(candidate)) return candidate;
+                    continue;
+                }
+                return line;
+            }
+        } catch (Exception e) {
+            getLog().debug("git CLI branch resolution failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private String resolveBranchFromDetachedHead(Repository repository, ObjectId headId) throws IOException {
+        Map<String, Ref> refs = repository.getRefDatabase().getRefs("refs/heads/");
+        for (Map.Entry<String, Ref> entry : refs.entrySet()) {
+            Ref ref = entry.getValue();
+            ObjectId refId = ref.getObjectId();
+            if (refId != null && refId.equals(headId)) {
+                return entry.getKey();
+            }
+        }
+        // Also check remote tracking branches
+        Map<String, Ref> remoteRefs = repository.getRefDatabase().getRefs("refs/remotes/origin/");
+        for (Map.Entry<String, Ref> entry : remoteRefs.entrySet()) {
+            Ref ref = entry.getValue();
+            ObjectId refId = ref.getObjectId();
+            if (refId != null && refId.equals(headId)) {
+                String name = entry.getKey();
+                if (!"HEAD".equals(name)) {
+                    return name;
+                }
+            }
         }
         return null;
     }
