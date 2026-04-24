@@ -1,6 +1,6 @@
 image: archlinux
 packages:
-  - openjdk17-src
+  - jdk11-openjdk
   - maven
 sources:
   - https://git.sr.ht/~taum/sanshainMaven
