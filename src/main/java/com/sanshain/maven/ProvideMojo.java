@@ -66,6 +66,9 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.dry.run", defaultValue = "false")
     private boolean dryRun;
 
+    @Parameter(property = "sanshain.strict", defaultValue = "false")
+    private boolean strict;
+
     @Parameter(property = "sanshain.branch")
     private String branch;
 
@@ -157,7 +160,11 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         if (serviceName == null) {
-            throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
+            if (strict) {
+                throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
+            }
+            getLog().warn("No serviceName configured and no provide configuration found. Skipping sanshain:provide. Set sanshain.strict=true to fail in this case.");
+            return;
         }
 
         getLog().debug("Resolved sanshainUrl: " + sanshainUrl);
@@ -222,7 +229,10 @@ public class ProvideMojo extends AbstractMojo {
             }
 
             if (!providedAnything) {
-                getLog().warn("No specification files found to provide.");
+                if (strict) {
+                    throw new MojoExecutionException("No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.");
+                }
+                getLog().warn("No specification files found to provide. Skipping. Set sanshain.strict=true to fail in this case.");
             }
         } catch (MojoExecutionException e) {
             if (bestEffort) {

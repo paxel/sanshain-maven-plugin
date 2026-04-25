@@ -127,13 +127,14 @@ public class ProvideMojoTest {
     }
 
     @Test
-    public void testExecuteNoServiceNameThrows() throws Exception {
+    public void testExecuteNoServiceNameWarnsAndSkips() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n";
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
         setField(mojo, "serviceName", null);
 
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        // Default (non-strict) mode: should warn and skip, not throw
+        assertDoesNotThrow(() -> mojo.execute());
     }
 
     @Test
@@ -342,6 +343,50 @@ public class ProvideMojoTest {
         mojo.execute();
 
         wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testNoProvideConfigWarnsAndSkipsByDefault() throws Exception {
+        // No provide config, no serviceName — should warn and skip (not fail)
+        String yaml = "sanshainUrl: " + baseUrl + "\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "serviceName", null);
+        // openApiFile points to a file that exists but no serviceName → should skip
+        assertDoesNotThrow(() -> mojo.execute());
+    }
+
+    @Test
+    public void testNoProvideConfigFailsWhenStrict() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "serviceName", null);
+        setField(mojo, "strict", true);
+        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+    }
+
+    @Test
+    public void testNoSpecFilesWarnsAndSkipsByDefault() throws Exception {
+        // serviceName set but no spec files configured and default openapi.yaml doesn't exist
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        // Remove the default openapi file so nothing is found
+        setField(mojo, "openApiFile", new File(tempDir.toFile(), "nonexistent.yaml"));
+        assertDoesNotThrow(() -> mojo.execute());
+    }
+
+    @Test
+    public void testNoSpecFilesFailsWhenStrict() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "openApiFile", new File(tempDir.toFile(), "nonexistent.yaml"));
+        setField(mojo, "strict", true);
+        assertThrows(MojoExecutionException.class, () -> mojo.execute());
     }
 
     @Test

@@ -124,17 +124,18 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testNoRequiresThrowsException() throws Exception {
+    public void testNoRequiresWarnsAndSkips() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
                 "clientName: test-client\n";
 
         RequireMojo mojo = createMojo(yaml);
 
-        assertThrows(Exception.class, () -> mojo.execute());
+        // Default (non-strict) mode: should warn and skip, not throw
+        assertDoesNotThrow(() -> mojo.execute());
     }
 
     @Test
-    public void testNoClientNameThrowsException() throws Exception {
+    public void testNoClientNameWarnsAndSkips() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
                 "requires:\n" +
                 "  - serviceName: svc\n" +
@@ -145,7 +146,8 @@ public class RequireMojoTest {
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "serviceName", null);
 
-        assertThrows(Exception.class, () -> mojo.execute());
+        // Default (non-strict) mode: should warn and skip, not throw
+        assertDoesNotThrow(() -> mojo.execute());
     }
 
     @Test
@@ -350,5 +352,43 @@ public class RequireMojoTest {
 
         assertTrue(Files.exists(tempDir.resolve("output/service-a_api_a_GET.yaml")));
         assertTrue(Files.exists(tempDir.resolve("output/service-b_api_b_POST.yaml")));
+    }
+
+    @Test
+    public void testNoRequiresWarnsAndSkipsByDefault() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        assertDoesNotThrow(() -> mojo.execute());
+    }
+
+    @Test
+    public void testNoRequiresFailsWhenStrict() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "strict", true);
+        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+    }
+
+    @Test
+    public void testNoServiceNameWarnsAndSkipsByDefault() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "serviceName", null);
+        assertDoesNotThrow(() -> mojo.execute());
+    }
+
+    @Test
+    public void testNoServiceNameFailsWhenStrict() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "serviceName", null);
+        setField(mojo, "strict", true);
+        assertThrows(MojoExecutionException.class, () -> mojo.execute());
     }
 }

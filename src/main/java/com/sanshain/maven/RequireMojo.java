@@ -65,6 +65,9 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.dry.run", defaultValue = "false")
     private boolean dryRun;
 
+    @Parameter(property = "sanshain.strict", defaultValue = "false")
+    private boolean strict;
+
     @Parameter(property = "sanshain.branch")
     private String branch;
 
@@ -106,7 +109,11 @@ public class RequireMojo extends AbstractMojo {
             serviceName = config.getClientName();
         }
         if (serviceName == null) {
-            throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
+            if (strict) {
+                throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
+            }
+            getLog().warn("No serviceName configured. Skipping sanshain:require. Set sanshain.strict=true to fail in this case.");
+            return;
         }
 
         // Resolve token
@@ -146,7 +153,11 @@ public class RequireMojo extends AbstractMojo {
         // Get requires from config
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
         if (requires == null || requires.isEmpty()) {
-            throw new MojoExecutionException("requires are required in sanshain.yaml");
+            if (strict) {
+                throw new MojoExecutionException("requires are required in sanshain.yaml");
+            }
+            getLog().warn("No requires configured in sanshain.yaml. Skipping sanshain:require. Set sanshain.strict=true to fail in this case.");
+            return;
         }
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);

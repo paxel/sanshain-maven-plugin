@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.2.0</version>
+    <version>1.5.0</version>
     <executions>
         <execution>
             <goals>
@@ -126,6 +126,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
 | Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false`                                            |
+| Strict                      | `strict`        | `-Dsanshain.strict`      | —                       | `false`                                            |
 | Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
@@ -153,6 +154,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
+| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
 
 These parameters can also be provided via the `provides` list in `sanshain.yaml`:
 
@@ -190,6 +192,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
 | `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
+| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -240,7 +243,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.2.0</version>
+    <version>1.5.0</version>
     <executions>
         <execution>
             <goals>
@@ -253,6 +256,101 @@ With a minimal `pom.xml` configuration:
 ```
 
 In this example, `user-service` has 2 endpoints, so the plugin will automatically use `/require-bundle` and save the result as `target/generated-sources/sanshain/user-service_bundle.yaml`.
+
+## v0.13.0 Features
+
+The following features were introduced with Sanshain Service v0.13.0 and are supported starting with plugin version 1.5.0.
+
+### Optimistic Concurrency Control (`baseVersion`)
+
+Add `baseVersion` to your provide configuration to enable conflict detection:
+
+```yaml
+provides:
+  - file: src/main/resources/openapi.yaml
+    baseVersion: 5
+```
+
+If the server's current version has advanced beyond your `baseVersion`, the provide call returns `409 Conflict` with a clear error message:
+
+> Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.
+
+The plugin automatically tracks the last known version in a local cache file (`target/.sanshain-cache.json`), so after the first successful provide, subsequent builds automatically send the correct `base_version` without manual configuration.
+
+### Provide Response Summary
+
+The server now returns a `202 Accepted` response with a JSON body containing version info and a change summary. The plugin logs a human-readable message after each successful provide:
+
+```
+✓ Provided to Sanshain v5: 2 new, 1 updated, 0 deleted endpoints
+```
+
+The `version` and `content_hash` from the response are stored in the local cache for use by concurrency control and content caching.
+
+### Client-Side Content Caching (Skip-if-unchanged)
+
+Before uploading, the plugin computes the SHA-256 hash of the spec file and compares it with the hash from the last successful provide (stored in `target/.sanshain-cache.json`). If the hash matches, the API call is skipped entirely:
+
+```
+⏭ Spec unchanged (hash match), skipping provide.
+```
+
+This saves network roundtrips and is especially valuable in CI pipelines where specs rarely change between builds.
+
+### Require-Side ETag Caching
+
+The plugin stores the `ETag` header from require responses. On subsequent builds, it sends `If-None-Match` with the stored ETag. If the server responds with `304 Not Modified`, the output file is not rewritten:
+
+```
+⏭ user-service spec unchanged (304), skipping code generation.
+```
+
+This avoids unnecessary code generation and speeds up incremental builds.
+
+### State File
+
+The local cache is stored at `target/.sanshain-cache.json` and is automatically deleted by `mvn clean`. The format is:
+
+```json
+{
+  "provides": {
+    "openapi.yaml": {
+      "content_hash": "sha256:abc123...",
+      "version": 5,
+      "last_provided": "2026-04-25T12:00:00Z"
+    }
+  },
+  "requires": {
+    "user-service|main|GET|/api/v1/users": {
+      "etag": "\"sha256:def456...\"",
+      "last_fetched": "2026-04-25T12:00:00Z"
+    }
+  }
+}
+```
+
+## Strict Mode
+
+By default, the plugin warns and skips when configuration is incomplete (e.g., no `serviceName`, no `provides`, or no `requires`). This makes it safe to include both goals in every project even if only one applies.
+
+To restore the old fail-on-missing behavior, enable strict mode:
+
+```bash
+mvn verify -Dsanshain.strict=true
+```
+
+Or in `pom.xml`:
+
+```xml
+<configuration>
+    <strict>true</strict>
+</configuration>
+```
+
+When strict mode is enabled:
+- Missing `serviceName` → build failure
+- No `provides` configured → build failure
+- No `requires` configured → build failure
 
 ## Dry-Run Mode
 
