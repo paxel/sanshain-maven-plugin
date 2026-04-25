@@ -47,7 +47,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideSuccess() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":1,\"updates\":0,\"deletes\":0}}")));
 
         assertDoesNotThrow(() ->
                 client.postProvide(baseUrl, "token123", "my-service", "main",
@@ -61,7 +63,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideNoToken() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":0,\"updates\":0,\"deletes\":0}}")));
 
         client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", false, false);
 
@@ -72,7 +76,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideEmptyToken() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":0,\"updates\":0,\"deletes\":0}}")));
 
         client.postProvide(baseUrl, "", "my-service", "main", "openapi: 3.0.0", false, false);
 
@@ -83,7 +89,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideWithCompression() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":0,\"updates\":0,\"deletes\":0}}")));
 
         client.postProvide(baseUrl, null, "my-service", "main", "openapi: 3.0.0", true, false);
 
@@ -109,7 +117,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
-        assertTrue(ex.getMessage().contains("Conflict"));
+        assertTrue(ex.getMessage().contains("Concurrent modification detected"));
     }
 
     @Test
@@ -132,7 +140,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideJsonContainsCorrectFields() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":0,\"updates\":0,\"deletes\":0}}")));
 
         client.postProvide(baseUrl, null, "my-service", "feature/test", "openapi: 3.0.0\ninfo:", false, false);
 
@@ -145,7 +155,9 @@ public class SanshainHttpClientTest {
     @Test
     public void testPostProvideSpecialCharactersInYaml() throws MojoExecutionException {
         wireMock.stubFor(post(urlEqualTo("/provide"))
-                .willReturn(aResponse().withStatus(202)));
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"sha256:abc\",\"changes\":{\"inserts\":0,\"updates\":0,\"deletes\":0}}")));
 
         String yamlWithSpecialChars = "description: \"quotes \\\"escaped\\\" and tabs\\t\"";
         client.postProvide(baseUrl, null, "my-service", "main", yamlWithSpecialChars, false, false);
@@ -418,6 +430,111 @@ public class SanshainHttpClientTest {
         } finally {
             httpsMock.stop();
         }
+    }
+
+    // --- v0.13.0 Feature Tests ---
+
+    @Test
+    public void testPostProvideReturnsProvideResponse() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":5,\"content_hash\":\"sha256:abc123\",\"changes\":{\"inserts\":2,\"updates\":1,\"deletes\":0}}")));
+
+        ProvideResponse resp = client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false);
+        assertNotNull(resp);
+        assertEquals(5, resp.getVersion());
+        assertEquals("sha256:abc123", resp.getContentHash());
+        assertEquals(2, resp.getChanges().inserts);
+        assertEquals(1, resp.getChanges().updates);
+        assertEquals(0, resp.getChanges().deletes);
+    }
+
+    @Test
+    public void testPostProvideWithBaseVersion() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":6,\"content_hash\":\"sha256:def\",\"changes\":{\"inserts\":0,\"updates\":1,\"deletes\":0}}")));
+
+        client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 5);
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.base_version", equalTo("5"))));
+    }
+
+    @Test
+    public void testPostProvideConflict409Message() {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(409).withBody("version mismatch")));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
+                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 3));
+        assertTrue(ex.getMessage().contains("Concurrent modification detected"));
+        assertTrue(ex.getMessage().contains("Re-run to fetch the latest state"));
+    }
+
+    @Test
+    public void testGetRequireWithEtag304() throws MojoExecutionException {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .withHeader("If-None-Match", equalTo("\"sha256:abc\""))
+                .willReturn(aResponse().withStatus(304)));
+
+        RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
+                "main", "/api", "GET", 10, false, false, null, "\"sha256:abc\"");
+
+        assertTrue(result.isNotModified());
+        assertNull(result.getContent());
+    }
+
+    @Test
+    public void testGetRequireWithEtagReturnsNewEtag() throws MojoExecutionException {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("ETag", "\"sha256:newHash\"")
+                        .withBody("openapi: 3.0.0")));
+
+        RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
+                "main", "/api", "GET", 10, false, false, null, null);
+
+        assertFalse(result.isNotModified());
+        assertEquals("openapi: 3.0.0", result.getContent());
+        assertEquals("\"sha256:newHash\"", result.getEtag());
+    }
+
+    @Test
+    public void testPostRequireBundleWithEtag304() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .withHeader("If-None-Match", equalTo("\"sha256:bundleHash\""))
+                .willReturn(aResponse().withStatus(304)));
+
+        SanshainConfig.EndpointConfig ep = new SanshainConfig.EndpointConfig();
+        ep.setMethod("GET");
+        ep.setPath("/api");
+
+        RequireResult result = client.postRequireBundleWithEtag(baseUrl, null, "client", "service",
+                "main", List.of(ep), 60, false, false, null, "\"sha256:bundleHash\"");
+
+        assertTrue(result.isNotModified());
+    }
+
+    @Test
+    public void testPostRequireBundleWithEtagReturnsNewEtag() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("ETag", "\"sha256:newBundleHash\"")
+                        .withBody("merged yaml")));
+
+        SanshainConfig.EndpointConfig ep = new SanshainConfig.EndpointConfig();
+        ep.setMethod("GET");
+        ep.setPath("/api");
+
+        RequireResult result = client.postRequireBundleWithEtag(baseUrl, null, "client", "service",
+                "main", List.of(ep), 60, false, false, null, null);
+
+        assertFalse(result.isNotModified());
+        assertEquals("merged yaml", result.getContent());
+        assertEquals("\"sha256:newBundleHash\"", result.getEtag());
     }
 
     private static byte[] gzipCompress(byte[] data) throws IOException {

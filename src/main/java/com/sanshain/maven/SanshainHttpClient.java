@@ -120,57 +120,27 @@ public class SanshainHttpClient {
      * @param dryRun      true to perform a dry run without persisting
      * @throws MojoExecutionException if the request fails or is rejected
      */
-    public void postProvide(String baseUrl, String token, String serviceName, String branch,
+    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
+                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
+        String json = buildProvideJson(serviceName, branch, openapiYaml, dryRun, baseVersion);
+        return postProvideInternal(baseUrl + "/provide", token, json, compression);
+    }
+
+    /**
+     * Backward-compatible overload without baseVersion.
+     * @param baseUrl     the base URL
+     * @param token       the token
+     * @param serviceName the service name
+     * @param branch      the branch
+     * @param openapiYaml the spec content
+     * @param compression whether to compress
+     * @param dryRun      whether dry run
+     * @return the provide response
+     * @throws MojoExecutionException on failure
+     */
+    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
                             String openapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        String json = buildProvideJson(serviceName, branch, openapiYaml, dryRun);
-
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/provide"))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(30));
-
-        if (token != null && !token.isEmpty()) {
-            requestBuilder.header("Authorization", "Bearer " + token);
-        }
-
-        byte[] body = json.getBytes(StandardCharsets.UTF_8);
-        if (compression) {
-            body = gzipCompress(body);
-            requestBuilder.header("Content-Encoding", "gzip");
-        }
-
-        requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
-
-        log.debug("POST " + baseUrl + "/provide");
-        log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
-        log.debug("Request body (uncompressed): " + json);
-
-        try {
-            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
-                    HttpResponse.BodyHandlers.ofByteArray());
-            int status = response.statusCode();
-            String responseBody = sanitize(extractResponseBody(response));
-            log.debug("Response status: " + status);
-            logResponseHeaders(response);
-            log.debug("Response body: " + responseBody);
-            if (status == 202) {
-                log.info("Specification accepted by Sanshain service.");
-            } else if (status == 400) {
-                log.error("Provide failed (400 Bad Request): " + responseBody);
-                throw new MojoExecutionException("Bad request: " + responseBody);
-            } else if (status == 409) {
-                log.error("Provide failed (409 Conflict): " + responseBody);
-                throw new MojoExecutionException("Conflict on protected branch: " + responseBody);
-            } else {
-                log.error("Provide failed (" + status + "): " + responseBody);
-                throw new MojoExecutionException("Unexpected response " + status + ": " + responseBody);
-            }
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new MojoExecutionException("Request interrupted", e);
-        }
+        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, null);
     }
 
     /**
@@ -185,10 +155,27 @@ public class SanshainHttpClient {
      * @param dryRun       true to perform a dry run without persisting
      * @throws MojoExecutionException if the request fails or is rejected
      */
-    public void postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
+    public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
+                                    String asyncapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
+        String json = buildProvideAsyncApiJson(serviceName, branch, asyncapiYaml, dryRun, baseVersion);
+        return postProvideInternal(baseUrl + "/provide/asyncapi", token, json, compression);
+    }
+
+    /**
+     * Backward-compatible overload without baseVersion.
+     * @param baseUrl      the base URL
+     * @param token        the token
+     * @param serviceName  the service name
+     * @param branch       the branch
+     * @param asyncapiYaml the spec content
+     * @param compression  whether to compress
+     * @param dryRun       whether dry run
+     * @return the provide response
+     * @throws MojoExecutionException on failure
+     */
+    public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
                                     String asyncapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        String json = buildProvideAsyncApiJson(serviceName, branch, asyncapiYaml, dryRun);
-        postProvideInternal(baseUrl + "/provide/asyncapi", token, json, compression);
+        return postProvideAsyncApi(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, null);
     }
 
     /**
@@ -203,13 +190,30 @@ public class SanshainHttpClient {
      * @param dryRun       true to perform a dry run without persisting
      * @throws MojoExecutionException if the request fails or is rejected
      */
-    public void postProvideProto(String baseUrl, String token, String serviceName, String branch,
-                                 String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
-        String json = buildProvideProtoJson(serviceName, branch, protoContent, dryRun);
-        postProvideInternal(baseUrl + "/provide/grpc", token, json, compression);
+    public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
+                                 String protoContent, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
+        String json = buildProvideProtoJson(serviceName, branch, protoContent, dryRun, baseVersion);
+        return postProvideInternal(baseUrl + "/provide/grpc", token, json, compression);
     }
 
-    private void postProvideInternal(String url, String token, String json, boolean compression) throws MojoExecutionException {
+    /**
+     * Backward-compatible overload without baseVersion.
+     * @param baseUrl      the base URL
+     * @param token        the token
+     * @param serviceName  the service name
+     * @param branch       the branch
+     * @param protoContent the spec content
+     * @param compression  whether to compress
+     * @param dryRun       whether dry run
+     * @return the provide response
+     * @throws MojoExecutionException on failure
+     */
+    public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
+                                 String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
+        return postProvideProto(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, null);
+    }
+
+    private ProvideResponse postProvideInternal(String url, String token, String json, boolean compression) throws MojoExecutionException {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
@@ -235,21 +239,29 @@ public class SanshainHttpClient {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
             int status = response.statusCode();
-            String responseBody = sanitize(extractResponseBody(response));
+            String responseBody = extractResponseBody(response);
             log.debug("Response status: " + status);
             logResponseHeaders(response);
-            log.debug("Response body: " + responseBody);
+            log.debug("Response body: " + sanitize(responseBody));
             if (status == 202) {
-                log.info("Specification accepted by Sanshain service.");
+                try {
+                    ProvideResponse provideResponse = objectMapper.readValue(responseBody, ProvideResponse.class);
+                    log.info(provideResponse.toSummary());
+                    return provideResponse;
+                } catch (Exception e) {
+                    log.debug("Could not parse provide response body: " + e.getMessage());
+                    log.info("Specification accepted by Sanshain service.");
+                    return null;
+                }
             } else if (status == 400) {
-                log.error("Provide failed (400 Bad Request): " + responseBody);
-                throw new MojoExecutionException("Bad request: " + responseBody);
+                log.error("Provide failed (400 Bad Request): " + sanitize(responseBody));
+                throw new MojoExecutionException("Bad request: " + sanitize(responseBody));
             } else if (status == 409) {
-                log.error("Provide failed (409 Conflict): " + responseBody);
-                throw new MojoExecutionException("Conflict on protected branch: " + responseBody);
+                log.error("Provide failed (409 Conflict): " + sanitize(responseBody));
+                throw new MojoExecutionException("Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.");
             } else {
-                log.error("Provide failed (" + status + "): " + responseBody);
-                throw new MojoExecutionException("Unexpected response " + status + ": " + responseBody);
+                log.error("Provide failed (" + status + "): " + sanitize(responseBody));
+                throw new MojoExecutionException("Unexpected response " + status + ": " + sanitize(responseBody));
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + url, e);
@@ -279,6 +291,32 @@ public class SanshainHttpClient {
     public String getRequire(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
                              String branch, String path, String method, int timeout,
                              boolean compression, boolean dryRun, String apiType) throws MojoExecutionException {
+        RequireResult result = getRequireWithEtag(baseUrl, token, serviceNameIdentifier, serviceName,
+                branch, path, method, timeout, compression, dryRun, apiType, null);
+        return result.getContent();
+    }
+
+    /**
+     * Downloads an OpenAPI snippet with ETag support.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param serviceNameIdentifier  the name of the client requesting the endpoint
+     * @param serviceName the name of the service providing the API
+     * @param branch      the Git branch name
+     * @param path        the API path
+     * @param method      the HTTP method
+     * @param timeout     the timeout in seconds
+     * @param compression true if GZIP compression should be used
+     * @param dryRun      true to perform a dry run without persisting
+     * @param apiType     the type of API (openapi, asyncapi, proto)
+     * @param etag        the ETag from a previous response (optional, for If-None-Match)
+     * @return the require result with content and ETag
+     * @throws MojoExecutionException if the request fails or the endpoint is not found
+     */
+    public RequireResult getRequireWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
+                             String branch, String path, String method, int timeout,
+                             boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
         String endpoint = "/require";
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             endpoint = "/require/asyncapi";
@@ -307,6 +345,9 @@ public class SanshainHttpClient {
         if (compression) {
             requestBuilder.header("Accept-Encoding", "gzip");
         }
+        if (etag != null && !etag.isEmpty()) {
+            requestBuilder.header("If-None-Match", etag);
+        }
 
         log.debug("GET " + url);
 
@@ -318,9 +359,11 @@ public class SanshainHttpClient {
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
             logResponseHeaders(response);
             log.debug("Response body size: " + response.body().length + " bytes");
-            log.debug("Response body (uncompressed): " + sanitize(extractResponseBody(response)));
-            if (status == 200) {
-                return extractResponseBody(response);
+            if (status == 304) {
+                return RequireResult.notModified();
+            } else if (status == 200) {
+                String responseEtag = response.headers().firstValue("ETag").orElse(null);
+                return RequireResult.ok(extractResponseBody(response), responseEtag);
             } else if (status == 404) {
                 String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require failed (404 Not Found): " + errorBody);
@@ -360,6 +403,31 @@ public class SanshainHttpClient {
     public String postRequireBundle(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
                                     String branch, List<SanshainConfig.EndpointConfig> endpoints,
                                     int timeout, boolean compression, boolean dryRun, String apiType) throws MojoExecutionException {
+        RequireResult result = postRequireBundleWithEtag(baseUrl, token, serviceNameIdentifier, serviceName,
+                branch, endpoints, timeout, compression, dryRun, apiType, null);
+        return result.getContent();
+    }
+
+    /**
+     * Requests a merged OpenAPI specification with ETag support.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param serviceNameIdentifier  the name of the client requesting the endpoints
+     * @param serviceName the name of the service providing the API
+     * @param branch      the Git branch name
+     * @param endpoints   the list of endpoints to request
+     * @param timeout     the timeout in seconds
+     * @param compression true if GZIP compression should be used
+     * @param dryRun      true to perform a dry run without persisting
+     * @param apiType     the type of API (openapi, asyncapi, proto)
+     * @param etag        the ETag from a previous response (optional, for If-None-Match)
+     * @return the require result with content and ETag
+     * @throws MojoExecutionException if the request fails or endpoints are not found
+     */
+    public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
+                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
+                                    int timeout, boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
         String json = buildRequireBundleJson(serviceNameIdentifier, serviceName, branch, endpoints, timeout, dryRun, apiType);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -369,6 +437,9 @@ public class SanshainHttpClient {
 
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + token);
+        }
+        if (etag != null && !etag.isEmpty()) {
+            requestBuilder.header("If-None-Match", etag);
         }
 
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
@@ -392,9 +463,11 @@ public class SanshainHttpClient {
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
             logResponseHeaders(response);
             log.debug("Response body size: " + response.body().length + " bytes");
-            log.debug("Response body (uncompressed): " + sanitize(extractResponseBody(response)));
-            if (status == 200) {
-                return extractResponseBody(response);
+            if (status == 304) {
+                return RequireResult.notModified();
+            } else if (status == 200) {
+                String responseEtag = response.headers().firstValue("ETag").orElse(null);
+                return RequireResult.ok(extractResponseBody(response), responseEtag);
             } else if (status == 400) {
                 String errorBody = sanitize(extractResponseBody(response));
                 log.error("Require-bundle failed (400 Bad Request): " + errorBody);
@@ -471,13 +544,14 @@ public class SanshainHttpClient {
         return text.replaceAll("[^\\p{Print}\\p{Space}]", "?");
     }
 
-    private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun) throws MojoExecutionException {
+    private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
         ProvidePayload payload = new ProvidePayload();
         payload.servicename = serviceName;
         payload.branch = branch;
         payload.openapiYaml = openapiYaml;
         payload.dryRun = dryRun;
         payload.apiType = "openapi";
+        payload.baseVersion = baseVersion;
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -510,13 +584,14 @@ public class SanshainHttpClient {
         }
     }
 
-    private String buildProvideAsyncApiJson(String serviceName, String branch, String asyncapiYaml, boolean dryRun) throws MojoExecutionException {
+    private String buildProvideAsyncApiJson(String serviceName, String branch, String asyncapiYaml, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
         ProvideAsyncApiPayload payload = new ProvideAsyncApiPayload();
         payload.servicename = serviceName;
         payload.branch = branch;
         payload.asyncapiYaml = asyncapiYaml;
         payload.dryRun = dryRun;
         payload.apiType = "asyncapi";
+        payload.baseVersion = baseVersion;
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -524,13 +599,14 @@ public class SanshainHttpClient {
         }
     }
 
-    private String buildProvideProtoJson(String serviceName, String branch, String protoContent, boolean dryRun) throws MojoExecutionException {
+    private String buildProvideProtoJson(String serviceName, String branch, String protoContent, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
         ProvideProtoPayload payload = new ProvideProtoPayload();
         payload.servicename = serviceName;
         payload.branch = branch;
         payload.protoContent = protoContent;
         payload.dryRun = dryRun;
         payload.apiType = "proto";
+        payload.baseVersion = baseVersion;
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -547,6 +623,8 @@ public class SanshainHttpClient {
         public boolean dryRun;
         @JsonProperty("api_type")
         public String apiType;
+        @JsonProperty("base_version")
+        public Integer baseVersion;
     }
 
     static class ProvideProtoPayload {
@@ -558,6 +636,8 @@ public class SanshainHttpClient {
         public boolean dryRun;
         @JsonProperty("api_type")
         public String apiType;
+        @JsonProperty("base_version")
+        public Integer baseVersion;
     }
 
     static class ProvidePayload {
@@ -569,6 +649,8 @@ public class SanshainHttpClient {
         public boolean dryRun;
         @JsonProperty("api_type")
         public String apiType;
+        @JsonProperty("base_version")
+        public Integer baseVersion;
     }
 
     static class RequireBundlePayload {

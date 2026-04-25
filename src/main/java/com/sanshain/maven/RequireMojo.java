@@ -150,6 +150,7 @@ public class RequireMojo extends AbstractMojo {
         }
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
+        SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
 
         if (dryRun) {
             getLog().info("Dry-run mode enabled — endpoints will be validated but no dependencies recorded.");
@@ -185,15 +186,28 @@ public class RequireMojo extends AbstractMojo {
                         (apiType != null ? ", type: " + apiType : "") + ")");
 
                 try {
-                    String yamlContent = client.postRequireBundle(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, reqBranch, endpoints, reqTimeout, resolvedCompression, dryRun, apiType);
+                    String cacheKey = SanshainCache.requireBundleKey(reqServiceName, reqBranch);
+                    SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+                    String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-                    String ext = "yaml";
-                    if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
-                    String fileName = reqServiceName + "_bundle." + ext;
-                    Path outputFile = outputDirectory.toPath().resolve(fileName);
-                    Files.writeString(outputFile, yamlContent);
-                    getLog().info("Saved bundle: " + outputFile);
+                    RequireResult result = client.postRequireBundleWithEtag(sanshainUrl, resolvedToken, serviceName,
+                            reqServiceName, reqBranch, endpoints, reqTimeout, resolvedCompression, dryRun, apiType, cachedEtag);
+
+                    if (result.isNotModified()) {
+                        getLog().info("\u23ed " + reqServiceName + " spec unchanged (304), skipping code generation.");
+                    } else {
+                        String ext = "yaml";
+                        if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
+                        String fileName = reqServiceName + "_bundle." + ext;
+                        Path outputFile = outputDirectory.toPath().resolve(fileName);
+                        Files.writeString(outputFile, result.getContent());
+                        getLog().info("Saved bundle: " + outputFile);
+
+                        if (result.getEtag() != null) {
+                            cache.updateRequireEntry(cacheKey, result.getEtag());
+                            cache.save();
+                        }
+                    }
                 } catch (MojoExecutionException e) {
                     if (bestEffort) {
                         getLog().warn("Sanshain require-bundle failed for " + reqServiceName + " (best effort): " + e.getMessage());
@@ -214,17 +228,30 @@ public class RequireMojo extends AbstractMojo {
                         (apiType != null ? ", type: " + apiType : "") + ")");
 
                 try {
-                    String yamlContent = client.getRequire(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, reqBranch, path, method, reqTimeout, resolvedCompression, dryRun, apiType);
+                    String cacheKey = SanshainCache.requireKey(reqServiceName, reqBranch, method, path);
+                    SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+                    String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-                    String ext = "yaml";
-                    if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
-                    String fileName = reqServiceName + "_" +
-                            path.replace("/", "_").replaceFirst("^_", "") +
-                            "_" + method + "." + ext;
-                    Path outputFile = outputDirectory.toPath().resolve(fileName);
-                    Files.writeString(outputFile, yamlContent);
-                    getLog().info("Saved: " + outputFile);
+                    RequireResult result = client.getRequireWithEtag(sanshainUrl, resolvedToken, serviceName,
+                            reqServiceName, reqBranch, path, method, reqTimeout, resolvedCompression, dryRun, apiType, cachedEtag);
+
+                    if (result.isNotModified()) {
+                        getLog().info("\u23ed " + reqServiceName + " spec unchanged (304), skipping code generation.");
+                    } else {
+                        String ext = "yaml";
+                        if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
+                        String fileName = reqServiceName + "_" +
+                                path.replace("/", "_").replaceFirst("^_", "") +
+                                "_" + method + "." + ext;
+                        Path outputFile = outputDirectory.toPath().resolve(fileName);
+                        Files.writeString(outputFile, result.getContent());
+                        getLog().info("Saved: " + outputFile);
+
+                        if (result.getEtag() != null) {
+                            cache.updateRequireEntry(cacheKey, result.getEtag());
+                            cache.save();
+                        }
+                    }
                 } catch (MojoExecutionException e) {
                     if (bestEffort) {
                         getLog().warn("Sanshain require failed for " + reqServiceName + " " + method + " " + path + " (best effort): " + e.getMessage());

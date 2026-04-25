@@ -216,6 +216,7 @@ public class SanshainConfig {
         private String file;
         private String apiType;
         private String branch;
+        private Integer baseVersion;
 
         // Backward compatibility fields
         private String openApiFile;
@@ -257,6 +258,18 @@ public class SanshainConfig {
          * @param branch the branch name
          */
         public void setBranch(String branch) { this.branch = branch; }
+
+        /**
+         * Gets the base version for optimistic concurrency control.
+         * @return the base version, or null if not set
+         */
+        public Integer getBaseVersion() { return baseVersion; }
+
+        /**
+         * Sets the base version for optimistic concurrency control.
+         * @param baseVersion the base version
+         */
+        public void setBaseVersion(Integer baseVersion) { this.baseVersion = baseVersion; }
 
         /**
          * Gets the path to the OpenAPI specification file (backward compatibility).

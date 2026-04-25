@@ -169,6 +169,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Best effort: " + (config.getBestEffort() != null && config.getBestEffort()));
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
+        SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
         if (dryRun) {
             getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
         }
@@ -183,7 +184,7 @@ public class ProvideMojo extends AbstractMojo {
                 for (SanshainConfig.ProvideConfig p : config.getProvides()) {
                     String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
                     if (p.getFile() != null) {
-                        provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), resolvedCompression, dryRun);
+                        provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), resolvedCompression, dryRun, p.getBaseVersion(), cache);
                         providedAnything = true;
                     }
                 }
@@ -195,28 +196,28 @@ public class ProvideMojo extends AbstractMojo {
                 String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
                 
                 if (p.getFile() != null) {
-                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), resolvedCompression, dryRun);
+                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), resolvedCompression, dryRun, p.getBaseVersion(), cache);
                     providedAnything = true;
                 }
                 
                 // Backward compatibility with openApiFile, asyncApiFile, protoFile
                 if (p.getOpenApiFile() != null) {
-                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getOpenApiFile()), "openapi", resolvedCompression, dryRun);
+                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getOpenApiFile()), "openapi", resolvedCompression, dryRun, p.getBaseVersion(), cache);
                     providedAnything = true;
                 }
                 if (p.getAsyncApiFile() != null) {
-                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getAsyncApiFile()), "asyncapi", resolvedCompression, dryRun);
+                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getAsyncApiFile()), "asyncapi", resolvedCompression, dryRun, p.getBaseVersion(), cache);
                     providedAnything = true;
                 }
                 if (p.getProtoFile() != null) {
-                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getProtoFile()), "proto", resolvedCompression, dryRun);
+                    provideFile(client, sanshainUrl, resolvedToken, serviceName, b, new File(baseDir, p.getProtoFile()), "proto", resolvedCompression, dryRun, p.getBaseVersion(), cache);
                     providedAnything = true;
                 }
             }
 
             // Fallback to default openApiFile if nothing else provided and file exists
             if (!providedAnything && openApiFile != null && openApiFile.exists()) {
-                provideFile(client, sanshainUrl, resolvedToken, serviceName, defaultBranch, openApiFile, "openapi", resolvedCompression, dryRun);
+                provideFile(client, sanshainUrl, resolvedToken, serviceName, defaultBranch, openApiFile, "openapi", resolvedCompression, dryRun, null, cache);
                 providedAnything = true;
             }
 
@@ -245,21 +246,49 @@ public class ProvideMojo extends AbstractMojo {
     }
 
     private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean dryRun) throws IOException, MojoExecutionException {
+        provideFile(client, url, token, serviceName, branch, file, apiType, compression, dryRun, null, null);
+    }
+
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean dryRun, Integer baseVersion, SanshainCache cache) throws IOException, MojoExecutionException {
         if (!file.exists()) {
             throw new MojoExecutionException("Specification file does not exist: " + file.getAbsolutePath());
         }
         String content = Files.readString(file.toPath());
+        String fileKey = file.getName();
+
+        // Feature 3: Client-side content caching — skip if unchanged
+        String contentHash = SanshainCache.computeHash(content);
+        if (cache != null) {
+            SanshainCache.ProvideEntry cached = cache.getProvideEntry(fileKey);
+            if (cached != null && contentHash.equals(cached.contentHash)) {
+                getLog().info("\u23ed Spec unchanged (hash match), skipping provide.");
+                return;
+            }
+            // Feature 1: Use cached version as base_version if not explicitly set
+            if (baseVersion == null && cached != null && cached.version > 0) {
+                baseVersion = cached.version;
+            }
+        }
+
+        ProvideResponse response;
         if (apiType == null || apiType.equalsIgnoreCase("openapi")) {
             getLog().info("Providing OpenAPI: " + serviceName + " (branch: " + branch + ")");
-            client.postProvide(url, token, serviceName, branch, content, compression, dryRun);
+            response = client.postProvide(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
         } else if (apiType.equalsIgnoreCase("asyncapi")) {
             getLog().info("Providing AsyncAPI: " + serviceName + " (branch: " + branch + ")");
-            client.postProvideAsyncApi(url, token, serviceName, branch, content, compression, dryRun);
+            response = client.postProvideAsyncApi(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
         } else if (apiType.equalsIgnoreCase("proto") || apiType.equalsIgnoreCase("grpc")) {
             getLog().info("Providing Protocol Buffers: " + serviceName + " (branch: " + branch + ")");
-            client.postProvideProto(url, token, serviceName, branch, content, compression, dryRun);
+            response = client.postProvideProto(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
         } else {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
+        }
+
+        // Feature 2: Save version and content_hash from response
+        if (cache != null && response != null) {
+            String responseHash = response.getContentHash() != null ? response.getContentHash() : contentHash;
+            cache.updateProvideEntry(fileKey, responseHash, response.getVersion());
+            cache.save();
         }
     }
 
