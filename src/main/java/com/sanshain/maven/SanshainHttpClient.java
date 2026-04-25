@@ -576,7 +576,7 @@ public class SanshainHttpClient {
                     e.method = ep.getMethod();
                     return e;
                 })
-                .toList();
+                .collect(java.util.stream.Collectors.toList());
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
