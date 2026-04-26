@@ -93,6 +93,9 @@ public class SanshainMojoDelegate {
         if (branch != null) return branch;
         String envBranch = System.getenv("SANSHAIN_BRANCH");
         if (envBranch != null) return envBranch;
+
+        String ciBranch = detectBranchFromCIEnvironment();
+        if (ciBranch != null) return ciBranch;
         
         String gitBranch = getGitBranch();
         return gitBranch != null ? gitBranch : "main";
@@ -105,9 +108,6 @@ public class SanshainMojoDelegate {
                 String branchName = repository.getBranch();
                 if (branchName != null && !branchName.isEmpty()) {
                     if (ObjectId.isId(branchName)) {
-                        String ciBranch = detectBranchFromCIEnvironment();
-                        if (ciBranch != null) return ciBranch;
-                        
                         String cliBranch = resolveBranchFromGitCli();
                         if (cliBranch != null) return cliBranch;
 

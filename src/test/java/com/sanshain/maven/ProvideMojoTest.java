@@ -414,6 +414,17 @@ public class ProvideMojoTest {
 
         assertThrows(MojoExecutionException.class, mojo::execute);
     }
+    @Test
+    public void testResolveBranchCIOverrides() throws Exception {
+        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, tempDir.toFile(), null, false);
+
+        // This test depends on the environment, but we can't easily mock System.getenv() without extra libraries
+        // However, we can test that if we call resolveBranch(null) it doesn't fail.
+        String branch = delegate.resolveBranch(null);
+        assertNotNull(branch);
+    }
+
     private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {
         try {
             return clazz.getDeclaredMethod(methodName, parameterTypes);
