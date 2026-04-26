@@ -123,14 +123,7 @@ public class SanshainHttpClient {
             type = "proto";
         }
 
-        ProvideGenericPayload payload = new ProvideGenericPayload();
-        payload.servicename = serviceName;
-        payload.branch = branch;
-        payload.content = content;
-        payload.dryRun = dryRun;
-        payload.apiType = type;
-        payload.baseVersion = baseVersion;
-        payload.contentField = contentField;
+        ProvideGenericPayload payload = new ProvideGenericPayload(serviceName, branch, content, dryRun, type, baseVersion, contentField);
 
         try {
             String json = objectMapper.writeValueAsString(payload);
@@ -171,18 +164,28 @@ public class SanshainHttpClient {
     }
 
     private static class ProvideGenericPayload {
-        public String servicename;
-        public String branch;
+        public final String servicename;
+        public final String branch;
         @com.fasterxml.jackson.annotation.JsonIgnore
-        public String content;
+        public final String content;
         @JsonProperty("dry_run")
-        public boolean dryRun;
+        public final boolean dryRun;
         @JsonProperty("api_type")
-        public String apiType;
+        public final String apiType;
         @JsonProperty("base_version")
-        public Integer baseVersion;
+        public final Integer baseVersion;
         @com.fasterxml.jackson.annotation.JsonIgnore
-        public String contentField;
+        public final String contentField;
+
+        public ProvideGenericPayload(String servicename, String branch, String content, boolean dryRun, String apiType, Integer baseVersion, String contentField) {
+            this.servicename = servicename;
+            this.branch = branch;
+            this.content = content;
+            this.dryRun = dryRun;
+            this.apiType = apiType;
+            this.baseVersion = baseVersion;
+            this.contentField = contentField;
+        }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter
         public java.util.Map<String, Object> any() {
@@ -516,21 +519,6 @@ public class SanshainHttpClient {
         return result.replaceAll("[^\\p{Print}\\p{Space}]", "?");
     }
 
-    private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        ProvidePayload payload = new ProvidePayload();
-        payload.servicename = serviceName;
-        payload.branch = branch;
-        payload.openapiYaml = openapiYaml;
-        payload.dryRun = dryRun;
-        payload.apiType = "openapi";
-        payload.baseVersion = baseVersion;
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new MojoExecutionException("Failed to build JSON for /provide", e);
-        }
-    }
-
     private String buildRequireBundleJson(String clientName, String serviceName, String branch,
                                           List<SanshainConfig.EndpointConfig> endpoints,
                                           int timeout, boolean dryRun, String apiType) throws MojoExecutionException {
@@ -554,75 +542,6 @@ public class SanshainHttpClient {
         } catch (JsonProcessingException e) {
             throw new MojoExecutionException("Failed to build JSON for /require-bundle", e);
         }
-    }
-
-    private String buildProvideAsyncApiJson(String serviceName, String branch, String asyncapiYaml, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        ProvideAsyncApiPayload payload = new ProvideAsyncApiPayload();
-        payload.servicename = serviceName;
-        payload.branch = branch;
-        payload.asyncapiYaml = asyncapiYaml;
-        payload.dryRun = dryRun;
-        payload.apiType = "asyncapi";
-        payload.baseVersion = baseVersion;
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new MojoExecutionException("Failed to build JSON for /provide/asyncapi", e);
-        }
-    }
-
-    private String buildProvideProtoJson(String serviceName, String branch, String protoContent, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        ProvideProtoPayload payload = new ProvideProtoPayload();
-        payload.servicename = serviceName;
-        payload.branch = branch;
-        payload.protoContent = protoContent;
-        payload.dryRun = dryRun;
-        payload.apiType = "proto";
-        payload.baseVersion = baseVersion;
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new MojoExecutionException("Failed to build JSON for /provide/grpc", e);
-        }
-    }
-
-    static class ProvideAsyncApiPayload {
-        public String servicename;
-        public String branch;
-        @JsonProperty("asyncapi_yaml")
-        public String asyncapiYaml;
-        @JsonProperty("dry_run")
-        public boolean dryRun;
-        @JsonProperty("api_type")
-        public String apiType;
-        @JsonProperty("base_version")
-        public Integer baseVersion;
-    }
-
-    static class ProvideProtoPayload {
-        public String servicename;
-        public String branch;
-        @JsonProperty("proto_content")
-        public String protoContent;
-        @JsonProperty("dry_run")
-        public boolean dryRun;
-        @JsonProperty("api_type")
-        public String apiType;
-        @JsonProperty("base_version")
-        public Integer baseVersion;
-    }
-
-    static class ProvidePayload {
-        public String servicename;
-        public String branch;
-        @JsonProperty("openapi_yaml")
-        public String openapiYaml;
-        @JsonProperty("dry_run")
-        public boolean dryRun;
-        @JsonProperty("api_type")
-        public String apiType;
-        @JsonProperty("base_version")
-        public Integer baseVersion;
     }
 
     static class RequireBundlePayload {

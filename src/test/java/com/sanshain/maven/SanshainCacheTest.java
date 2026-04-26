@@ -16,13 +16,15 @@ public class SanshainCacheTest {
 
     @Test
     public void testComputeHash() {
-        String hash = SanshainCache.computeHash("hello");
-        assertTrue(hash.startsWith("sha256:"));
-        assertEquals(71, hash.length()); // "sha256:" + 64 hex chars
-        // Same input → same hash
-        assertEquals(hash, SanshainCache.computeHash("hello"));
-        // Different input → different hash
-        assertNotEquals(hash, SanshainCache.computeHash("world"));
+        String content = "hello world";
+        String hash = SanshainCache.computeHash(content);
+        assertEquals("sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9", hash);
+    }
+
+    @Test
+    public void testComputeHashEmpty() {
+        assertEquals("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", SanshainCache.computeHash(""));
+        assertEquals("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", SanshainCache.computeHash(null));
     }
 
     @Test

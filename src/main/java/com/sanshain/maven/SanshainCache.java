@@ -105,14 +105,13 @@ public class SanshainCache {
      * @return the hash in "sha256:hex" format
      */
     public static String computeHash(String content) {
+        if (content == null) return "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; // Empty string hash
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
-                String h = Integer.toHexString(0xFF & b);
-                if (h.length() == 1) hex.append('0');
-                hex.append(h);
+                hex.append(String.format("%02x", b));
             }
             return "sha256:" + hex;
         } catch (NoSuchAlgorithmException e) {

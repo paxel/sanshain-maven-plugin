@@ -100,7 +100,7 @@ public class ProvideMojo extends AbstractMojo {
         SanshainConfig config = new SanshainConfig().loadConfig(configFile);
         
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
-        String resolvedServiceName = resolveServiceName(config);
+        String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
         String resolvedToken = delegate.resolveToken(token);
         String resolvedBranch = delegate.resolveBranch(branch);
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
@@ -134,11 +134,6 @@ public class ProvideMojo extends AbstractMojo {
         } catch (Exception e) {
             handleException(new MojoExecutionException("Failed to provide specification", e), bestEffort);
         }
-    }
-
-    private String resolveServiceName(SanshainConfig config) {
-        if (serviceName != null) return serviceName;
-        return config.getServiceName();
     }
 
     private void logResolvedValues(String url, String name, boolean comp, boolean ins, String br, String tok, boolean be) {

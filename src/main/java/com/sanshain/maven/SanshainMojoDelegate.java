@@ -169,6 +169,15 @@ public class SanshainMojoDelegate {
         return null;
     }
 
+    public String resolveServiceName(String serviceName, SanshainConfig config) {
+        if (serviceName != null) return serviceName;
+        String name = config.getServiceName();
+        if (name == null) {
+            name = config.getClientName();
+        }
+        return name;
+    }
+
     private String getServerConfigProperty(Server server, String property) {
         if (server == null || server.getConfiguration() == null) return null;
         Object config = server.getConfiguration();
