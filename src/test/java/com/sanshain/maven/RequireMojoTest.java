@@ -12,7 +12,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import org.eclipse.jgit.api.Git;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,9 +58,20 @@ public class RequireMojoTest {
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
+        Field field = findField(target.getClass(), fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private Field findField(Class<?> clazz, String fieldName) throws NoSuchFieldException {
+        try {
+            return clazz.getDeclaredField(fieldName);
+        } catch (NoSuchFieldException e) {
+            if (clazz.getSuperclass() != null) {
+                return findField(clazz.getSuperclass(), fieldName);
+            }
+            throw e;
+        }
     }
 
     @Test
@@ -131,7 +141,7 @@ public class RequireMojoTest {
         RequireMojo mojo = createMojo(yaml);
 
         // Default (non-strict) mode: should warn and skip, not throw
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -147,7 +157,7 @@ public class RequireMojoTest {
         setField(mojo, "serviceName", null);
 
         // Default (non-strict) mode: should warn and skip, not throw
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -360,7 +370,7 @@ public class RequireMojoTest {
                 "serviceName: test-client\n";
 
         RequireMojo mojo = createMojo(yaml);
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -370,7 +380,7 @@ public class RequireMojoTest {
 
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "strict", true);
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        assertThrows(MojoExecutionException.class, mojo::execute);
     }
 
     @Test
@@ -379,7 +389,7 @@ public class RequireMojoTest {
 
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "serviceName", null);
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -389,6 +399,6 @@ public class RequireMojoTest {
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "serviceName", null);
         setField(mojo, "strict", true);
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        assertThrows(MojoExecutionException.class, mojo::execute);
     }
 }

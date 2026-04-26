@@ -26,7 +26,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.net.Socket;
 import javax.net.ssl.SSLEngine;
 
@@ -108,109 +107,89 @@ public class SanshainHttpClient {
         }
     }
 
-    /**
-     * Uploads an OpenAPI specification to the Sanshain service.
-     *
-     * @param baseUrl     the base URL of the Sanshain service
-     * @param token       the authentication token (optional)
-     * @param serviceName the name of the service providing the API
-     * @param branch      the Git branch name
-     * @param openapiYaml the content of the OpenAPI specification
-     * @param compression true if GZIP compression should be used
-     * @param dryRun      true to perform a dry run without persisting
-     * @throws MojoExecutionException if the request fails or is rejected
-     */
     public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        String json = buildProvideJson(serviceName, branch, openapiYaml, dryRun, baseVersion);
-        return postProvideInternal(baseUrl + "/provide", token, json, compression);
+                            String content, boolean compression, boolean dryRun, Integer baseVersion, String apiType) throws MojoExecutionException {
+        String path = "/provide";
+        String contentField = "openapi_yaml";
+        String type = "openapi";
+        
+        if ("asyncapi".equalsIgnoreCase(apiType)) {
+            path = "/provide/asyncapi";
+            contentField = "asyncapi_yaml";
+            type = "asyncapi";
+        } else if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
+            path = "/provide/grpc";
+            contentField = "proto_content";
+            type = "proto";
+        }
+
+        ProvideGenericPayload payload = new ProvideGenericPayload();
+        payload.servicename = serviceName;
+        payload.branch = branch;
+        payload.content = content;
+        payload.dryRun = dryRun;
+        payload.apiType = type;
+        payload.baseVersion = baseVersion;
+        payload.contentField = contentField;
+
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            return postProvideInternal(baseUrl + path, token, json, compression);
+        } catch (JsonProcessingException e) {
+            throw new MojoExecutionException("Failed to build JSON for " + path, e);
+        }
     }
 
-    /**
-     * Backward-compatible overload without baseVersion.
-     * @param baseUrl     the base URL
-     * @param token       the token
-     * @param serviceName the service name
-     * @param branch      the branch
-     * @param openapiYaml the spec content
-     * @param compression whether to compress
-     * @param dryRun      whether dry run
-     * @return the provide response
-     * @throws MojoExecutionException on failure
-     */
+    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
+                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
+        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, baseVersion, "openapi");
+    }
+
     public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
                             String openapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
         return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, null);
     }
 
-    /**
-     * Uploads an AsyncAPI specification to the Sanshain service.
-     *
-     * @param baseUrl      the base URL of the Sanshain service
-     * @param token        the authentication token (optional)
-     * @param serviceName  the name of the service providing the API
-     * @param branch       the Git branch name
-     * @param asyncapiYaml the content of the AsyncAPI specification
-     * @param compression  true if GZIP compression should be used
-     * @param dryRun       true to perform a dry run without persisting
-     * @throws MojoExecutionException if the request fails or is rejected
-     */
     public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
                                     String asyncapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        String json = buildProvideAsyncApiJson(serviceName, branch, asyncapiYaml, dryRun, baseVersion);
-        return postProvideInternal(baseUrl + "/provide/asyncapi", token, json, compression);
+        return postProvide(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, baseVersion, "asyncapi");
     }
 
-    /**
-     * Backward-compatible overload without baseVersion.
-     * @param baseUrl      the base URL
-     * @param token        the token
-     * @param serviceName  the service name
-     * @param branch       the branch
-     * @param asyncapiYaml the spec content
-     * @param compression  whether to compress
-     * @param dryRun       whether dry run
-     * @return the provide response
-     * @throws MojoExecutionException on failure
-     */
     public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
                                     String asyncapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
         return postProvideAsyncApi(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, null);
     }
 
-    /**
-     * Uploads a Protocol Buffers specification to the Sanshain service.
-     *
-     * @param baseUrl      the base URL of the Sanshain service
-     * @param token        the authentication token (optional)
-     * @param serviceName  the name of the service providing the API
-     * @param branch       the Git branch name
-     * @param protoContent the content of the Protocol Buffers specification
-     * @param compression  true if GZIP compression should be used
-     * @param dryRun       true to perform a dry run without persisting
-     * @throws MojoExecutionException if the request fails or is rejected
-     */
     public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
                                  String protoContent, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        String json = buildProvideProtoJson(serviceName, branch, protoContent, dryRun, baseVersion);
-        return postProvideInternal(baseUrl + "/provide/grpc", token, json, compression);
+        return postProvide(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, baseVersion, "proto");
     }
 
-    /**
-     * Backward-compatible overload without baseVersion.
-     * @param baseUrl      the base URL
-     * @param token        the token
-     * @param serviceName  the service name
-     * @param branch       the branch
-     * @param protoContent the spec content
-     * @param compression  whether to compress
-     * @param dryRun       whether dry run
-     * @return the provide response
-     * @throws MojoExecutionException on failure
-     */
     public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
                                  String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
         return postProvideProto(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, null);
+    }
+
+    private static class ProvideGenericPayload {
+        public String servicename;
+        public String branch;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public String content;
+        @JsonProperty("dry_run")
+        public boolean dryRun;
+        @JsonProperty("api_type")
+        public String apiType;
+        @JsonProperty("base_version")
+        public Integer baseVersion;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public String contentField;
+
+        @com.fasterxml.jackson.annotation.JsonAnyGetter
+        public java.util.Map<String, Object> any() {
+            java.util.Map<String, Object> any = new java.util.HashMap<>();
+            any.put(contentField, content);
+            return any;
+        }
     }
 
     private ProvideResponse postProvideInternal(String url, String token, String json, boolean compression) throws MojoExecutionException {
@@ -519,29 +498,22 @@ public class SanshainHttpClient {
         if (body == null || body.length == 0) {
             return "";
         }
-        String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
-        if ("gzip".equalsIgnoreCase(contentEncoding)) {
+        if ("gzip".equalsIgnoreCase(response.headers().firstValue("Content-Encoding").orElse(""))) {
             body = gzipDecompress(body);
         }
         return new String(body, StandardCharsets.UTF_8);
     }
 
     private void logResponseHeaders(HttpResponse<?> response) {
-        response.headers().map().forEach((name, values) -> {
-            for (String value : values) {
-                log.debug("Response header: " + name + ": " + value);
-            }
-        });
+        response.headers().map().forEach((name, values) -> 
+            values.forEach(value -> log.debug("Response header: " + name + ": " + value))
+        );
     }
 
     private String sanitize(String text) {
         if (text == null) return "";
-        // Limit length
-        if (text.length() > 1000) {
-            text = text.substring(0, 1000) + "... (truncated)";
-        }
-        // Replace non-printable characters except common whitespace
-        return text.replaceAll("[^\\p{Print}\\p{Space}]", "?");
+        String result = text.length() > 1000 ? text.substring(0, 1000) + "... (truncated)" : text;
+        return result.replaceAll("[^\\p{Print}\\p{Space}]", "?");
     }
 
     private String buildProvideJson(String serviceName, String branch, String openapiYaml, boolean dryRun, Integer baseVersion) throws MojoExecutionException {

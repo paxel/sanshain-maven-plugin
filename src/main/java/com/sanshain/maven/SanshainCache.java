@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -24,7 +23,7 @@ public class SanshainCache {
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
     private final File cacheFile;
-    private CacheState state;
+    private final CacheState state;
 
     /**
      * Creates a cache instance for the given target directory.
@@ -111,7 +110,9 @@ public class SanshainCache {
             byte[] hash = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
-                hex.append(String.format("%02x", b));
+                String h = Integer.toHexString(0xFF & b);
+                if (h.length() == 1) hex.append('0');
+                hex.append(h);
             }
             return "sha256:" + hex;
         } catch (NoSuchAlgorithmException e) {

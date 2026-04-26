@@ -38,7 +38,7 @@ public class ProvideResponse {
         int inserts = changes != null ? changes.inserts : 0;
         int updates = changes != null ? changes.updates : 0;
         int deletes = changes != null ? changes.deletes : 0;
-        return "\u2713 Provided to Sanshain v" + version + ": " +
+        return "✓ Provided to Sanshain v" + version + ": " +
                 inserts + " new, " + updates + " updated, " + deletes + " deleted endpoints";
     }
 

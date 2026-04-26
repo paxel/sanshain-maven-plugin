@@ -54,33 +54,37 @@ public class SanshainConfig {
     }
 
     private void applyEnvOverrides(SanshainConfig config) {
-        String url = System.getenv("SANSHAIN_URL");
-        if (url != null) {
-            config.setSanshainUrl(url);
+        config.setSanshainUrl(getEnv("SANSHAIN_URL", config.getSanshainUrl()));
+        
+        String serviceNameEnv = getEnv("SANSHAIN_SERVICE_NAME", getEnv("SANSHAIN_CLIENT_NAME", null));
+        if (serviceNameEnv != null) {
+            config.setServiceName(serviceNameEnv);
         }
-        String serviceName = System.getenv("SANSHAIN_SERVICE_NAME");
-        if (serviceName == null) {
-            serviceName = System.getenv("SANSHAIN_CLIENT_NAME");
+
+        String timeoutEnv = System.getenv("SANSHAIN_TIMEOUT");
+        if (timeoutEnv != null) {
+            config.setTimeout(Integer.parseInt(timeoutEnv));
         }
-        if (serviceName != null) {
-            config.setServiceName(serviceName);
+
+        String compressionEnv = System.getenv("SANSHAIN_COMPRESSION");
+        if (compressionEnv != null) {
+            config.setCompression(Boolean.parseBoolean(compressionEnv));
         }
-        String timeout = System.getenv("SANSHAIN_TIMEOUT");
-        if (timeout != null) {
-            config.setTimeout(Integer.parseInt(timeout));
+
+        String insecureEnv = System.getenv("SANSHAIN_INSECURE");
+        if (insecureEnv != null) {
+            config.setInsecure(Boolean.parseBoolean(insecureEnv));
         }
-        String compression = System.getenv("SANSHAIN_COMPRESSION");
-        if (compression != null) {
-            config.setCompression(Boolean.parseBoolean(compression));
+
+        String bestEffortEnv = System.getenv("SANSHAIN_BEST_EFFORT");
+        if (bestEffortEnv != null) {
+            config.setBestEffort(Boolean.parseBoolean(bestEffortEnv));
         }
-        String insecure = System.getenv("SANSHAIN_INSECURE");
-        if (insecure != null) {
-            config.setInsecure(Boolean.parseBoolean(insecure));
-        }
-        String bestEffort = System.getenv("SANSHAIN_BEST_EFFORT");
-        if (bestEffort != null) {
-            config.setBestEffort(Boolean.parseBoolean(bestEffort));
-        }
+    }
+
+    private String getEnv(String name, String defaultValue) {
+        String value = System.getenv(name);
+        return value != null ? value : defaultValue;
     }
 
     /**

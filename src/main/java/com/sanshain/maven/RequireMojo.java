@@ -26,17 +26,11 @@ import java.util.Map;
 @Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES, requiresProject = false)
 public class RequireMojo extends AbstractMojo {
 
-    /** Creates a new instance of the require goal. */
-    public RequireMojo() {}
-
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File baseDir;
 
     @Parameter(property = "configFile")
     private File configFile;
-
-    @Parameter(property = "sanshain.service.name")
-    private String serviceName;
 
     @Parameter(property = "sanshain.url")
     private String sanshainUrl;
@@ -44,23 +38,11 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.token")
     private String token;
 
-    @Parameter(property = "sanshain.timeout")
-    private Integer timeout;
-
-    @Parameter(property = "sanshain.compression")
-    private Boolean compression;
-
-    @Parameter(property = "sanshain.insecure")
-    private Boolean insecure;
-
     @Parameter(property = "sanshain.serverId", defaultValue = "sanshain")
     private String serverId;
 
     @Parameter(property = "sanshain.skip", defaultValue = "false")
     private boolean skip;
-
-    @Parameter(property = "sanshain.require.skip", defaultValue = "false")
-    private boolean skipRequire;
 
     @Parameter(property = "sanshain.dry.run", defaultValue = "false")
     private boolean dryRun;
@@ -71,16 +53,36 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.branch")
     private String branch;
 
+    @Parameter(property = "sanshain.insecure")
+    private Boolean insecure;
+
+    @Parameter(property = "sanshain.compression")
+    private Boolean compression;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
-    public void execute() throws MojoExecutionException {
+    @Parameter(property = "sanshain.service.name")
+    private String serviceName;
+
+    @Parameter(property = "sanshain.timeout")
+    private Integer timeout;
+
+    @Parameter(property = "sanshain.require.skip", defaultValue = "false")
+    private boolean skipRequire;
+
+    private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
         }
         if (configFile == null) {
             configFile = new File(baseDir, "sanshain.yaml");
         }
+    }
+
+    public void execute() throws MojoExecutionException {
+        initDefaults();
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(getLog(), settings, baseDir, serverId, strict);
 
         if (skip || skipRequire) {
             getLog().info("Skipping sanshain:require (" + (skipRequire ? "sanshain.require.skip" : "sanshain.skip") + "=true)");
@@ -92,71 +94,30 @@ public class RequireMojo extends AbstractMojo {
 
         SanshainConfig config = new SanshainConfig().loadConfig(configFile);
 
-        // Resolve sanshainUrl: maven property > settings.xml > yaml > default
-        if (sanshainUrl == null) {
-            String settingsUrl = resolveUrlFromSettings();
-            if (settingsUrl != null) {
-                sanshainUrl = settingsUrl;
-            } else if (config.getSanshainUrl() != null) {
-                sanshainUrl = config.getSanshainUrl();
-            } else {
-                sanshainUrl = "http://localhost:8080";
-            }
-        }
-
-        // Resolve serviceName
-        if (serviceName == null && config.getClientName() != null) {
-            serviceName = config.getClientName();
-        }
-        if (serviceName == null) {
-            if (strict) {
-                throw new MojoExecutionException("serviceName is required (either in pom.xml or sanshain.yaml)");
-            }
-            getLog().warn("No serviceName configured. Skipping sanshain:require. Set sanshain.strict=true to fail in this case.");
+        String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
+        String resolvedServiceName = resolveServiceName(config);
+        
+        if (resolvedServiceName == null) {
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)");
             return;
         }
 
-        // Resolve token
-        String resolvedToken = resolveToken();
+        String resolvedToken = delegate.resolveToken(token);
+        int globalTimeout = resolveGlobalTimeout(config);
+        boolean resolvedCompression = delegate.resolveCompression(compression, config);
+        boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
+        String resolvedBranch = delegate.resolveBranch(branch);
+        boolean bestEffort = config.getBestEffort() != null && config.getBestEffort();
+
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
         }
 
-        // Resolve global timeout (default 120)
-        int globalTimeout = resolveGlobalTimeout(config);
+        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, globalTimeout);
 
-        // Resolve compression
-        boolean resolvedCompression = resolveCompression(config);
-
-        // Resolve insecure
-        boolean resolvedInsecure = resolveInsecure(config);
-
-        // Resolve branch: maven property > env > git > default
-        if (branch == null) {
-            branch = System.getenv("SANSHAIN_BRANCH");
-        }
-        if (branch == null) {
-            branch = getGitBranch();
-        }
-        if (branch == null) {
-            branch = "main";
-        }
-
-        getLog().debug("Resolved sanshainUrl: " + sanshainUrl);
-        getLog().debug("Resolved serviceName: " + serviceName);
-        getLog().debug("Resolved compression: " + resolvedCompression);
-        getLog().debug("Resolved insecure: " + resolvedInsecure);
-        getLog().debug("Resolved branch: " + branch);
-        getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
-        getLog().debug("Resolved global timeout: " + globalTimeout + "s");
-
-        // Get requires from config
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
         if (requires == null || requires.isEmpty()) {
-            if (strict) {
-                throw new MojoExecutionException("requires are required in sanshain.yaml");
-            }
-            getLog().warn("No requires configured in sanshain.yaml. Skipping sanshain:require. Set sanshain.strict=true to fail in this case.");
+            delegate.abort("No requires configured in sanshain.yaml.");
             return;
         }
 
@@ -167,150 +128,14 @@ public class RequireMojo extends AbstractMojo {
             getLog().info("Dry-run mode enabled — endpoints will be validated but no dependencies recorded.");
         }
 
-        boolean bestEffort = config.getBestEffort() != null && config.getBestEffort();
-
         for (SanshainConfig.RequireConfig req : requires) {
-            String reqServiceName = req.getServiceName();
-            int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
-            String apiType = req.getApiType();
-            String reqBranch = req.getBranch() != null ? req.getBranch() : branch;
-
-            String outputDir = req.getOutputDirectory();
-            if (outputDir == null) {
-                outputDir = "target/generated-sources/sanshain";
-            }
-            File outputDirectory = new File(baseDir, outputDir);
-            if (!outputDirectory.exists()) {
-                outputDirectory.mkdirs();
-            }
-
-            List<SanshainConfig.EndpointConfig> endpoints = req.getEndpoints();
-            if (endpoints == null || endpoints.isEmpty()) {
-                getLog().warn("No endpoints defined for service: " + reqServiceName);
-                continue;
-            }
-
-            if (endpoints.size() >= 2) {
-                // Use /require-bundle for multiple endpoints (deduplicated schemas)
-                getLog().info("Requiring bundle: " + reqServiceName + " (" + endpoints.size() +
-                        " endpoints, branch: " + reqBranch + ", timeout: " + reqTimeout + "s" +
-                        (apiType != null ? ", type: " + apiType : "") + ")");
-
-                try {
-                    String cacheKey = SanshainCache.requireBundleKey(reqServiceName, reqBranch);
-                    SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-                    String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
-
-                    RequireResult result = client.postRequireBundleWithEtag(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, reqBranch, endpoints, reqTimeout, resolvedCompression, dryRun, apiType, cachedEtag);
-
-                    if (result.isNotModified()) {
-                        getLog().info("\u23ed " + reqServiceName + " spec unchanged (304), skipping code generation.");
-                    } else {
-                        String ext = "yaml";
-                        if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
-                        String fileName = reqServiceName + "_bundle." + ext;
-                        Path outputFile = outputDirectory.toPath().resolve(fileName);
-                        Files.writeString(outputFile, result.getContent());
-                        getLog().info("Saved bundle: " + outputFile);
-
-                        if (result.getEtag() != null) {
-                            cache.updateRequireEntry(cacheKey, result.getEtag());
-                            cache.save();
-                        }
-                    }
-                } catch (MojoExecutionException e) {
-                    if (bestEffort) {
-                        getLog().warn("Sanshain require-bundle failed for " + reqServiceName + " (best effort): " + e.getMessage());
-                    } else {
-                        throw e;
-                    }
-                } catch (IOException e) {
-                    throw new MojoExecutionException("Failed to write bundle file for " + reqServiceName, e);
-                }
-            } else {
-                // Single endpoint: use individual /require GET call
-                SanshainConfig.EndpointConfig endpoint = endpoints.get(0);
-                String method = endpoint.getMethod();
-                String path = endpoint.getPath();
-
-                getLog().info("Requiring: " + reqServiceName + " " + method + " " + path +
-                        " (branch: " + reqBranch + ", timeout: " + reqTimeout + "s" +
-                        (apiType != null ? ", type: " + apiType : "") + ")");
-
-                try {
-                    String cacheKey = SanshainCache.requireKey(reqServiceName, reqBranch, method, path);
-                    SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-                    String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
-
-                    RequireResult result = client.getRequireWithEtag(sanshainUrl, resolvedToken, serviceName,
-                            reqServiceName, reqBranch, path, method, reqTimeout, resolvedCompression, dryRun, apiType, cachedEtag);
-
-                    if (result.isNotModified()) {
-                        getLog().info("\u23ed " + reqServiceName + " spec unchanged (304), skipping code generation.");
-                    } else {
-                        String ext = "yaml";
-                        if ("proto".equalsIgnoreCase(apiType)) ext = "proto";
-                        String fileName = reqServiceName + "_" +
-                                path.replace("/", "_").replaceFirst("^_", "") +
-                                "_" + method + "." + ext;
-                        Path outputFile = outputDirectory.toPath().resolve(fileName);
-                        Files.writeString(outputFile, result.getContent());
-                        getLog().info("Saved: " + outputFile);
-
-                        if (result.getEtag() != null) {
-                            cache.updateRequireEntry(cacheKey, result.getEtag());
-                            cache.save();
-                        }
-                    }
-                } catch (MojoExecutionException e) {
-                    if (bestEffort) {
-                        getLog().warn("Sanshain require failed for " + reqServiceName + " " + method + " " + path + " (best effort): " + e.getMessage());
-                    } else {
-                        throw e;
-                    }
-                } catch (IOException e) {
-                    throw new MojoExecutionException("Failed to write file for " + reqServiceName + " " + path, e);
-                }
-            }
+            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, globalTimeout, resolvedCompression, bestEffort);
         }
     }
 
-    private String resolveToken() {
-        String envToken = System.getenv("SANSHAIN_TOKEN");
-        if (envToken != null) return envToken;
-
-        if (settings != null) {
-            Server server = settings.getServer(serverId);
-            if (server != null && server.getPassword() != null) {
-                return server.getPassword();
-            }
-        }
-
-        return token;
-    }
-
-    private String resolveUrlFromSettings() {
-        if (settings == null) return null;
-        Server server = settings.getServer(serverId);
-        if (server == null) return null;
-        return getServerConfigProperty(server, "sanshainUrl");
-    }
-
-    private String getServerConfigProperty(Server server, String property) {
-        Object configuration = server.getConfiguration();
-        if (configuration == null) return null;
-        // Configuration is typically an Xpp3Dom; use reflection to avoid compile-time dependency
-        try {
-            java.lang.reflect.Method getChild = configuration.getClass().getMethod("getChild", String.class);
-            Object child = getChild.invoke(configuration, property);
-            if (child == null) return null;
-            java.lang.reflect.Method getValue = child.getClass().getMethod("getValue");
-            Object value = getValue.invoke(child);
-            return value != null ? value.toString() : null;
-        } catch (Exception e) {
-            return null;
-        }
+    private String resolveServiceName(SanshainConfig config) {
+        if (serviceName != null) return serviceName;
+        return config.getClientName();
     }
 
     private int resolveGlobalTimeout(SanshainConfig config) {
@@ -319,149 +144,109 @@ public class RequireMojo extends AbstractMojo {
         return 120;
     }
 
-    private boolean resolveCompression(SanshainConfig config) {
-        if (compression != null) return compression;
-        if (config.getCompression() != null) return config.getCompression();
-        return true;
+    private void logResolvedValues(String url, String name, boolean comp, boolean ins, String br, String tok, int timeout) {
+        getLog().debug("Resolved sanshainUrl: " + url);
+        getLog().debug("Resolved serviceName: " + name);
+        getLog().debug("Resolved compression: " + comp);
+        getLog().debug("Resolved insecure: " + ins);
+        getLog().debug("Resolved branch: " + br);
+        getLog().debug("Resolved token: " + (tok != null ? "[set]" : "[not set]"));
+        getLog().debug("Resolved global timeout: " + timeout + "s");
     }
 
-    private boolean resolveInsecure(SanshainConfig config) {
-        if (insecure != null) return insecure;
-        if (config.getInsecure() != null) return config.getInsecure();
-        return false;
-    }
+    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String defaultBranch, int globalTimeout, boolean compression, boolean bestEffort) throws MojoExecutionException {
+        String reqServiceName = req.getServiceName();
+        int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
+        String apiType = req.getApiType();
+        String reqBranch = req.getBranch() != null ? req.getBranch() : defaultBranch;
 
-    private String getGitBranch() {
-        // Check CI environment variables first
-        String ciBranch = detectBranchFromCIEnvironment();
-        if (ciBranch != null) {
-            getLog().debug("Detected branch from CI environment: " + ciBranch);
-            return ciBranch;
+        File outputDirectory = resolveOutputDirectory(req);
+
+        List<SanshainConfig.EndpointConfig> endpoints = req.getEndpoints();
+        if (endpoints == null || endpoints.isEmpty()) {
+            getLog().warn("No endpoints defined for service: " + reqServiceName);
+            return;
         }
 
         try {
-            FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            try (Repository repository = builder.readEnvironment()
-                    .findGitDir(baseDir)
-                    .build()) {
-                if (repository != null) {
-                    String branch = repository.getBranch();
-                    // getBranch() returns a SHA when HEAD is detached (common in CI)
-                    if (branch != null && branch.matches("[0-9a-f]{40}")) {
-                        getLog().debug("HEAD is detached at " + branch + ", resolving branch from refs");
-                        String resolved = resolveBranchFromDetachedHead(repository, ObjectId.fromString(branch));
-                        if (resolved != null) {
-                            getLog().debug("Resolved detached HEAD to branch: " + resolved);
-                            return resolved;
-                        }
-                        getLog().debug("Could not resolve detached HEAD to a branch name via refs, trying git CLI");
-                        String cliBranch = resolveBranchFromGitCli();
-                        if (cliBranch != null) {
-                            getLog().debug("Resolved detached HEAD to branch via git CLI: " + cliBranch);
-                            return cliBranch;
-                        }
-                        return null;
-                    }
-                    return branch;
-                }
+            if (endpoints.size() >= 2) {
+                requireBundle(req, client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory);
+            } else {
+                requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory);
             }
-        } catch (IOException | IllegalArgumentException e) {
-            getLog().debug("Could not determine git branch: " + e.getMessage());
+        } catch (MojoExecutionException e) {
+            if (bestEffort) {
+                getLog().warn("Sanshain require failed for " + reqServiceName + " (best effort): " + e.getMessage());
+            } else {
+                throw e;
+            }
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to write spec file for " + reqServiceName, e);
         }
-        return null;
     }
 
-    private String detectBranchFromCIEnvironment() {
-        // GitHub Actions
-        String ref = System.getenv("GITHUB_HEAD_REF");
-        if (ref != null && !ref.isEmpty()) return ref;
-        ref = System.getenv("GITHUB_REF_NAME");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        // GitLab CI
-        ref = System.getenv("CI_COMMIT_BRANCH");
-        if (ref != null && !ref.isEmpty()) return ref;
-        ref = System.getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        // Jenkins
-        ref = System.getenv("GIT_BRANCH");
-        if (ref != null && !ref.isEmpty()) {
-            // Jenkins often prefixes with "origin/"
-            if (ref.startsWith("origin/")) return ref.substring("origin/".length());
-            return ref;
+    private File resolveOutputDirectory(SanshainConfig.RequireConfig req) {
+        String outputDir = req.getOutputDirectory();
+        if (outputDir == null) {
+            outputDir = "target/generated-sources/sanshain";
         }
-        ref = System.getenv("BRANCH_NAME");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        // Bitbucket Pipelines
-        ref = System.getenv("BITBUCKET_BRANCH");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        // Azure DevOps
-        ref = System.getenv("BUILD_SOURCEBRANCH");
-        if (ref != null && !ref.isEmpty()) {
-            if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length());
-            return ref;
+        File dir = new File(baseDir, outputDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
         }
-
-        // Travis CI
-        ref = System.getenv("TRAVIS_BRANCH");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        // CircleCI
-        ref = System.getenv("CIRCLE_BRANCH");
-        if (ref != null && !ref.isEmpty()) return ref;
-
-        return null;
+        return dir;
     }
 
-    private String resolveBranchFromGitCli() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("git", "branch", "-a", "--contains", "HEAD");
-            pb.directory(baseDir);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            String output = new String(process.getInputStream().readAllBytes());
-            process.waitFor();
-            for (String rawLine : output.split("\n")) {
-                String line = rawLine.trim();
-                if (line.isEmpty() || line.startsWith("(") || line.startsWith("* (")) continue;
-                if (line.startsWith("* ")) line = line.substring(2);
-                if (line.startsWith("remotes/origin/")) {
-                    String candidate = line.substring("remotes/origin/".length());
-                    if (!"HEAD".equals(candidate)) return candidate;
-                    continue;
-                }
-                return line;
+    private void requireBundle(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+        String reqServiceName = req.getServiceName();
+        getLog().info("Requiring bundle: " + reqServiceName + " (" + req.getEndpoints().size() + " endpoints, branch: " + branch + ")");
+
+        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, branch);
+        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+
+        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, branch, req.getEndpoints(), timeout, compression, dryRun, apiType, cachedEtag);
+
+        if (result.isNotModified()) {
+            getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
+        } else {
+            String fileName = reqServiceName + "_bundle." + ( "proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+            Path outputFile = outputDirectory.toPath().resolve(fileName);
+            Files.writeString(outputFile, result.getContent());
+            getLog().info("Saved bundle: " + outputFile);
+
+            if (result.getEtag() != null) {
+                cache.updateRequireEntry(cacheKey, result.getEtag());
+                cache.save();
             }
-        } catch (Exception e) {
-            getLog().debug("git CLI branch resolution failed: " + e.getMessage());
         }
-        return null;
     }
 
-    private String resolveBranchFromDetachedHead(Repository repository, ObjectId headId) throws IOException {
-        Map<String, Ref> refs = repository.getRefDatabase().getRefs("refs/heads/");
-        for (Map.Entry<String, Ref> entry : refs.entrySet()) {
-            Ref ref = entry.getValue();
-            ObjectId refId = ref.getObjectId();
-            if (refId != null && refId.equals(headId)) {
-                return entry.getKey();
+    private void requireSingle(SanshainConfig.RequireConfig req, SanshainConfig.EndpointConfig endpoint, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+        String reqServiceName = req.getServiceName();
+        String method = endpoint.getMethod();
+        String path = endpoint.getPath();
+
+        getLog().info("Requiring: " + reqServiceName + " " + method + " " + path + " (branch: " + branch + ")");
+
+        String cacheKey = SanshainCache.requireKey(reqServiceName, branch, method, path);
+        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+
+        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, branch, path, method, timeout, compression, dryRun, apiType, cachedEtag);
+
+        if (result.isNotModified()) {
+            getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
+        } else {
+            String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+            Path outputFile = outputDirectory.toPath().resolve(fileName);
+            Files.writeString(outputFile, result.getContent());
+            getLog().info("Saved: " + outputFile);
+
+            if (result.getEtag() != null) {
+                cache.updateRequireEntry(cacheKey, result.getEtag());
+                cache.save();
             }
         }
-        // Also check remote tracking branches
-        Map<String, Ref> remoteRefs = repository.getRefDatabase().getRefs("refs/remotes/origin/");
-        for (Map.Entry<String, Ref> entry : remoteRefs.entrySet()) {
-            Ref ref = entry.getValue();
-            ObjectId refId = ref.getObjectId();
-            if (refId != null && refId.equals(headId)) {
-                String name = entry.getKey();
-                if (!"HEAD".equals(name)) {
-                    return name;
-                }
-            }
-        }
-        return null;
     }
 }

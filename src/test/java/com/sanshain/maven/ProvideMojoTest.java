@@ -44,9 +44,20 @@ public class ProvideMojoTest {
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
+        Field field = findField(target.getClass(), fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private Field findField(Class<?> clazz, String fieldName) throws NoSuchFieldException {
+        try {
+            return clazz.getDeclaredField(fieldName);
+        } catch (NoSuchFieldException e) {
+            if (clazz.getSuperclass() != null) {
+                return findField(clazz.getSuperclass(), fieldName);
+            }
+            throw e;
+        }
     }
 
     private ProvideMojo createMojo(String yamlContent, String openapiContent) throws Exception {
@@ -72,26 +83,26 @@ public class ProvideMojoTest {
 
     @Test
     public void testGetGitBranch() throws Exception {
-        ProvideMojo mojo = new ProvideMojo();
-        setField(mojo, "baseDir", new File("."));
+        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, new File("."), null, false);
 
-        Method getGitBranchMethod = ProvideMojo.class.getDeclaredMethod("getGitBranch");
+        Method getGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getGitBranch");
         getGitBranchMethod.setAccessible(true);
 
-        String branch = (String) getGitBranchMethod.invoke(mojo);
+        String branch = (String) getGitBranchMethod.invoke(delegate);
         assertNotNull(branch);
     }
 
     @Test
     public void testGetGitBranchNoRepo(@TempDir Path emptyDir) throws Exception {
-        ProvideMojo mojo = new ProvideMojo();
-        setField(mojo, "baseDir", emptyDir.toFile());
+        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, emptyDir.toFile(), null, false);
 
-        Method getGitBranchMethod = ProvideMojo.class.getDeclaredMethod("getGitBranch");
+        Method getGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getGitBranch");
         getGitBranchMethod.setAccessible(true);
 
         // No git repo -> should return null unless CI environment variables provide a branch
-        String branch = (String) getGitBranchMethod.invoke(mojo);
+        String branch = (String) getGitBranchMethod.invoke(delegate);
         boolean ciEnvironment = System.getenv("GITHUB_REF_NAME") != null
                 || System.getenv("GITHUB_HEAD_REF") != null
                 || System.getenv("CI_COMMIT_REF_NAME") != null
@@ -134,7 +145,7 @@ public class ProvideMojoTest {
         setField(mojo, "serviceName", null);
 
         // Default (non-strict) mode: should warn and skip, not throw
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -145,7 +156,7 @@ public class ProvideMojoTest {
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
 
-        assertThrows(Exception.class, () -> mojo.execute());
+        assertThrows(Exception.class, mojo::execute);
     }
 
     @Test
@@ -194,7 +205,7 @@ public class ProvideMojoTest {
         setField(mojo, "sanshainUrl", null);
 
         // This will fail to connect to localhost:8080, but we can verify the error message
-        Exception ex = assertThrows(Exception.class, () -> mojo.execute());
+        Exception ex = assertThrows(Exception.class, mojo::execute);
         assertTrue(ex.getMessage().contains("localhost:8080") || ex.getMessage().contains("Failed to connect"));
     }
 
@@ -353,7 +364,7 @@ public class ProvideMojoTest {
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
         setField(mojo, "serviceName", null);
         // openApiFile points to a file that exists but no serviceName → should skip
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -363,7 +374,7 @@ public class ProvideMojoTest {
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
         setField(mojo, "serviceName", null);
         setField(mojo, "strict", true);
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        assertThrows(MojoExecutionException.class, mojo::execute);
     }
 
     @Test
@@ -375,7 +386,7 @@ public class ProvideMojoTest {
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
         // Remove the default openapi file so nothing is found
         setField(mojo, "openApiFile", new File(tempDir.toFile(), "nonexistent.yaml"));
-        assertDoesNotThrow(() -> mojo.execute());
+        assertDoesNotThrow(mojo::execute);
     }
 
     @Test
@@ -386,7 +397,7 @@ public class ProvideMojoTest {
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
         setField(mojo, "openApiFile", new File(tempDir.toFile(), "nonexistent.yaml"));
         setField(mojo, "strict", true);
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        assertThrows(MojoExecutionException.class, mojo::execute);
     }
 
     @Test
@@ -401,6 +412,16 @@ public class ProvideMojoTest {
 
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
 
-        assertThrows(MojoExecutionException.class, () -> mojo.execute());
+        assertThrows(MojoExecutionException.class, mojo::execute);
+    }
+    private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {
+        try {
+            return clazz.getDeclaredMethod(methodName, parameterTypes);
+        } catch (NoSuchMethodException e) {
+            if (clazz.getSuperclass() != null) {
+                return findMethod(clazz.getSuperclass(), methodName, parameterTypes);
+            }
+            throw e;
+        }
     }
 }
