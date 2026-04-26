@@ -17,6 +17,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,29 +84,37 @@ public class ProvideMojoTest {
         return mojo;
     }
 
+    private SanshainMojoDelegate createDelegate(File baseDir) {
+        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, baseDir, null, false);
+        delegate.setEnvironmentVariables(Collections.emptyMap());
+        return delegate;
+    }
+
     @Test
     public void testGetGitBranch() throws Exception {
-        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
-        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, new File("."), null, false);
+        SanshainMojoDelegate delegate = createDelegate(new File("."));
 
-        Method getGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getGitBranch");
-        getGitBranchMethod.setAccessible(true);
+        Method getJGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getJGitBranch");
+        getJGitBranchMethod.setAccessible(true);
 
-        String branch = (String) getGitBranchMethod.invoke(delegate);
-        assertNotNull(branch);
+        // getJGitBranch only returns a branch when JGit finds a real (non-detached) branch.
+        // In CI (detached HEAD / shallow clone), it returns null — that's expected.
+        String branch = (String) getJGitBranchMethod.invoke(delegate);
+        if (branch != null) {
+            assertFalse(branch.isEmpty(), "Branch name should not be empty");
+        }
     }
 
     @Test
     public void testGetGitBranchNoRepo(@TempDir Path emptyDir) throws Exception {
-        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
-        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, emptyDir.toFile(), null, false);
+        SanshainMojoDelegate delegate = createDelegate(emptyDir.toFile());
 
-        Method getGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getGitBranch");
-        getGitBranchMethod.setAccessible(true);
+        Method getJGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getJGitBranch");
+        getJGitBranchMethod.setAccessible(true);
 
-        // No git repo -> getGitBranch only checks JGit and CLI, not CI env vars
-        // CI env var detection is handled by resolveBranch, not getGitBranch
-        String branch = (String) getGitBranchMethod.invoke(delegate);
+        // No git repo -> JGit cannot find a branch
+        String branch = (String) getJGitBranchMethod.invoke(delegate);
         assertNull(branch);
     }
 
@@ -403,14 +414,55 @@ public class ProvideMojoTest {
         assertThrows(MojoExecutionException.class, mojo::execute);
     }
     @Test
-    public void testResolveBranchCIOverrides() throws Exception {
-        org.apache.maven.plugin.logging.Log log = new org.apache.maven.monitor.logging.DefaultLog(new org.codehaus.plexus.logging.console.ConsoleLogger());
-        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, tempDir.toFile(), null, false);
+    public void testResolveBranchExplicitValue() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
 
-        // This test depends on the environment, but we can't easily mock System.getenv() without extra libraries
-        // However, we can test that if we call resolveBranch(null) it doesn't fail.
+        // Explicit branch value should always be returned as-is
+        assertEquals("my-feature", delegate.resolveBranch("my-feature"));
+    }
+
+    @Test
+    public void testResolveBranchFromCIEnvironment() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+
+        // Set GITHUB_REF_NAME as a CI variable
+        Map<String, String> ciEnv = new HashMap<>();
+        ciEnv.put("GITHUB_REF_NAME", "ci-branch-42");
+        delegate.setEnvironmentVariables(ciEnv);
+
+        assertEquals("ci-branch-42", delegate.resolveBranch(null));
+    }
+
+    @Test
+    public void testResolveBranchSanshainBranchEnvWins() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+
+        Map<String, String> ciEnv = new HashMap<>();
+        ciEnv.put("SANSHAIN_BRANCH", "sanshain-wins");
+        ciEnv.put("GITHUB_REF_NAME", "github-loses");
+        delegate.setEnvironmentVariables(ciEnv);
+
+        assertEquals("sanshain-wins", delegate.resolveBranch(null));
+    }
+
+    @Test
+    public void testResolveBranchNoCIFallsToJGit() throws Exception {
+        // tempDir has a git repo (initialized in setUp)
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+
+        // No CI env vars set (empty map from createDelegate)
         String branch = delegate.resolveBranch(null);
-        assertNotNull(branch);
+        // JGit should find the branch from the repo initialized in setUp
+        assertNotNull(branch, "JGit should detect branch from test repo");
+    }
+
+    @Test
+    public void testResolveBranchNoRepoNoCIReturnsNull(@TempDir Path emptyDir) throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(emptyDir.toFile());
+
+        // No CI env, no git repo -> null
+        String branch = delegate.resolveBranch(null);
+        assertNull(branch, "Should return null when no branch source is available");
     }
 
     private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {

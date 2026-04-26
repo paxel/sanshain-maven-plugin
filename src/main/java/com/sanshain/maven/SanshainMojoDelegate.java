@@ -10,7 +10,6 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +24,7 @@ public class SanshainMojoDelegate {
     private final File baseDir;
     private final String serverId;
     private final boolean strict;
+    private Map<String, String> environmentVariables = System.getenv();
 
     public SanshainMojoDelegate(Log log, Settings settings, File baseDir, String serverId, boolean strict) {
         this.log = log;
@@ -64,7 +64,7 @@ public class SanshainMojoDelegate {
     }
 
     public String resolveToken(String token) {
-        String envToken = System.getenv("SANSHAIN_TOKEN");
+        String envToken = environmentVariables.get("SANSHAIN_TOKEN");
         if (envToken != null) return envToken;
 
         if (settings != null) {
@@ -90,29 +90,31 @@ public class SanshainMojoDelegate {
     }
 
     public String resolveBranch(String branch) {
+        // 1. Explicit -Dsanshain.branch wins
         if (branch != null) return branch;
-        String envBranch = System.getenv("SANSHAIN_BRANCH");
-        if (envBranch != null) return envBranch;
 
+        // 2. CI environment variables (includes SANSHAIN_BRANCH)
         String ciBranch = detectBranchFromCIEnvironment();
         if (ciBranch != null) return ciBranch;
-        
-        String gitBranch = getGitBranch();
-        return gitBranch != null ? gitBranch : "main";
+
+        // 3. JGit — only if it gives a real branch name (not detached HEAD)
+        String jgitBranch = getJGitBranch();
+        if (jgitBranch != null) return jgitBranch;
+
+        // 4. git CLI as last resort
+        String cliBranch = resolveBranchFromGitCli();
+        if (cliBranch != null) return cliBranch;
+
+        log.warn("Could not detect git branch from environment or repository.");
+        return null;
     }
 
-    private String getGitBranch() {
+    private String getJGitBranch() {
         try {
             FileRepositoryBuilder builder = new FileRepositoryBuilder();
             try (Repository repository = builder.readEnvironment().findGitDir(baseDir).build()) {
                 String branchName = repository.getBranch();
-                if (branchName != null && !branchName.isEmpty()) {
-                    if (ObjectId.isId(branchName)) {
-                        String cliBranch = resolveBranchFromGitCli();
-                        if (cliBranch != null) return cliBranch;
-
-                        return resolveBranchFromDetachedHead(repository, ObjectId.fromString(branchName));
-                    }
+                if (branchName != null && !branchName.isEmpty() && !ObjectId.isId(branchName)) {
                     return branchName;
                 }
             }
@@ -122,8 +124,13 @@ public class SanshainMojoDelegate {
         return null;
     }
 
+    void setEnvironmentVariables(Map<String, String> environmentVariables) {
+        this.environmentVariables = environmentVariables;
+    }
+
     private String detectBranchFromCIEnvironment() {
-        Map<String, String> env = System.getenv();
+        Map<String, String> env = environmentVariables;
+        if (env.containsKey("SANSHAIN_BRANCH")) return env.get("SANSHAIN_BRANCH");
         if (env.containsKey("GITHUB_REF_NAME")) return env.get("GITHUB_REF_NAME");
         if (env.containsKey("GIT_BRANCH")) return env.get("GIT_BRANCH");
         if (env.containsKey("CI_COMMIT_REF_NAME")) return env.get("CI_COMMIT_REF_NAME");
@@ -149,25 +156,6 @@ public class SanshainMojoDelegate {
         return null;
     }
 
-    private String resolveBranchFromDetachedHead(Repository repository, ObjectId headId) {
-        try {
-            for (Map.Entry<String, org.eclipse.jgit.lib.Ref> ref : repository.getAllRefs().entrySet()) {
-                if (ref.getKey().startsWith("refs/heads/") && ref.getValue().getObjectId().equals(headId)) {
-                    return ref.getKey().substring("refs/heads/".length());
-                }
-            }
-            for (Map.Entry<String, org.eclipse.jgit.lib.Ref> ref : repository.getAllRefs().entrySet()) {
-                if (ref.getKey().startsWith("refs/remotes/") && ref.getValue().getObjectId().equals(headId)) {
-                    String name = ref.getKey().substring("refs/remotes/".length());
-                    int firstSlash = name.indexOf('/');
-                    return firstSlash != -1 ? name.substring(firstSlash + 1) : name;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not resolve branch from detached HEAD: " + e.getMessage());
-        }
-        return null;
-    }
 
     public String resolveServiceName(String serviceName, SanshainConfig config) {
         if (serviceName != null) return serviceName;
