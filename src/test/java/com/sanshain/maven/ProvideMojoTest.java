@@ -101,22 +101,10 @@ public class ProvideMojoTest {
         Method getGitBranchMethod = findMethod(SanshainMojoDelegate.class, "getGitBranch");
         getGitBranchMethod.setAccessible(true);
 
-        // No git repo -> should return null unless CI environment variables provide a branch
+        // No git repo -> getGitBranch only checks JGit and CLI, not CI env vars
+        // CI env var detection is handled by resolveBranch, not getGitBranch
         String branch = (String) getGitBranchMethod.invoke(delegate);
-        boolean ciEnvironment = System.getenv("GITHUB_REF_NAME") != null
-                || System.getenv("GITHUB_HEAD_REF") != null
-                || System.getenv("CI_COMMIT_REF_NAME") != null
-                || System.getenv("GIT_BRANCH") != null
-                || System.getenv("BRANCH_NAME") != null
-                || System.getenv("BITBUCKET_BRANCH") != null
-                || System.getenv("BUILD_SOURCEBRANCH") != null
-                || System.getenv("TRAVIS_BRANCH") != null
-                || System.getenv("CIRCLE_BRANCH") != null;
-        if (ciEnvironment) {
-            assertNotNull(branch, "In CI environment, branch should be detected from env vars");
-        } else {
-            assertNull(branch);
-        }
+        assertNull(branch);
     }
 
     @Test
