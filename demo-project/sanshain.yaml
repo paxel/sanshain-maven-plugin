@@ -1,0 +1,15 @@
+sanshainUrl: "http://localhost:3000"
+serviceName: "demo-service"
+provides:
+  - file: "specs/openapi.yaml"
+    apiType: "openapi"
+  - file: "specs/asyncapi.yaml"
+    apiType: "asyncapi"
+  - file: "specs/service.proto"
+    apiType: "proto"
+requires:
+  - serviceName: "demo-service"
+    apiType: "openapi"
+    endpoints:
+      - method: "GET"
+        path: "/hello"
