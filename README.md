@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.7.0</version>
+    <version>1.8.0</version>
     <executions>
         <execution>
             <goals>
@@ -125,8 +125,8 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
-| Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false`                                            |
-| Strict                      | `strict`        | `-Dsanshain.strict`      | —                       | `false`                                            |
+| Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false` (see [Best-Effort Mode](#best-effort-mode)) |
+| Strict                      | `strict`        | `-Dsanshain.strict`      | —                       | `false` (see [Strict Mode](#strict-mode))          |
 | Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
@@ -150,7 +150,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
 | `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                |
-| `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on Sanshain errors.                      |
+| `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
 | `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
@@ -190,6 +190,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
 | `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
 | `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |
+| `bestEffort`  | `sanshain.bestEffort`   | `false`                 | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
 | `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                                   |
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
@@ -245,7 +246,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.7.0</version>
+    <version>1.8.0</version>
     <executions>
         <execution>
             <goals>
@@ -354,6 +355,101 @@ When strict mode is enabled:
 - No `provides` configured → build failure
 - No `requires` configured → build failure
 
+## Best-Effort Mode
+
+Best-effort mode is designed for scenarios where the Sanshain service is considered a non-critical part of the build, or when the plugin is configured in a **parent POM** across many projects.
+
+When enabled, the plugin will catch and log most execution errors (such as 5xx server errors, connection timeouts, or IO issues) as warnings instead of failing the build. This ensures that a temporary downtime of the Sanshain service does not block your entire CI/CD pipeline.
+
+Enable best-effort mode via the Maven property:
+
+```bash
+mvn verify -Dsanshain.bestEffort=true
+```
+
+Or in `sanshain.yaml`:
+
+```yaml
+bestEffort: true
+```
+
+### Key Differences
+
+| Scenario | Default (`bestEffort=false`) | Best-Effort (`bestEffort=true`) |
+|----------|-----------------------------|---------------------------------|
+| Server 500 error | **Build Fails** | Build Warns & Continues |
+| Connection Timeout | **Build Fails** | Build Warns & Continues |
+| Invalid `sanshain.yaml` | **Build Fails** | Build Warns & Continues |
+| Missing `serviceName` | Warns (unless `strict=true`) | Warns |
+
+> **Note:** Best-effort mode does **not** suppress errors caused by incorrect plugin usage (e.g., invalid Maven parameters that prevent the Mojo from starting). It specifically targets errors occurring during the execution phase (communication with the service).
+
+### Using in Parent POMs
+
+To enable the Sanshain plugin for every child project in a multi-module build, add it to the `<build><plugins>` section of your company-wide parent POM. This ensures that the `provide` and `require` goals are executed for every project during the build.
+
+Combined with `bestEffort` mode, this is completely safe even for projects that do not yet use Sanshain:
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>io.github.paxel.sanshain</groupId>
+            <artifactId>sanshain-maven-plugin</artifactId>
+            <version>1.8.0</version>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>provide</goal>
+                        <goal>require</goal>
+                    </goals>
+                </execution>
+            </executions>
+            <configuration>
+                <!-- Ensures the build doesn't fail if a project lacks sanshain.yaml or the service is down -->
+                <bestEffort>true</bestEffort>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+#### How it works:
+1. **Inheritance**: Maven automatically applies plugins in `<build><plugins>` to all child modules.
+2. **Automatic Execution**: The goals will run in their default phases (`initialize` for provide, `generate-sources` for require).
+3. **Safety**: If a child project doesn't have a `sanshain.yaml`, the plugin will log a warning and continue (thanks to `bestEffort`).
+4. **Opting Out**: If a specific child project needs to disable the plugin entirely, it can set the skip property in its own `pom.xml`:
+   ```xml
+   <properties>
+       <sanshain.skip>true</sanshain.skip>
+   </properties>
+   ```
+
+Alternatively, if you only want to configure the default settings without forcing execution in all projects, use `<pluginManagement>` or Maven properties:
+
+```xml
+<properties>
+    <sanshain.bestEffort>true</sanshain.bestEffort>
+</properties>
+```
+
+```xml
+<pluginManagement>
+    <plugins>
+        <plugin>
+            <groupId>io.github.paxel.sanshain</groupId>
+            <artifactId>sanshain-maven-plugin</artifactId>
+            <version>1.8.0</version>
+            <configuration>
+                <bestEffort>true</bestEffort>
+            </configuration>
+        </plugin>
+    </plugins>
+</pluginManagement>
+```
+
+With `bestEffort` enabled, the plugin will log a warning if `sanshain.yaml` is missing or invalid, and continue the build.
+
 ## Force Mode
 
 The `force` flag allows the `provide` goal to override the existing shared contract source with the current upload, even if it would normally be rejected due to conflict detection. This is useful on feature branches where you want to reset the contract to match your local version.
@@ -407,6 +503,7 @@ export SANSHAIN_URL=https://sanshain.example.com
 export SANSHAIN_TOKEN=san_abc123...
 export SANSHAIN_BRANCH=feature/my-branch  # optional, auto-detected from Git
 export SANSHAIN_FORCE=true                # optional, reset shared contract source
+export SANSHAIN_BEST_EFFORT=true          # optional, don't fail on server errors
 mvn verify
 ```
 

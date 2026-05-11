@@ -522,6 +522,116 @@ public class ProvideMojoTest {
                 .withRequestBody(matchingJsonPath("$.force", equalTo("true"))));
     }
 
+    @Test
+    public void testResolveBestEffortDefaultIsFalse() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertFalse(delegate.resolveBestEffort(null, new SanshainConfig()));
+    }
+
+    @Test
+    public void testResolveBestEffortMavenPropertyTrue() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertTrue(delegate.resolveBestEffort(true, new SanshainConfig()));
+    }
+
+    @Test
+    public void testResolveBestEffortFromConfig() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        SanshainConfig config = new SanshainConfig();
+        config.setBestEffort(true);
+        assertTrue(delegate.resolveBestEffort(null, config));
+    }
+
+    @Test
+    public void testResolveBestEffortFromEnvVariable() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_BEST_EFFORT", "true");
+        delegate.setEnvironmentVariables(env);
+        assertTrue(delegate.resolveBestEffort(null, new SanshainConfig()));
+    }
+
+    @Test
+    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
+        // Create an invalid YAML file
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, "invalid: yaml: : content");
+
+        ProvideMojo mojo = new ProvideMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", configPath.toFile());
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // Should not throw even with invalid YAML because bestEffort=true (Maven property)
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testBestEffortSuppressesIoException() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: my-dir\n";
+
+        Files.createDirectory(tempDir.resolve("my-dir"));
+        
+        ProvideMojo mojo = createMojo(yaml, "");
+        setField(mojo, "openApiFile", tempDir.resolve("my-dir").toFile());
+        setField(mojo, "bestEffort", true);
+
+        // Reading a directory as a file should throw IOException, but bestEffort suppresses it
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testStrictAndBestEffortAbort() throws Exception {
+        ProvideMojo mojo = new ProvideMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("non-existent.yaml").toFile());
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "serviceName", null); // This should trigger abort()
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // With strict=true and bestEffort=true, it should NOT throw
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testStrictAbortFails() throws Exception {
+        ProvideMojo mojo = new ProvideMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("non-existent.yaml").toFile());
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", false);
+        setField(mojo, "serviceName", null); // This should trigger abort()
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // With strict=true and bestEffort=false, it SHOULD throw
+        assertThrows(MojoExecutionException.class, mojo::execute);
+    }
+
+    @Test
+    public void testBestEffortDoesNotFailOnServerError() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(500).withBody("Internal Server Error")));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "bestEffort", true);
+
+        // Should not throw even though server returned 500
+        assertDoesNotThrow(mojo::execute);
+    }
+
     private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {
         try {
             return clazz.getDeclaredMethod(methodName, parameterTypes);

@@ -71,6 +71,9 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.require.skip", defaultValue = "false")
     private boolean skipRequire;
 
+    @Parameter(property = "sanshain.bestEffort")
+    private Boolean bestEffort;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -92,13 +95,24 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        SanshainConfig config = new SanshainConfig().loadConfig(configFile);
+        // Early resolution of bestEffort to handle config loading errors
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
+
+        SanshainConfig config;
+        try {
+            config = new SanshainConfig().loadConfig(configFile);
+            // Re-resolve to incorporate potential YAML overrides
+            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
+        } catch (Exception e) {
+            delegate.handleException(e, resolvedBestEffort);
+            config = new SanshainConfig();
+        }
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = resolveServiceName(config);
         
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)");
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
             return;
         }
 
@@ -107,7 +121,6 @@ public class RequireMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         String resolvedBranch = delegate.resolveBranch(branch);
-        boolean bestEffort = config.getBestEffort() != null && config.getBestEffort();
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -117,7 +130,7 @@ public class RequireMojo extends AbstractMojo {
 
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
         if (requires == null || requires.isEmpty()) {
-            delegate.abort("No requires configured in sanshain.yaml.");
+            delegate.abort("No requires configured in sanshain.yaml.", resolvedBestEffort);
             return;
         }
 
@@ -129,7 +142,7 @@ public class RequireMojo extends AbstractMojo {
         }
 
         for (SanshainConfig.RequireConfig req : requires) {
-            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, globalTimeout, resolvedCompression, bestEffort);
+            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, globalTimeout, resolvedCompression, resolvedBestEffort, delegate);
         }
     }
 
@@ -154,7 +167,7 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved global timeout: " + timeout + "s");
     }
 
-    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String defaultBranch, int globalTimeout, boolean compression, boolean bestEffort) throws MojoExecutionException {
+    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String defaultBranch, int globalTimeout, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
         String reqServiceName = req.getServiceName();
         int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
         String apiType = req.getApiType();
@@ -174,14 +187,8 @@ public class RequireMojo extends AbstractMojo {
             } else {
                 requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory);
             }
-        } catch (MojoExecutionException e) {
-            if (bestEffort) {
-                getLog().warn("Sanshain require failed for " + reqServiceName + " (best effort): " + e.getMessage());
-            } else {
-                throw e;
-            }
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failed to write spec file for " + reqServiceName, e);
+        } catch (Exception e) {
+            delegate.handleException(e, bestEffort);
         }
     }
 

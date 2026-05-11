@@ -401,4 +401,95 @@ public class RequireMojoTest {
         setField(mojo, "strict", true);
         assertThrows(MojoExecutionException.class, mojo::execute);
     }
+
+    @Test
+    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
+        // Create an invalid YAML file
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, "invalid: yaml: : content");
+
+        RequireMojo mojo = new RequireMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", configPath.toFile());
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // Should not throw even with invalid YAML because bestEffort=true
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testBestEffortSuppressesIoException() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("yaml content")));
+
+        // Create a directory where the file should be
+        Files.createDirectories(tempDir.resolve("output/user-service_api_v1_users_GET.yaml"));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+
+        // Files.writeString will throw IOException if target is a directory, but bestEffort suppresses it
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testStrictAndBestEffortAbort() throws Exception {
+        RequireMojo mojo = new RequireMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("non-existent.yaml").toFile());
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "serviceName", null); // This should trigger abort()
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // With strict=true and bestEffort=true, it should NOT throw
+        assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testStrictAbortFails() throws Exception {
+        RequireMojo mojo = new RequireMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("non-existent.yaml").toFile());
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", false);
+        setField(mojo, "serviceName", null); // This should trigger abort()
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+
+        // With strict=true and bestEffort=false, it SHOULD throw
+        assertThrows(MojoExecutionException.class, mojo::execute);
+    }
+
+    @Test
+    public void testBestEffortDoesNotFailOnServerError() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(500).withBody("Internal Server Error")));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+
+        // Should not throw even though server returned 500
+        assertDoesNotThrow(mojo::execute);
+    }
 }

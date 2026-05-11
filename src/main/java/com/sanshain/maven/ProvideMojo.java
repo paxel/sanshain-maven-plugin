@@ -75,6 +75,9 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.force", defaultValue = "false")
     private boolean force;
 
+    @Parameter(property = "sanshain.bestEffort")
+    private Boolean bestEffort;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -100,7 +103,18 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        SanshainConfig config = new SanshainConfig().loadConfig(configFile);
+        // Early resolution of bestEffort to handle config loading errors
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
+
+        SanshainConfig config;
+        try {
+            config = new SanshainConfig().loadConfig(configFile);
+            // Re-resolve to incorporate potential YAML overrides
+            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
+        } catch (Exception e) {
+            delegate.handleException(e, resolvedBestEffort);
+            config = new SanshainConfig();
+        }
         
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
@@ -109,18 +123,17 @@ public class ProvideMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         force = delegate.resolveForce(force);
-        boolean bestEffort = config.getBestEffort() != null && config.getBestEffort();
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
         }
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)");
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
             return;
         }
 
-        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, bestEffort);
+        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, resolvedBestEffort);
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
         SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
@@ -133,13 +146,9 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         try {
-            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, resolvedCompression, cache, delegate);
-        } catch (MojoExecutionException e) {
-            handleException(e, bestEffort);
-        } catch (IOException e) {
-            handleException(new MojoExecutionException("Failed to read specification file", e), bestEffort);
+            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, resolvedCompression, cache, delegate, resolvedBestEffort);
         } catch (Exception e) {
-            handleException(new MojoExecutionException("Failed to provide specification", e), bestEffort);
+            delegate.handleException(e, resolvedBestEffort);
         }
     }
 
@@ -153,7 +162,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Best effort: " + be);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, boolean compression, SanshainCache cache, SanshainMojoDelegate delegate) throws IOException, MojoExecutionException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, boolean compression, SanshainCache cache, SanshainMojoDelegate delegate, boolean bestEffort) throws IOException, MojoExecutionException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
@@ -182,7 +191,7 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         if (!providedAnything) {
-            delegate.abort("No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.");
+            delegate.abort("No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.", bestEffort);
         }
     }
 
@@ -208,15 +217,6 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void handleException(Exception e, boolean bestEffort) throws MojoExecutionException {
-        if (bestEffort) {
-            getLog().warn("Sanshain provide failed (best effort): " + e.getMessage());
-        } else if (e instanceof MojoExecutionException) {
-            throw (MojoExecutionException) e;
-        } else {
-            throw new MojoExecutionException(e.getMessage(), e);
-        }
-    }
 
     private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean dryRun) throws IOException, MojoExecutionException {
         provideFile(client, url, token, serviceName, branch, file, apiType, compression, dryRun, null, null);

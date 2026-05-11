@@ -34,7 +34,11 @@ public class SanshainMojoDelegate {
         this.strict = strict;
     }
 
-    public void abort(String message) throws MojoExecutionException {
+    public void abort(String message, boolean bestEffort) throws MojoExecutionException {
+        if (bestEffort) {
+            log.warn("Sanshain goal skipped (best effort): " + message);
+            return;
+        }
         if (strict) {
             throw new MojoExecutionException(message);
         }
@@ -87,6 +91,24 @@ public class SanshainMojoDelegate {
         if (insecure != null) return insecure;
         if (config.getInsecure() != null) return config.getInsecure();
         return false;
+    }
+
+    public boolean resolveBestEffort(Boolean bestEffort, SanshainConfig config) {
+        if (bestEffort != null) return bestEffort;
+        String envBestEffort = environmentVariables.get("SANSHAIN_BEST_EFFORT");
+        if (envBestEffort != null) return Boolean.parseBoolean(envBestEffort);
+        if (config != null && config.getBestEffort() != null) return config.getBestEffort();
+        return false;
+    }
+
+    public void handleException(Exception e, boolean bestEffort) throws MojoExecutionException {
+        if (bestEffort) {
+            log.warn("Sanshain goal failed (best effort): " + e.getMessage());
+        } else if (e instanceof MojoExecutionException) {
+            throw (MojoExecutionException) e;
+        } else {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
     }
 
     public boolean resolveForce(boolean force) {
