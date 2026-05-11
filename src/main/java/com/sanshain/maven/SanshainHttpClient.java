@@ -108,7 +108,7 @@ public class SanshainHttpClient {
     }
 
     public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String content, boolean compression, boolean dryRun, Integer baseVersion, String apiType) throws MojoExecutionException {
+                            String content, boolean compression, boolean dryRun, Integer baseVersion, String apiType, boolean force) throws MojoExecutionException {
         String path = "/provide";
         String contentField = "openapi_yaml";
         String type = "openapi";
@@ -123,7 +123,7 @@ public class SanshainHttpClient {
             type = "proto";
         }
 
-        ProvideGenericPayload payload = new ProvideGenericPayload(serviceName, branch, content, dryRun, type, baseVersion, contentField);
+        ProvideGenericPayload payload = new ProvideGenericPayload(serviceName, branch, content, dryRun, type, baseVersion, contentField, force);
 
         try {
             String json = objectMapper.writeValueAsString(payload);
@@ -134,33 +134,33 @@ public class SanshainHttpClient {
     }
 
     public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, baseVersion, "openapi");
+                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion, boolean force) throws MojoExecutionException {
+        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, baseVersion, "openapi", force);
     }
 
     public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
                             String openapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, null);
+        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, null, false);
     }
 
     public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
-                                    String asyncapiYaml, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, baseVersion, "asyncapi");
+                                    String asyncapiYaml, boolean compression, boolean dryRun, Integer baseVersion, boolean force) throws MojoExecutionException {
+        return postProvide(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, baseVersion, "asyncapi", force);
     }
 
     public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
                                     String asyncapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvideAsyncApi(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, null);
+        return postProvideAsyncApi(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, null, false);
     }
 
     public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
-                                 String protoContent, boolean compression, boolean dryRun, Integer baseVersion) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, baseVersion, "proto");
+                                 String protoContent, boolean compression, boolean dryRun, Integer baseVersion, boolean force) throws MojoExecutionException {
+        return postProvide(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, baseVersion, "proto", force);
     }
 
     public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
                                  String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvideProto(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, null);
+        return postProvideProto(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, null, false);
     }
 
     private static class ProvideGenericPayload {
@@ -174,10 +174,11 @@ public class SanshainHttpClient {
         public final String apiType;
         @JsonProperty("base_version")
         public final Integer baseVersion;
+        public final boolean force;
         @com.fasterxml.jackson.annotation.JsonIgnore
         public final String contentField;
 
-        public ProvideGenericPayload(String servicename, String branch, String content, boolean dryRun, String apiType, Integer baseVersion, String contentField) {
+        public ProvideGenericPayload(String servicename, String branch, String content, boolean dryRun, String apiType, Integer baseVersion, String contentField, boolean force) {
             this.servicename = servicename;
             this.branch = branch;
             this.content = content;
@@ -185,6 +186,7 @@ public class SanshainHttpClient {
             this.apiType = apiType;
             this.baseVersion = baseVersion;
             this.contentField = contentField;
+            this.force = force;
         }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter

@@ -465,6 +465,63 @@ public class ProvideMojoTest {
         assertNull(branch, "Should return null when no branch source is available");
     }
 
+    @Test
+    public void testResolveForceDefaultIsFalse() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertFalse(delegate.resolveForce(false));
+    }
+
+    @Test
+    public void testResolveForceMavenPropertyTrue() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertTrue(delegate.resolveForce(true));
+    }
+
+    @Test
+    public void testResolveForceFromEnvVariable() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_FORCE", "true");
+        delegate.setEnvironmentVariables(env);
+        assertTrue(delegate.resolveForce(false));
+    }
+
+    @Test
+    public void testResolveForceEnvFalse() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_FORCE", "false");
+        delegate.setEnvironmentVariables(env);
+        assertFalse(delegate.resolveForce(false));
+    }
+
+    @Test
+    public void testResolveForceMavenPropertyWinsOverEnv() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_FORCE", "false");
+        delegate.setEnvironmentVariables(env);
+        assertTrue(delegate.resolveForce(true));
+    }
+
+    @Test
+    public void testForceModeSendsForceInPayload() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
+        setField(mojo, "force", true);
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.force", equalTo("true"))));
+    }
+
     private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {
         try {
             return clazz.getDeclaredMethod(methodName, parameterTypes);

@@ -72,6 +72,9 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.provide.skip", defaultValue = "false")
     private boolean skipProvide;
 
+    @Parameter(property = "sanshain.force", defaultValue = "false")
+    private boolean force;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -105,6 +108,7 @@ public class ProvideMojo extends AbstractMojo {
         String resolvedBranch = delegate.resolveBranch(branch);
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
+        force = delegate.resolveForce(force);
         boolean bestEffort = config.getBestEffort() != null && config.getBestEffort();
 
         if (resolvedToken == null) {
@@ -123,6 +127,9 @@ public class ProvideMojo extends AbstractMojo {
         
         if (dryRun) {
             getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
+        }
+        if (force) {
+            getLog().info("Force mode enabled — shared contract source will be reset to current upload.");
         }
 
         try {
@@ -239,13 +246,13 @@ public class ProvideMojo extends AbstractMojo {
         ProvideResponse response;
         if (apiType == null || apiType.equalsIgnoreCase("openapi")) {
             getLog().info("Providing OpenAPI: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvide(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
+            response = client.postProvide(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force);
         } else if (apiType.equalsIgnoreCase("asyncapi")) {
             getLog().info("Providing AsyncAPI: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvideAsyncApi(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
+            response = client.postProvideAsyncApi(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force);
         } else if (apiType.equalsIgnoreCase("proto") || apiType.equalsIgnoreCase("grpc")) {
             getLog().info("Providing Protocol Buffers: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvideProto(url, token, serviceName, branch, content, compression, dryRun, baseVersion);
+            response = client.postProvideProto(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force);
         } else {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
         }

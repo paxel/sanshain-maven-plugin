@@ -89,6 +89,13 @@ public class SanshainMojoDelegate {
         return false;
     }
 
+    public boolean resolveForce(boolean force) {
+        if (force) return true;
+        String envForce = environmentVariables.get("SANSHAIN_FORCE");
+        if (envForce != null) return Boolean.parseBoolean(envForce);
+        return false;
+    }
+
     public String resolveBranch(String branch) {
         // 1. Explicit -Dsanshain.branch wins
         if (branch != null) return branch;

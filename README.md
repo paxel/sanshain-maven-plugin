@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
     <executions>
         <execution>
             <goals>
@@ -130,6 +130,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
+| Force                       | —               | `-Dsanshain.force`       | `$SANSHAIN_FORCE`       | `false`                                            |
 
 ### Branch Detection
 
@@ -154,6 +155,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
+| `force`       | `sanshain.force`        | `false`                                   | Force mode — override the existing contract (see [Force Mode](#force-mode)). Also settable via `$SANSHAIN_FORCE`. |
 | `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
 
 These parameters can also be provided via the `provides` list in `sanshain.yaml`:
@@ -243,7 +245,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
     <executions>
         <execution>
             <goals>
@@ -352,6 +354,29 @@ When strict mode is enabled:
 - No `provides` configured → build failure
 - No `requires` configured → build failure
 
+## Force Mode
+
+The `force` flag allows the `provide` goal to override the existing shared contract source with the current upload, even if it would normally be rejected due to conflict detection. This is useful on feature branches where you want to reset the contract to match your local version.
+
+> **Warning:** Force mode will fail on protected branches (e.g., `main`, `master`). The Sanshain service rejects forced uploads on protected branches to prevent accidental overwrites of the canonical contract.
+
+Enable force mode via the Maven property:
+
+```bash
+mvn verify -Dsanshain.force=true
+```
+
+Or via the environment variable (env-only, not available in `sanshain.yaml`):
+
+```bash
+export SANSHAIN_FORCE=true
+mvn verify
+```
+
+In force mode:
+- **Feature branches**: The existing contract is replaced with the uploaded version, bypassing conflict detection.
+- **Protected branches**: The server returns a **403 Forbidden** error and the build fails.
+
 ## Dry-Run Mode
 
 The plugin supports a dry-run mode that validates requests against the Sanshain service without persisting any data. No specs are stored, and no client dependencies are recorded. This is useful for CI pipelines that need to verify a feature branch would be valid against the main branch before merging.
@@ -381,6 +406,7 @@ For CI environments, use environment variables to configure the plugin without m
 export SANSHAIN_URL=https://sanshain.example.com
 export SANSHAIN_TOKEN=san_abc123...
 export SANSHAIN_BRANCH=feature/my-branch  # optional, auto-detected from Git
+export SANSHAIN_FORCE=true                # optional, reset shared contract source
 mvn verify
 ```
 

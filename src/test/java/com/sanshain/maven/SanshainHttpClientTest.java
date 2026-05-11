@@ -452,7 +452,7 @@ public class SanshainHttpClientTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"version\":6,\"content_hash\":\"sha256:def\",\"changes\":{\"inserts\":0,\"updates\":1,\"deletes\":0}}")));
 
-        client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 5);
+        client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 5, false);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.base_version", equalTo("5"))));
@@ -464,7 +464,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(409).withBody("version mismatch")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 3));
+                client.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false, 3, false));
         assertTrue(ex.getMessage().contains("Concurrent modification detected"));
         assertTrue(ex.getMessage().contains("Re-run to fetch the latest state"));
     }
