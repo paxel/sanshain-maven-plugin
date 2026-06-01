@@ -165,4 +165,41 @@ public class SanshainConfigTest {
         config.setRequires(java.util.List.of(req));
         assertEquals(1, config.getRequires().size());
     }
+
+    @Test
+    public void testCombineConfiguration() throws IOException, MojoExecutionException {
+        String yaml = "sanshainUrl: https://api.sanshain.com\n" +
+                "clientName: test-client\n" +
+                "combine: true\n" +
+                "provide:\n" +
+                "  file: src/main/resources/openapi.yaml\n" +
+                "  combine: false\n" +
+                "provides:\n" +
+                "  - file: src/main/resources/asyncapi.yaml\n" +
+                "    combine: true\n";
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, yaml);
+
+        SanshainConfig config = new SanshainConfig().loadConfig(configPath.toFile());
+
+        assertTrue(config.getCombine());
+        assertNotNull(config.getProvide());
+        assertFalse(config.getProvide().getCombine());
+        
+        assertNotNull(config.getProvides());
+        assertEquals(1, config.getProvides().size());
+        assertTrue(config.getProvides().get(0).getCombine());
+        
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(null, null, null, null, false);
+        
+        // Per-item override
+        assertTrue(delegate.resolveCombine(config.getProvides().get(0).getCombine(), null, config));
+        assertFalse(delegate.resolveCombine(config.getProvide().getCombine(), null, config));
+        
+        // Falls back to global config
+        assertTrue(delegate.resolveCombine(null, null, config));
+        
+        // Defaults to true when everything is null
+        assertTrue(delegate.resolveCombine(null, null, null));
+    }
 }

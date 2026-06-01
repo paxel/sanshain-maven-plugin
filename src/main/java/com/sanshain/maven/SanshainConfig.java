@@ -24,6 +24,7 @@ public class SanshainConfig {
     private Boolean compression;
     private Boolean insecure;
     private Boolean bestEffort;
+    private Boolean combine;
     private ProvideConfig provide;
     @JsonProperty("provides")
     private List<ProvideConfig> provides;
@@ -79,6 +80,11 @@ public class SanshainConfig {
         String bestEffortEnv = System.getenv("SANSHAIN_BEST_EFFORT");
         if (bestEffortEnv != null) {
             config.setBestEffort(Boolean.parseBoolean(bestEffortEnv));
+        }
+
+        String combineEnv = System.getenv("SANSHAIN_COMBINE");
+        if (combineEnv != null) {
+            config.setCombine(Boolean.parseBoolean(combineEnv));
         }
     }
 
@@ -174,6 +180,18 @@ public class SanshainConfig {
     public void setBestEffort(Boolean bestEffort) { this.bestEffort = bestEffort; }
 
     /**
+     * Gets whether to recursively resolve and inline relative references/imports.
+     * @return true if files should be combined
+     */
+    public Boolean getCombine() { return combine; }
+
+    /**
+     * Sets whether to recursively resolve and inline relative references/imports.
+     * @param combine true if files should be combined
+     */
+    public void setCombine(Boolean combine) { this.combine = combine; }
+
+    /**
      * Gets the configuration for the provide goal.
      * @return the configuration for the provide goal
      */
@@ -221,6 +239,7 @@ public class SanshainConfig {
         private String apiType;
         private String branch;
         private Integer baseVersion;
+        private Boolean combine;
 
         // Backward compatibility fields
         private String openApiFile;
@@ -310,6 +329,18 @@ public class SanshainConfig {
          * @param protoFile the path to the Protocol Buffers specification file
          */
         public void setProtoFile(String protoFile) { this.protoFile = protoFile; }
+
+        /**
+         * Gets whether to recursively resolve and inline relative references/imports.
+         * @return true if files should be combined
+         */
+        public Boolean getCombine() { return combine; }
+
+        /**
+         * Sets whether to recursively resolve and inline relative references/imports.
+         * @param combine true if files should be combined
+         */
+        public void setCombine(Boolean combine) { this.combine = combine; }
     }
 
     /**

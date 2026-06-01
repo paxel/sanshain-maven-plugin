@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.8.0</version>
+    <version>1.9.0</version>
     <executions>
         <execution>
             <goals>
@@ -131,6 +131,7 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 | Force                       | —               | `-Dsanshain.force`       | `$SANSHAIN_FORCE`       | `false`                                            |
+| Combine                     | `combine`       | `-Dsanshain.combine`     | `$SANSHAIN_COMBINE`     | `true` (see [Specification Combining/Bundling](#specification-combiningbundling)) |
 
 ### Branch Detection
 
@@ -156,6 +157,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
 | `force`       | `sanshain.force`        | `false`                                   | Force mode — override the existing contract (see [Force Mode](#force-mode)). Also settable via `$SANSHAIN_FORCE`. |
+| `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications (see [Specification Combining/Bundling](#specification-combiningbundling)). |
 | `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
 
 These parameters can also be provided via the `provides` list in `sanshain.yaml`:
@@ -246,7 +248,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.8.0</version>
+    <version>1.9.0</version>
     <executions>
         <execution>
             <goals>
@@ -396,7 +398,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.8.0</version>
+            <version>1.9.0</version>
             <executions>
                 <execution>
                     <goals>
@@ -439,7 +441,7 @@ Alternatively, if you only want to configure the default settings without forcin
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.8.0</version>
+            <version>1.9.0</version>
             <configuration>
                 <bestEffort>true</bestEffort>
             </configuration>
@@ -486,6 +488,50 @@ mvn verify -Dsanshain.dry.run=true
 In dry-run mode:
 - **`provide`**: The OpenAPI spec is parsed and validated (including conflict detection on protected branches), but nothing is stored.
 - **`require`**: Endpoint lookups are performed, but no client dependencies are recorded.
+
+## Specification Combining/Bundling
+
+Large OpenAPI, AsyncAPI, and Protocol Buffers (Protobuf) specifications are often modularized across multiple local files. Since the Sanshain service expects single-file uploads, the plugin provides a **combining/bundling** pre-processing step to recursively resolve relative local references and inline their contents.
+
+When `combine` is enabled, the plugin processes specifications as follows:
+
+### OpenAPI and AsyncAPI (YAML/JSON)
+- Recursively inspects fields matching `$ref` that point to local files relative to the parent file.
+- Resolves and extracts elements with fragment/JSON-pointer navigation support (e.g., `dto.yaml#/components/schemas/User`).
+- Replaces the `$ref` nodes with the recursively-resolved, fully-inlined YAML/JSON object structure.
+
+### Protocol Buffers (Protobuf)
+- Recursively finds `import "some_local.proto";` statements.
+- Resolves and inlines local `.proto` files, automatically stripping redundant `syntax` and `package` header declarations from the imported files to preserve valid single-file protobuf syntax.
+- Non-local standard imports (e.g., `import "google/protobuf/timestamp.proto";`) that do not exist locally relative to the project are skipped and left untouched.
+
+### Infinite Recursion Protection
+The combiner implements canonical-path-based circular dependency detection. If any cycles are detected (e.g., File A references File B, which references File A), the plugin fails fast and throws a descriptive `MojoExecutionException` containing the reference cycle path.
+
+### Configuration
+
+You can enable combining at multiple levels (highest priority first):
+
+1. **Granular override per-file** in `sanshain.yaml`:
+   ```yaml
+   provides:
+     - file: src/main/resources/openapi.yaml
+       combine: true
+   ```
+2. **Global Maven Property**:
+   ```bash
+   mvn verify -Dsanshain.combine=true
+   ```
+3. **Environment Variable Override**:
+   ```bash
+   export SANSHAIN_COMBINE=true
+   ```
+4. **Global YAML Setting** in `sanshain.yaml`:
+   ```yaml
+   combine: true
+   ```
+
+By default, specification combining is enabled (`true`).
 
 ## Error Responses
 

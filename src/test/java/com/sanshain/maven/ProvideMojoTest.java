@@ -133,7 +133,7 @@ public class ProvideMojoTest {
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.servicename", equalTo("my-service")))
-                .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("openapi: 3.0.0"))));
+                .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("openapi: \"3.0.0\""))));
     }
 
     @Test
@@ -630,6 +630,52 @@ public class ProvideMojoTest {
 
         // Should not throw even though server returned 500
         assertDoesNotThrow(mojo::execute);
+    }
+
+    @Test
+    public void testProvideMojoCombineIntegration() throws Exception {
+        // Prepare main and sub YAML files in tempDir
+        String mainYaml = "openapi: 3.0.0\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      responses:\n" +
+                "        '200':\n" +
+                "          schema:\n" +
+                "            $ref: './dto.yaml'\n";
+        String dtoYaml = "type: object\n" +
+                "properties:\n" +
+                "  name:\n" +
+                "    type: string\n";
+
+        Path mainPath = tempDir.resolve("openapi.yaml");
+        Path dtoPath = tempDir.resolve("dto.yaml");
+
+        Files.writeString(mainPath, mainYaml);
+        Files.writeString(dtoPath, dtoYaml);
+
+        // Stub the WireMock server
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"version\": 1, \"content_hash\": \"somehash\"}")));
+
+        // Create mojo and activate combine
+        String yamlConfig = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "combine: true\n" +
+                "provide:\n" +
+                "  file: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yamlConfig, mainYaml);
+        setField(mojo, "combine", true);
+
+        // Execute
+        mojo.execute();
+
+        // Verify wireMock received combined spec (containing "name" and "string" instead of "$ref")
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(containing("name"))
+                .withRequestBody(containing("string"))
+                .withRequestBody(notContaining("$ref")));
     }
 
     private Method findMethod(Class<?> clazz, String methodName, Class<?>... parameterTypes) throws NoSuchMethodException {

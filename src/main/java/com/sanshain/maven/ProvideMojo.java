@@ -57,6 +57,9 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.compression")
     private Boolean compression;
 
+    @Parameter(property = "sanshain.combine")
+    private Boolean combine;
+
     @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
@@ -122,6 +125,7 @@ public class ProvideMojo extends AbstractMojo {
         String resolvedBranch = delegate.resolveBranch(branch);
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
+        boolean resolvedCombine = delegate.resolveCombine(combine, config);
         force = delegate.resolveForce(force);
 
         if (resolvedToken == null) {
@@ -133,7 +137,7 @@ public class ProvideMojo extends AbstractMojo {
             return;
         }
 
-        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, resolvedBestEffort);
+        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, resolvedBestEffort, resolvedCombine);
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
         SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
@@ -146,13 +150,13 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         try {
-            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, resolvedCompression, cache, delegate, resolvedBestEffort);
+            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, resolvedCompression, resolvedCombine, cache, delegate, resolvedBestEffort);
         } catch (Exception e) {
             delegate.handleException(e, resolvedBestEffort);
         }
     }
 
-    private void logResolvedValues(String url, String name, boolean comp, boolean ins, String br, String tok, boolean be) {
+    private void logResolvedValues(String url, String name, boolean comp, boolean ins, String br, String tok, boolean be, boolean comb) {
         getLog().debug("Resolved sanshainUrl: " + url);
         getLog().debug("Resolved serviceName: " + name);
         getLog().debug("Resolved compression: " + comp);
@@ -160,16 +164,18 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved branch: " + br);
         getLog().debug("Resolved token: " + (tok != null ? "[set]" : "[not set]"));
         getLog().debug("Best effort: " + be);
+        getLog().debug("Resolved combine: " + comb);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, boolean compression, SanshainCache cache, SanshainMojoDelegate delegate, boolean bestEffort) throws IOException, MojoExecutionException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, boolean compression, boolean defaultCombine, SanshainCache cache, SanshainMojoDelegate delegate, boolean bestEffort) throws IOException, MojoExecutionException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
         if (config.getProvides() != null && !config.getProvides().isEmpty()) {
             for (SanshainConfig.ProvideConfig p : config.getProvides()) {
                 if (p.getFile() != null) {
-                    provideConfiguredFile(client, url, token, serviceName, defaultBranch, p, compression, cache);
+                    boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
+                    provideConfiguredFile(client, url, token, serviceName, defaultBranch, p, compression, itemCombine, cache);
                     providedAnything = true;
                 }
             }
@@ -179,14 +185,15 @@ public class ProvideMojo extends AbstractMojo {
         if (config.getProvide() != null) {
             SanshainConfig.ProvideConfig p = config.getProvide();
             if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
-                provideSingleConfig(client, url, token, serviceName, defaultBranch, p, compression, cache);
+                boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
+                provideSingleConfig(client, url, token, serviceName, defaultBranch, p, compression, itemCombine, cache);
                 providedAnything = true;
             }
         }
 
         // Fallback to default openApiFile
         if (!providedAnything && openApiFile != null && openApiFile.exists()) {
-            provideFile(client, url, token, serviceName, defaultBranch, openApiFile, "openapi", compression, dryRun, null, cache);
+            provideFile(client, url, token, serviceName, defaultBranch, openApiFile, "openapi", compression, defaultCombine, dryRun, null, cache);
             providedAnything = true;
         }
 
@@ -195,38 +202,46 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideConfiguredFile(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideConfiguredFile(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
         String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
-        provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, dryRun, p.getBaseVersion(), cache);
+        provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, p.getBaseVersion(), cache);
     }
 
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
         String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
         
         if (p.getFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, p.getBaseVersion(), cache);
         }
         if (p.getOpenApiFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getOpenApiFile()), "openapi", compression, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getOpenApiFile()), "openapi", compression, combine, dryRun, p.getBaseVersion(), cache);
         }
         if (p.getAsyncApiFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getAsyncApiFile()), "asyncapi", compression, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, p.getBaseVersion(), cache);
         }
         if (p.getProtoFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getProtoFile()), "proto", compression, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getProtoFile()), "proto", compression, combine, dryRun, p.getBaseVersion(), cache);
         }
     }
 
 
-    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean dryRun) throws IOException, MojoExecutionException {
-        provideFile(client, url, token, serviceName, branch, file, apiType, compression, dryRun, null, null);
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean combine, boolean dryRun) throws IOException, MojoExecutionException {
+        provideFile(client, url, token, serviceName, branch, file, apiType, compression, combine, dryRun, null, null);
     }
 
-    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean dryRun, Integer baseVersion, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean combine, boolean dryRun, Integer baseVersion, SanshainCache cache) throws IOException, MojoExecutionException {
         if (!file.exists()) {
             throw new MojoExecutionException("Specification file does not exist: " + file.getAbsolutePath());
         }
-        String content = Files.readString(file.toPath());
+        
+        String content;
+        if (combine) {
+            getLog().info("Combining multi-file specification: " + file.getAbsolutePath());
+            content = new SpecCombiner().combine(file, apiType);
+        } else {
+            content = Files.readString(file.toPath());
+        }
+        
         String fileKey = file.getName();
 
         // Feature 3: Client-side content caching — skip if unchanged

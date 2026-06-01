@@ -101,6 +101,19 @@ public class SanshainMojoDelegate {
         return false;
     }
 
+    public boolean resolveCombine(Boolean combine, SanshainConfig config) {
+        if (combine != null) return combine;
+        String envCombine = environmentVariables.get("SANSHAIN_COMBINE");
+        if (envCombine != null) return Boolean.parseBoolean(envCombine);
+        if (config != null && config.getCombine() != null) return config.getCombine();
+        return true;
+    }
+
+    public boolean resolveCombine(Boolean itemCombine, Boolean mojoCombine, SanshainConfig config) {
+        if (itemCombine != null) return itemCombine;
+        return resolveCombine(mojoCombine, config);
+    }
+
     public void handleException(Exception e, boolean bestEffort) throws MojoExecutionException {
         if (bestEffort) {
             log.warn("Sanshain goal failed (best effort): " + e.getMessage());
