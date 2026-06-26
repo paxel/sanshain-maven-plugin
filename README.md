@@ -15,7 +15,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.9.0</version>
+    <version>1.10.0</version>
     <executions>
         <execution>
             <phase>validate</phase>
@@ -254,7 +254,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.9.0</version>
+    <version>1.10.0</version>
     <executions>
         <execution>
             <phase>validate</phase>
@@ -410,7 +410,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.9.0</version>
+            <version>1.10.0</version>
             <executions>
                 <execution>
                     <phase>validate</phase>
@@ -459,7 +459,7 @@ Alternatively, if you only want to configure the default settings without forcin
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.9.0</version>
+            <version>1.10.0</version>
             <configuration>
                 <bestEffort>true</bestEffort>
             </configuration>

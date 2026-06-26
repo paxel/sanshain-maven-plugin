@@ -53,18 +53,18 @@ EOF
 
 echo ""
 echo "--- Step 1: Initial Provide ---"
-mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
+mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
 
 echo ""
 echo "--- Step 2: Second Provide (should skip) ---"
-OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
+OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
 echo "$OUTPUT" | grep "Spec unchanged" || (echo "FAILURE: Expected skip message not found"; exit 1)
 echo "SUCCESS: Skip message found."
 
 echo ""
 echo "--- Step 3: Modified Provide (should upload) ---"
 sed -i 's/description: OK/description: Updated OK/' openapi.yaml
-OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
+OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
 if echo "$OUTPUT" | grep -q "Spec unchanged"; then
     echo "FAILURE: Unexpected skip message found after modification"
     exit 1
@@ -73,11 +73,11 @@ echo "SUCCESS: Modification detected and uploaded."
 
 echo ""
 echo "--- Step 4: Initial Require ---"
-mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
+mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
 
 echo ""
 echo "--- Step 5: Second Require (should skip with 304) ---"
-OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
+OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
 echo "$OUTPUT" | grep "spec unchanged (304)" || (echo "FAILURE: Expected 304 skip message not found"; exit 1)
 echo "SUCCESS: 304 skip message found."
 
@@ -86,10 +86,10 @@ echo "--- Step 6: Require after service update (should download) ---"
 echo "--- Modifying service ---"
 # We modify the spec again on the server (via provide)
 sed -i 's/description: Updated OK/description: Updated OK 2/' openapi.yaml
-mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
+mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
 
 echo "--- Running require ---"
-OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
+OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
 if echo "$OUTPUT" | grep -q "spec unchanged (304)"; then
     echo "FAILURE: Unexpected 304 skip message found after server update"
     exit 1
@@ -117,13 +117,13 @@ echo "      responses:" >> openapi.yaml
 echo "        '200':" >> openapi.yaml
 echo "          description: OK" >> openapi.yaml
 
-mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
+mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:provide -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
 
 echo "--- Initial Bundle Require ---"
-mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
+mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN
 
 echo "--- Second Bundle Require (should skip with 304) ---"
-OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.9.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
+OUTPUT=$(mvn io.github.paxel.sanshain:sanshain-maven-plugin:1.10.0:require -DconfigFile=sanshain.yaml -Dsanshain.token=$TOKEN)
 echo "$OUTPUT" | grep "spec unchanged (304)" || (echo "FAILURE: Expected 304 skip message for bundle not found"; exit 1)
 echo "SUCCESS: 304 skip message for bundle found."
 
