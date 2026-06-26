@@ -79,8 +79,14 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
             <version>1.9.0</version>
             <executions>
                 <execution>
+                    <phase>validate</phase>
                     <goals>
                         <goal>provide</goal>
+                    </goals>
+                </execution>
+                <execution>
+                    <phase>initialize</phase>
+                    <goals>
                         <goal>require</goal>
                     </goals>
                 </execution>
@@ -95,3 +101,19 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
 
 - **Safety**: If a child project lacks `sanshain.yaml`, the plugin logs a warning and continues.
 - **Opt-out**: Child projects can disable the plugin by setting `<sanshain.skip>true</sanshain.skip>`.
+    
+## Understanding the Build Cache
+
+The Sanshain Maven Plugin uses a local cache in the `target/` directory to improve build performance and avoid redundant network calls.
+
+### How it Works
+1.  **Hash Comparison**: Before uploading a specification, the plugin computes a hash of the content and compares it against the last successful upload stored in `target/sanshain-cache.yaml` (or similar).
+2.  **Skipping**: If the content hash matches the cached version, the plugin logs: `⏭ Spec unchanged (hash match), skipping provide.`
+3.  **Idempotency**: This ensures that even if `mvn install` is run multiple times, the Sanshain service only receives updates when the API actually changes.
+
+### Clearing the Cache
+To force a re-upload or re-download of all snippets, simply run a clean build:
+```bash
+mvn clean install
+```
+Since the cache is stored in `target/`, the `clean` goal will remove it, forcing the plugin to synchronize with the server.

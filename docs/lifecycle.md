@@ -29,11 +29,13 @@ graph TD
 
 ### `sanshain:provide`
 - **Default Phase**: `validate`
+- **Note**: While a default phase is defined, we recommend explicitly specifying `<phase>validate</phase>` in your `pom.xml` for maximum compatibility across different Maven versions.
 - **Purpose**: Uploads the service's API specifications to the Sanshain service.
 - **Why `validate`?**: It ensures that the contract is registered and validated at the very beginning of the build. If the contract is rejected (e.g., breaking change on a protected branch), the build fails as early as possible.
 
 ### `sanshain:require`
 - **Default Phase**: `initialize`
+- **Note**: While a default phase is defined, we recommend explicitly specifying `<phase>initialize</phase>` in your `pom.xml` for maximum compatibility across different Maven versions.
 - **Purpose**: Downloads specific endpoint snippets required by the service.
 - **Why `initialize`?**: It ensures that the required snippets are downloaded and ready before the `generate-sources` phase begins. This provides a clean separation between downloading dependencies and generating code from them.
 

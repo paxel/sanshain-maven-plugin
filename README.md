@@ -18,9 +18,15 @@ Add the plugin to your `pom.xml`:
     <version>1.9.0</version>
     <executions>
         <execution>
+            <phase>validate</phase>
+            <goals>
+                <goal>provide</goal>
+            </goals>
+        </execution>
+        <execution>
+            <phase>initialize</phase>
             <goals>
                 <goal>require</goal>
-                <goal>provide</goal>
             </goals>
         </execution>
     </executions>
@@ -251,9 +257,15 @@ With a minimal `pom.xml` configuration:
     <version>1.9.0</version>
     <executions>
         <execution>
+            <phase>validate</phase>
+            <goals>
+                <goal>provide</goal>
+            </goals>
+        </execution>
+        <execution>
+            <phase>initialize</phase>
             <goals>
                 <goal>require</goal>
-                <goal>provide</goal>
             </goals>
         </execution>
     </executions>
@@ -401,8 +413,14 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
             <version>1.9.0</version>
             <executions>
                 <execution>
+                    <phase>validate</phase>
                     <goals>
                         <goal>provide</goal>
+                    </goals>
+                </execution>
+                <execution>
+                    <phase>initialize</phase>
+                    <goals>
                         <goal>require</goal>
                     </goals>
                 </execution>
