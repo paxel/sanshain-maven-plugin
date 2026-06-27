@@ -5,7 +5,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 ## Goals
 
 - `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `initialize` phase.
-- `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `generate-sources` phase.
+- `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `initialize` phase.
 
 ## Quick Start
 
@@ -18,14 +18,9 @@ Add the plugin to your `pom.xml`:
     <version>1.10.0</version>
     <executions>
         <execution>
-            <phase>validate</phase>
-            <goals>
-                <goal>provide</goal>
-            </goals>
-        </execution>
-        <execution>
             <phase>initialize</phase>
             <goals>
+                <goal>provide</goal>
                 <goal>require</goal>
             </goals>
         </execution>
@@ -257,14 +252,9 @@ With a minimal `pom.xml` configuration:
     <version>1.10.0</version>
     <executions>
         <execution>
-            <phase>validate</phase>
-            <goals>
-                <goal>provide</goal>
-            </goals>
-        </execution>
-        <execution>
             <phase>initialize</phase>
             <goals>
+                <goal>provide</goal>
                 <goal>require</goal>
             </goals>
         </execution>
@@ -413,14 +403,9 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
             <version>1.10.0</version>
             <executions>
                 <execution>
-                    <phase>validate</phase>
-                    <goals>
-                        <goal>provide</goal>
-                    </goals>
-                </execution>
-                <execution>
                     <phase>initialize</phase>
                     <goals>
+                        <goal>provide</goal>
                         <goal>require</goal>
                     </goals>
                 </execution>
@@ -436,7 +421,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
 
 #### How it works:
 1. **Inheritance**: Maven automatically applies plugins in `<build><plugins>` to all child modules.
-2. **Automatic Execution**: The goals will run in their default phases (`initialize` for provide, `generate-sources` for require).
+2. **Automatic Execution**: The goals will run in their default phase (`initialize`).
 3. **Safety**: If a child project doesn't have a `sanshain.yaml`, the plugin will log a warning and continue (thanks to `bestEffort`).
 4. **Opting Out**: If a specific child project needs to disable the plugin entirely, it can set the skip property in its own `pom.xml`:
    ```xml
