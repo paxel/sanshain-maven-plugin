@@ -547,7 +547,7 @@ public class SanshainHttpClientTest {
         assertThrows(MojoExecutionException.class, () ->
                 localClient.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
 
-        verify(log, atLeastOnce()).error(contains("A___A"));
+        verify(log, atLeastOnce()).error(contains("NOT happy"));
     }
 
     @Test
@@ -561,7 +561,7 @@ public class SanshainHttpClientTest {
         assertThrows(MojoExecutionException.class, () ->
                 localClient.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false, false, null));
 
-        verify(log, atLeastOnce()).error(contains("A___A"));
+        verify(log, atLeastOnce()).error(contains("NOT happy"));
     }
 
     private static byte[] gzipCompress(byte[] data) throws IOException {

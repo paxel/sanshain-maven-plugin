@@ -5,7 +5,7 @@
 
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.10.0</version>
+    <version>1.10.1</version>
     <packaging>maven-plugin</packaging>
 
     <name>Sanshain Maven Plugin</name>

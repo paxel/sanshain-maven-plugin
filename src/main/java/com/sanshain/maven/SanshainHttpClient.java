@@ -530,11 +530,19 @@ public class SanshainHttpClient {
     }
 
     private void logAngryCat() {
-        log.error("    A___A");
-        log.error("   ( >_< )");
-        log.error("  /  _^_  \\");
-        log.error(" ( /   \\ )");
-        log.error("  V     V");
+        log.error("");
+        log.error("       /\\_/\\");
+        log.error("      ( o.o )");
+        log.error("       > ^ <        HISSSSS!");
+        log.error("      /|   |\\");
+        log.error("     (_|   |_)");
+        log.error("       |   |");
+        log.error("       |_ _|");
+        log.error("      _/| |\\_ ");
+        log.error("     (_/ \\_)");
+        log.error("");
+        log.error("   Sanshain is NOT happy with this!");
+        log.error("");
     }
 
     private String buildRequireBundleJson(String clientName, String serviceName, String branch,
