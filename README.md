@@ -5,7 +5,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 ## Goals
 
 - `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `initialize` phase.
-- `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `generate-sources` phase.
+- `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `initialize` phase.
 
 ## Quick Start
 
@@ -15,12 +15,13 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.9.0</version>
+    <version>1.10.1</version>
     <executions>
         <execution>
+            <phase>initialize</phase>
             <goals>
-                <goal>require</goal>
                 <goal>provide</goal>
+                <goal>require</goal>
             </goals>
         </execution>
     </executions>
@@ -248,12 +249,13 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.9.0</version>
+    <version>1.10.1</version>
     <executions>
         <execution>
+            <phase>initialize</phase>
             <goals>
-                <goal>require</goal>
                 <goal>provide</goal>
+                <goal>require</goal>
             </goals>
         </execution>
     </executions>
@@ -398,9 +400,10 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.9.0</version>
+            <version>1.10.1</version>
             <executions>
                 <execution>
+                    <phase>initialize</phase>
                     <goals>
                         <goal>provide</goal>
                         <goal>require</goal>
@@ -418,7 +421,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
 
 #### How it works:
 1. **Inheritance**: Maven automatically applies plugins in `<build><plugins>` to all child modules.
-2. **Automatic Execution**: The goals will run in their default phases (`initialize` for provide, `generate-sources` for require).
+2. **Automatic Execution**: The goals will run in their default phase (`initialize`).
 3. **Safety**: If a child project doesn't have a `sanshain.yaml`, the plugin will log a warning and continue (thanks to `bestEffort`).
 4. **Opting Out**: If a specific child project needs to disable the plugin entirely, it can set the skip property in its own `pom.xml`:
    ```xml
@@ -441,7 +444,7 @@ Alternatively, if you only want to configure the default settings without forcin
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.9.0</version>
+            <version>1.10.1</version>
             <configuration>
                 <bestEffort>true</bestEffort>
             </configuration>

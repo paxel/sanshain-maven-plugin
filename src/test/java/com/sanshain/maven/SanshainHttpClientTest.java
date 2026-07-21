@@ -9,6 +9,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -530,6 +534,34 @@ public class SanshainHttpClientTest {
         assertFalse(result.isNotModified());
         assertEquals("merged yaml", result.getContent());
         assertEquals("\"sha256:newBundleHash\"", result.getEtag());
+    }
+
+    @Test
+    public void testAngryCatOnProvideError() {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(500).withBody("Server Error")));
+
+        Log log = Mockito.mock(Log.class);
+        SanshainHttpClient localClient = new SanshainHttpClient(log);
+
+        assertThrows(MojoExecutionException.class, () ->
+                localClient.postProvide(baseUrl, null, "my-service", "main", "yaml", false, false));
+
+        verify(log, atLeastOnce()).error(contains("NOT happy"));
+    }
+
+    @Test
+    public void testAngryCatOnRequireError() {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(404).withBody("Not Found")));
+
+        Log log = Mockito.mock(Log.class);
+        SanshainHttpClient localClient = new SanshainHttpClient(log);
+
+        assertThrows(MojoExecutionException.class, () ->
+                localClient.getRequire(baseUrl, null, "client", "service", "main", "/api", "GET", 10, false, false, null));
+
+        verify(log, atLeastOnce()).error(contains("NOT happy"));
     }
 
     private static byte[] gzipCompress(byte[] data) throws IOException {

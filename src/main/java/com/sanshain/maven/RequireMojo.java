@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * Goal which requires OpenAPI snippets from the Sanshain service.
  */
-@Mojo(name = "require", defaultPhase = LifecyclePhase.GENERATE_SOURCES, requiresProject = false)
+@Mojo(name = "require", defaultPhase = LifecyclePhase.INITIALIZE, requiresProject = false)
 public class RequireMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)

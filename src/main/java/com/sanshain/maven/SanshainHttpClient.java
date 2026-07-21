@@ -238,12 +238,15 @@ public class SanshainHttpClient {
                     return null;
                 }
             } else if (status == 400) {
+                logAngryCat();
                 log.error("Provide failed (400 Bad Request): " + sanitize(responseBody));
                 throw new MojoExecutionException("Bad request: " + sanitize(responseBody));
             } else if (status == 409) {
+                logAngryCat();
                 log.error("Provide failed (409 Conflict): " + sanitize(responseBody));
                 throw new MojoExecutionException("Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.");
             } else {
+                logAngryCat();
                 log.error("Provide failed (" + status + "): " + sanitize(responseBody));
                 throw new MojoExecutionException("Unexpected response " + status + ": " + sanitize(responseBody));
             }
@@ -350,12 +353,14 @@ public class SanshainHttpClient {
                 return RequireResult.ok(extractResponseBody(response), responseEtag);
             } else if (status == 404) {
                 String errorBody = sanitize(extractResponseBody(response));
+                logAngryCat();
                 log.error("Require failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "Endpoint not found: " + serviceName + " " + method + " " + path +
                         " (branch: " + branch + "): " + errorBody);
             } else {
                 String errorBody = sanitize(extractResponseBody(response));
+                logAngryCat();
                 log.error("Require failed (" + status + "): " + errorBody);
                 throw new MojoExecutionException("Unexpected response " + status + " from /require: " + errorBody);
             }
@@ -454,16 +459,19 @@ public class SanshainHttpClient {
                 return RequireResult.ok(extractResponseBody(response), responseEtag);
             } else if (status == 400) {
                 String errorBody = sanitize(extractResponseBody(response));
+                logAngryCat();
                 log.error("Require-bundle failed (400 Bad Request): " + errorBody);
                 throw new MojoExecutionException("Bad request to /require-bundle: " + errorBody);
             } else if (status == 404) {
                 String errorBody = sanitize(extractResponseBody(response));
+                logAngryCat();
                 log.error("Require-bundle failed (404 Not Found): " + errorBody);
                 throw new MojoExecutionException(
                         "One or more endpoints not found for service: " + serviceName +
                         " (branch: " + branch + "): " + errorBody);
             } else {
                 String errorBody = sanitize(extractResponseBody(response));
+                logAngryCat();
                 log.error("Require-bundle failed (" + status + "): " + errorBody);
                 throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle: " + errorBody);
             }
@@ -519,6 +527,22 @@ public class SanshainHttpClient {
         if (text == null) return "";
         String result = text.length() > 1000 ? text.substring(0, 1000) + "... (truncated)" : text;
         return result.replaceAll("[^\\p{Print}\\p{Space}]", "?");
+    }
+
+    private void logAngryCat() {
+        log.error("");
+        log.error("       /\\_/\\");
+        log.error("      ( o.o )");
+        log.error("       > ^ <        HISSSSS!");
+        log.error("      /|   |\\");
+        log.error("     (_|   |_)");
+        log.error("       |   |");
+        log.error("       |_ _|");
+        log.error("      _/| |\\_ ");
+        log.error("     (_/ \\_)");
+        log.error("");
+        log.error("   Sanshain is NOT happy with this!");
+        log.error("");
     }
 
     private String buildRequireBundleJson(String clientName, String serviceName, String branch,
