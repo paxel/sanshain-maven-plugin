@@ -74,6 +74,12 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.bestEffort")
     private Boolean bestEffort;
 
+    @Parameter(property = "sanshain.pullFromBranch")
+    private String pullFromBranch;
+
+    @Parameter(property = "sanshain.sourceProtectedBranch")
+    private String sourceProtectedBranch;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -121,6 +127,7 @@ public class RequireMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         String resolvedBranch = delegate.resolveBranch(branch);
+        String resolvedPullFromBranch = delegate.resolvePullFromBranch(pullFromBranch);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -142,7 +149,7 @@ public class RequireMojo extends AbstractMojo {
         }
 
         for (SanshainConfig.RequireConfig req : requires) {
-            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, globalTimeout, resolvedCompression, resolvedBestEffort, delegate);
+            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, globalTimeout, resolvedCompression, resolvedBestEffort, delegate, resolvedPullFromBranch);
         }
     }
 
@@ -167,7 +174,7 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved global timeout: " + timeout + "s");
     }
 
-    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String defaultBranch, int globalTimeout, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
+    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String defaultBranch, int globalTimeout, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate, String pullFromBranch) throws MojoExecutionException {
         String reqServiceName = req.getServiceName();
         int reqTimeout = req.getTimeout() != null ? req.getTimeout() : globalTimeout;
         String apiType = req.getApiType();
@@ -181,11 +188,14 @@ public class RequireMojo extends AbstractMojo {
             return;
         }
 
+        // Resolved past the guard above, so a config with no endpoints costs no request. Memoized.
+        String sourceProtectedBranch = delegate.resolveSourceProtectedBranch(this.sourceProtectedBranch, client, url, token);
+
         try {
             if (endpoints.size() >= 2) {
-                requireBundle(req, client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory);
+                requireBundle(req, client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory, pullFromBranch, sourceProtectedBranch);
             } else {
-                requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory);
+                requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, reqBranch, reqTimeout, compression, apiType, outputDirectory, pullFromBranch, sourceProtectedBranch);
             }
         } catch (Exception e) {
             delegate.handleException(e, bestEffort);
@@ -204,7 +214,7 @@ public class RequireMojo extends AbstractMojo {
         return dir;
     }
 
-    private void requireBundle(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+    private void requireBundle(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory, String pullFromBranch, String sourceProtectedBranch) throws IOException, MojoExecutionException {
         String reqServiceName = req.getServiceName();
         getLog().info("Requiring bundle: " + reqServiceName + " (" + req.getEndpoints().size() + " endpoints, branch: " + branch + ")");
 
@@ -212,11 +222,12 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, branch, req.getEndpoints(), timeout, compression, dryRun, apiType, cachedEtag);
+        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, branch, req.getEndpoints(), timeout, compression, dryRun, apiType, cachedEtag, pullFromBranch, sourceProtectedBranch);
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
+            logIfInherited(reqServiceName, branch, result);
             String fileName = reqServiceName + "_bundle." + ( "proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
             Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
@@ -229,7 +240,7 @@ public class RequireMojo extends AbstractMojo {
         }
     }
 
-    private void requireSingle(SanshainConfig.RequireConfig req, SanshainConfig.EndpointConfig endpoint, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+    private void requireSingle(SanshainConfig.RequireConfig req, SanshainConfig.EndpointConfig endpoint, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String branch, int timeout, boolean compression, String apiType, File outputDirectory, String pullFromBranch, String sourceProtectedBranch) throws IOException, MojoExecutionException {
         String reqServiceName = req.getServiceName();
         String method = endpoint.getMethod();
         String path = endpoint.getPath();
@@ -240,11 +251,12 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, branch, path, method, timeout, compression, dryRun, apiType, cachedEtag);
+        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, branch, path, method, timeout, compression, dryRun, apiType, cachedEtag, pullFromBranch, sourceProtectedBranch);
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
+            logIfInherited(reqServiceName, branch, result);
             String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
             Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
@@ -254,6 +266,13 @@ public class RequireMojo extends AbstractMojo {
                 cache.updateRequireEntry(cacheKey, result.getEtag());
                 cache.save();
             }
+        }
+    }
+
+    private void logIfInherited(String reqServiceName, String branch, RequireResult result) {
+        if ("inherited".equals(result.getResolution())) {
+            getLog().info(reqServiceName + ": no spec on branch '" + branch +
+                    "', inherited from '" + result.getServedBranch() + "'");
         }
     }
 }

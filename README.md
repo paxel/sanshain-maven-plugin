@@ -7,6 +7,11 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 - `sanshain:provide`: Uploads a full OpenAPI specification to the Sanshain service. Defaults to the `initialize` phase.
 - `sanshain:require`: Downloads specific endpoint snippets from the Sanshain service. Defaults to the `initialize` phase.
 
+## Requirements
+
+- **Sanshain service 1.6.0 or later.** The plugin sends the `producername`/`consumername` request fields introduced by that release; against an older server those requests are rejected.
+- Java 11 or later.
+
 ## Quick Start
 
 Add the plugin to your `pom.xml`:
@@ -15,7 +20,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.11.1</version>
+    <version>1.12.0</version>
     <executions>
         <execution>
             <phase>initialize</phase>
@@ -118,25 +123,39 @@ This means that if all sources are configured at the same time, the Maven proper
 
 All global settings can be specified in `sanshain.yaml`, overridden via Maven properties, or set as environment variables.
 
-| Setting                     | `sanshain.yaml` | Maven Property           | Env Variable            | Default                                            |
-|-----------------------------|-----------------|--------------------------|-------------------------|----------------------------------------------------|
-| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
-| Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
-| Token                       | -               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
-| Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
-| Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
-| Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
-| Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false` (see [Best-Effort Mode](#best-effort-mode)) |
-| Strict                      | `strict`        | `-Dsanshain.strict`      | —                       | `false` (see [Strict Mode](#strict-mode))          |
-| Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
-| Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
-| Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
-| Force                       | —               | `-Dsanshain.force`       | `$SANSHAIN_FORCE`       | `false`                                            |
-| Combine                     | `combine`       | `-Dsanshain.combine`     | `$SANSHAIN_COMBINE`     | `true` (see [Specification Combining/Bundling](#specification-combiningbundling)) |
+| Setting                         | `sanshain.yaml` | Maven Property                     | Env Variable                        | Default |
+|---------------------------------|-----------------|------------------------------------|-------------------------------------|---------|
+| Sanshain URL                    | `sanshainUrl`   | `-Dsanshain.url`                   | `$SANSHAIN_URL`                     | `http://localhost:8080` |
+| Sanshain URL (settings.xml)     | —               | —                                  | —                                   | via `<configuration><sanshainUrl>` in server entry |
+| Token                           | -               | `-Dsanshain.token`                 | `$SANSHAIN_TOKEN`                   | — (optional) |
+| Timeout (seconds)               | `timeout`       | `-Dsanshain.timeout`               | `$SANSHAIN_TIMEOUT`                 | `120` |
+| Compression                     | `compression`   | `-Dsanshain.compression`           | `$SANSHAIN_COMPRESSION`             | `true` |
+| Insecure                        | `insecure`      | `-Dsanshain.insecure`              | `$SANSHAIN_INSECURE`                | `false` |
+| Best Effort                     | `bestEffort`    | `-Dsanshain.bestEffort`            | `$SANSHAIN_BEST_EFFORT`             | `false` (see [Best-Effort Mode](#best-effort-mode)) |
+| Strict                          | `strict`        | `-Dsanshain.strict`                | —                                   | `false` (see [Strict Mode](#strict-mode)) |
+| Service name                    | `serviceName`   | `-Dsanshain.service.name`          | `$SANSHAIN_SERVICE_NAME`            | — (required) |
+| Branch                          | —               | `-Dsanshain.branch`                | `$SANSHAIN_BRANCH`                  | auto-detected from Git |
+| Dry-run                         | —               | `-Dsanshain.dry.run`               | —                                   | `false` |
+| Force                           | —               | `-Dsanshain.force`                 | `$SANSHAIN_FORCE`                   | `false` |
+| Combine                         | `combine`       | `-Dsanshain.combine`               | `$SANSHAIN_COMBINE`                 | `true` (see [Specification Combining/Bundling](#specification-combiningbundling)) |
+| Author (provide only)           | —               | `-Dsanshain.author`                | —                                   | — (blame display only) |
+| Source protected branch         | —               | `-Dsanshain.sourceProtectedBranch` | `$SANSHAIN_SOURCE_PROTECTED_BRANCH` | auto-detected (see [Source-Protected-Branch Auto-Detection](#source-protected-branch-auto-detection)) |
+| Pull from branch (require only) | —               | `-Dsanshain.pullFromBranch`        | `$SANSHAIN_PULL_FROM_BRANCH`        | — (one-shot override, never persisted) |
 
 ### Branch Detection
 
 The branch is automatically detected from the local Git repository using JGit. You can override it via `-Dsanshain.branch` or the `SANSHAIN_BRANCH` environment variable. The Maven property takes precedence over the environment variable. If neither is available, it defaults to `main`.
+
+### Source-Protected-Branch Auto-Detection
+
+Sanshain resolves a branch with no data of its own by falling back to the protected branch (e.g. a `release/X.Y` line) recorded as its `source_protected_branch` — a sticky, server-side hint set the first time it's supplied for that branch. Rather than requiring this to be configured manually, the plugin detects it automatically, in order:
+
+1. `-Dsanshain.sourceProtectedBranch` / `$SANSHAIN_SOURCE_PROTECTED_BRANCH`, if set.
+2. A CI pull-request base-branch hint (`GITHUB_BASE_REF`, `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`, or `BITBUCKET_PR_DESTINATION_BRANCH`), if it matches one of the service's protected branch patterns (fetched from the server).
+3. A `git merge-base` computation against each locally known branch matching those patterns, preferring the one HEAD descends from with no divergence, then the most recent merge-base, then alphabetical order for a deterministic result.
+4. If none of the above resolve — for example a shallow, single-branch CI checkout with no other branch history available — the hint is simply omitted; this never fails the build.
+
+Sent on both `provide` and `require`/`require-bundle` calls.
 
 ## Goal: `provide`
 
@@ -144,22 +163,24 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 
 ### Parameters
 
-| Parameter     | Property                | Default                                   | Description                                                   |
-|---------------|-------------------------|-------------------------------------------|---------------------------------------------------------------|
-| `serviceName` | `sanshain.service.name` | —                                         | **Required.** The name of the service providing the API.      |
-| `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                        |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                  |
-| `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
-| `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                       |
-| `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                |
-| `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
-| `serverId`    | `sanshain.serverId`     | `sanshain`                                | Server ID for `settings.xml` token lookup.                    |
-| `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                         |
-| `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                      |
-| `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
-| `force`       | `sanshain.force`        | `false`                                   | Force mode — override the existing contract (see [Force Mode](#force-mode)). Also settable via `$SANSHAIN_FORCE`. |
-| `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications (see [Specification Combining/Bundling](#specification-combiningbundling)). |
-| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| Parameter               | Property                         | Default                                   | Description |
+|-------------------------|----------------------------------|-------------------------------------------|-------------|
+| `serviceName`           | `sanshain.service.name`          | —                                         | **Required.** The name of the service providing the API. |
+| `openApiFile`           | `sanshain.openapi.file`          | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file. |
+| `sanshainUrl`           | `sanshain.url`                   | `http://localhost:8080`                   | URL of the Sanshain service. |
+| `token`                 | `sanshain.token`                 | —                                         | Authentication token (prefer `settings.xml` or env variable). |
+| `compression`           | `sanshain.compression`           | `true`                                    | Enable gzip compression for the upload. |
+| `insecure`              | `sanshain.insecure`              | `false`                                   | Ignore SSL certificate errors. |
+| `bestEffort`            | `sanshain.bestEffort`            | `false`                                   | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
+| `serverId`              | `sanshain.serverId`              | `sanshain`                                | Server ID for `settings.xml` token lookup. |
+| `skip`                  | `sanshain.skip`                  | `false`                                   | Skip execution of all sanshain goals. |
+| `skipProvide`           | `sanshain.provide.skip`          | `false`                                   | Skip execution of the provide goal only. |
+| `dryRun`                | `sanshain.dry.run`               | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
+| `force`                 | `sanshain.force`                 | `false`                                   | Force mode — override the existing contract (see [Force Mode](#force-mode)). Also settable via `$SANSHAIN_FORCE`. |
+| `combine`               | `sanshain.combine`               | `true`                                    | Enable recursive local combining/bundling of multi-file specifications (see [Specification Combining/Bundling](#specification-combiningbundling)). |
+| `strict`                | `sanshain.strict`                | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| `author`                | `sanshain.author`                | —                                         | Override for who gets credited in version-history blame (e.g. a CI pipeline forwarding the real commit author instead of its own service-account identity). Blame display only — never affects the audit log. |
+| `sourceProtectedBranch` | `sanshain.sourceProtectedBranch` | auto-detected                             | Sticky per-branch hint recording which protected branch this branch defers to when it has no data of its own. Also settable via `$SANSHAIN_SOURCE_PROTECTED_BRANCH` (see [Source-Protected-Branch Auto-Detection](#source-protected-branch-auto-detection)). |
 
 These parameters can also be provided via the `provides` list in `sanshain.yaml`:
 
@@ -185,20 +206,22 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 
 ### Parameters
 
-| Parameter     | Property                | Default                 | Description                                                                  |
-|---------------|-------------------------|-------------------------|------------------------------------------------------------------------------|
-| `serviceName` | `sanshain.service.name` | —                       | **Required.** The name of the client service requesting the endpoints.       |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
-| `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
-| `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
-| `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
-| `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |
-| `bestEffort`  | `sanshain.bestEffort`   | `false`                 | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
-| `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup.                                   |
-| `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
-| `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
-| `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
-| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| Parameter               | Property                         | Default                 | Description |
+|-------------------------|----------------------------------|-------------------------|-------------|
+| `serviceName`           | `sanshain.service.name`          | —                       | **Required.** The name of the client service requesting the endpoints. |
+| `sanshainUrl`           | `sanshain.url`                   | `http://localhost:8080` | URL of the Sanshain service. |
+| `token`                 | `sanshain.token`                 | —                       | Authentication token (prefer `settings.xml` or env variable). |
+| `timeout`               | `sanshain.timeout`               | `120`                   | Global timeout in seconds for server long-polling. |
+| `compression`           | `sanshain.compression`           | `true`                  | Enable gzip compression for downloads. |
+| `insecure`              | `sanshain.insecure`              | `false`                 | Ignore SSL certificate errors. |
+| `bestEffort`            | `sanshain.bestEffort`            | `false`                 | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
+| `serverId`              | `sanshain.serverId`              | `sanshain`              | Server ID for `settings.xml` token lookup. |
+| `skip`                  | `sanshain.skip`                  | `false`                 | Skip execution of all sanshain goals. |
+| `skipRequire`           | `sanshain.require.skip`          | `false`                 | Skip execution of the require goal only. |
+| `dryRun`                | `sanshain.dry.run`               | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
+| `strict`                | `sanshain.strict`                | `false`                 | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| `pullFromBranch`        | `sanshain.pullFromBranch`        | —                       | One-shot override: resolve this build's requires against exactly this branch, bypassing `sourceProtectedBranch` and all other fallback resolution. Never persisted. Also settable via `$SANSHAIN_PULL_FROM_BRANCH`. |
+| `sourceProtectedBranch` | `sanshain.sourceProtectedBranch` | auto-detected           | Sticky per-branch hint recording which protected branch this branch defers to when it has no data of its own. Also settable via `$SANSHAIN_SOURCE_PROTECTED_BRANCH` (see [Source-Protected-Branch Auto-Detection](#source-protected-branch-auto-detection)). |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`:
 
@@ -221,6 +244,10 @@ For multiple endpoints (2+), the merged bundle is saved as `{outputDirectory}/{s
 ### How Long-Polling Works
 
 The `timeout` parameter is sent to the server as a query parameter (for individual requests) or in the JSON body (for bundle requests). The server waits up to that many seconds for the requested specification to become available. The client HTTP timeout is set to `timeout + 30s` to allow for network overhead. If the server times out (returns 404), the build fails with a descriptive error.
+
+A `410 Gone` response means an authoritative branch deliberately does not publish the requested endpoint — distinct from `404`, which means no branch has it yet and is worth long-polling for. The build fails immediately on `410` with a message naming the endpoint and branch, rather than waiting out the timeout.
+
+When a branch has never published its own spec, the response is served by inheritance from another branch (e.g. `master`). The plugin logs this at `INFO` — for example, `user-service: no spec on branch 'feature-x', inherited from 'master'` — so it's clear why a fresh feature branch is getting an ancestor's contract.
 
 ## Combined Example
 
@@ -249,7 +276,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>1.11.1</version>
+    <version>1.12.0</version>
     <executions>
         <execution>
             <phase>initialize</phase>
@@ -380,7 +407,7 @@ bestEffort: true
 ### Key Differences
 
 | Scenario | Default (`bestEffort=false`) | Best-Effort (`bestEffort=true`) |
-|----------|-----------------------------|---------------------------------|
+|----------|------------------------------|---------------------------------|
 | Server 500 error | **Build Fails** | Build Warns & Continues |
 | Connection Timeout | **Build Fails** | Build Warns & Continues |
 | Invalid `sanshain.yaml` | **Build Fails** | Build Warns & Continues |
@@ -400,7 +427,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.11.1</version>
+            <version>1.12.0</version>
             <executions>
                 <execution>
                     <phase>initialize</phase>
@@ -444,7 +471,7 @@ Alternatively, if you only want to configure the default settings without forcin
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.11.1</version>
+            <version>1.12.0</version>
             <configuration>
                 <bestEffort>true</bestEffort>
             </configuration>

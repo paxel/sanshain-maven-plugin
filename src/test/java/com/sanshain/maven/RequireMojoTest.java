@@ -15,11 +15,35 @@ import org.eclipse.jgit.api.Git;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RequireMojoTest {
+
+    /** Minimal Log double that records info() calls for assertions. */
+    static class RecordingLog implements org.apache.maven.plugin.logging.Log {
+        final List<String> infoMessages = new ArrayList<>();
+
+        public boolean isDebugEnabled() { return true; }
+        public void debug(CharSequence content) {}
+        public void debug(CharSequence content, Throwable error) {}
+        public void debug(Throwable error) {}
+        public boolean isInfoEnabled() { return true; }
+        public void info(CharSequence content) { infoMessages.add(String.valueOf(content)); }
+        public void info(CharSequence content, Throwable error) { infoMessages.add(String.valueOf(content)); }
+        public void info(Throwable error) {}
+        public boolean isWarnEnabled() { return true; }
+        public void warn(CharSequence content) {}
+        public void warn(CharSequence content, Throwable error) {}
+        public void warn(Throwable error) {}
+        public boolean isErrorEnabled() { return true; }
+        public void error(CharSequence content) {}
+        public void error(CharSequence content, Throwable error) {}
+        public void error(Throwable error) {}
+    }
 
     @TempDir
     Path tempDir;
@@ -92,13 +116,174 @@ public class RequireMojoTest {
         mojo.execute();
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
-                .withQueryParam("servicename", equalTo("user-service"))
+                .withQueryParam("producername", equalTo("user-service"))
                 .withQueryParam("method", equalTo("GET"))
                 .withQueryParam("path", equalTo("/api/v1/users")));
 
         Path outputFile = tempDir.resolve("output/user-service_api_v1_users_GET.yaml");
         assertTrue(Files.exists(outputFile));
         assertEquals("openapi: 3.0.0", Files.readString(outputFile));
+    }
+
+    @Test
+    public void testPullFromBranchSentOnSingleRequire() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "pullFromBranch", "release/1.0");
+        mojo.execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
+                .withQueryParam("pull_from_branch", equalTo("release/1.0")));
+    }
+
+    @Test
+    public void testPullFromBranchSentOnRequireBundle() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users/{id}\n";
+
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody("merged yaml")));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "pullFromBranch", "release/1.0");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.pull_from_branch", equalTo("release/1.0"))));
+    }
+
+    @Test
+    public void testSourceProtectedBranchSentOnSingleRequire() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "sourceProtectedBranch", "release/1.2");
+        mojo.execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
+                .withQueryParam("source_protected_branch", equalTo("release/1.2")));
+        // Explicitly configured, so no discovery request is needed.
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/branches/protected")));
+    }
+
+    @Test
+    public void testSourceProtectedBranchSentOnRequireBundle() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users/{id}\n";
+
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody("merged yaml")));
+
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "sourceProtectedBranch", "release/1.2");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.source_protected_branch", equalTo("release/1.2"))));
+    }
+
+    @Test
+    public void testNoEndpointsMakesNoProtectedBranchesRequest() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints: []\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        mojo.execute();
+
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/branches/protected")));
+    }
+
+    @Test
+    public void testInheritedResolutionLogsInfo() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("X-Sanshain-Resolution", "inherited")
+                        .withHeader("X-Sanshain-Served-Branch", "master")
+                        .withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        RecordingLog log = new RecordingLog();
+        mojo.setLog(log);
+        mojo.execute();
+
+        assertTrue(log.infoMessages.stream().anyMatch(m -> m.contains("master")),
+                "expected an INFO line naming the served branch, got: " + log.infoMessages);
+    }
+
+    @Test
+    public void testPublishedResolutionLogsNoExtraLine() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("X-Sanshain-Resolution", "published")
+                        .withHeader("X-Sanshain-Served-Branch", "main")
+                        .withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        RecordingLog log = new RecordingLog();
+        mojo.setLog(log);
+        mojo.execute();
+
+        assertTrue(log.infoMessages.stream().noneMatch(m -> m.contains("inherited")),
+                "published resolution should not log an inherited-style line, got: " + log.infoMessages);
     }
 
     @Test
@@ -121,7 +306,7 @@ public class RequireMojoTest {
         mojo.execute();
 
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
-                .withRequestBody(matchingJsonPath("$.servicename", equalTo("user-service")))
+                .withRequestBody(matchingJsonPath("$.producername", equalTo("user-service")))
                 .withRequestBody(matchingJsonPath("$.endpoints[0].path", equalTo("/api/v1/users")))
                 .withRequestBody(matchingJsonPath("$.endpoints[1].path", equalTo("/api/v1/users/{id}"))));
 

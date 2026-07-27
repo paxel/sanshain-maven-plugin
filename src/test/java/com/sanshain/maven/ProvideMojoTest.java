@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -132,8 +133,145 @@ public class ProvideMojoTest {
         mojo.execute();
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
-                .withRequestBody(matchingJsonPath("$.servicename", equalTo("my-service")))
+                .withRequestBody(matchingJsonPath("$.producername", equalTo("my-service")))
                 .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("openapi: \"3.0.0\""))));
+    }
+
+    // --- sourceProtectedBranch: Mojo-level wiring (explicit, auto-detected, and cost) ---
+
+    @Test
+    public void testExplicitSourceProtectedBranchReachesTheWire() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
+        setField(mojo, "sourceProtectedBranch", "release/1.2");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.source_protected_branch", equalTo("release/1.2"))));
+    }
+
+    @Test
+    public void testExplicitSourceProtectedBranchSkipsTheProtectedBranchesFetch() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
+        setField(mojo, "sourceProtectedBranch", "release/1.2");
+        mojo.execute();
+
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/branches/protected")));
+    }
+
+    @Test
+    public void testAutoDetectedSourceProtectedBranchReachesTheWire() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/branches/protected"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("[\"master\"]")));
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        // A real fork point: master, then a feature branch one commit ahead.
+        try (Git git = initRepoWithCommit(tempDir.toFile(), "initial")) {
+            git.checkout().setName("feature-x").setCreateBranch(true).call();
+            commit(git, tempDir.toFile(), "feature work");
+        }
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.source_protected_branch", equalTo("master"))));
+    }
+
+    /**
+     * Detection costs an HTTP request, so it must not run on a build that uploads nothing. Guards the
+     * zero-request path that client-side content caching exists to provide.
+     */
+    @Test
+    public void testUnchangedSpecMakesNoRequestsAtAll() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+        String spec = "openapi: 3.0.0\ninfo:\n  title: Test";
+
+        ProvideMojo first = createMojo(yaml, spec);
+
+        // The server hashes the bytes it receives with the same algorithm and format the client uses,
+        // so echo back the hash of what will actually be uploaded — anything else never re-matches.
+        String uploadedHash = SanshainCache.computeHash(
+                new SpecCombiner().combine(tempDir.resolve("openapi.yaml").toFile(), "openapi"));
+
+        wireMock.stubFor(get(urlPathEqualTo("/branches/protected"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("[\"master\"]")));
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":1,\"content_hash\":\"" + uploadedHash
+                                + "\",\"changes\":{\"inserts\":1,\"updates\":0,\"deletes\":0}}")));
+
+        // First run uploads and primes target/.sanshain-cache.json.
+        first.execute();
+        // Second run sees an identical spec and must short-circuit before any HTTP call.
+        createMojo(yaml, spec).execute();
+
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/branches/protected")));
+    }
+
+    @Test
+    public void testAuthorPassedToProvidePayload() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
+        setField(mojo, "author", "jane@example.com");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.author", equalTo("jane@example.com"))));
+    }
+
+    @Test
+    public void testAuthorAbsentWhenNotSet() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  title: Test");
+        mojo.execute();
+
+        String body = wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+        assertTrue(body.contains("\"author\":null"), "author should be null when not set: " + body);
     }
 
     @Test
@@ -173,7 +311,7 @@ public class ProvideMojoTest {
         mojo.execute();
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
-                .withRequestBody(matchingJsonPath("$.servicename", equalTo("config-service"))));
+                .withRequestBody(matchingJsonPath("$.producername", equalTo("config-service"))));
     }
 
     @Test
@@ -502,6 +640,182 @@ public class ProvideMojoTest {
         env.put("SANSHAIN_FORCE", "false");
         delegate.setEnvironmentVariables(env);
         assertTrue(delegate.resolveForce(true));
+    }
+
+    @Test
+    public void testResolvePullFromBranchDefaultIsNull() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertNull(delegate.resolvePullFromBranch(null));
+    }
+
+    @Test
+    public void testResolvePullFromBranchMavenProperty() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertEquals("release/1.0", delegate.resolvePullFromBranch("release/1.0"));
+    }
+
+    @Test
+    public void testResolvePullFromBranchFromEnvVariable() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_PULL_FROM_BRANCH", "release/2.0");
+        delegate.setEnvironmentVariables(env);
+        assertEquals("release/2.0", delegate.resolvePullFromBranch(null));
+    }
+
+    @Test
+    public void testResolvePullFromBranchMavenPropertyWinsOverEnv() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_PULL_FROM_BRANCH", "release/2.0");
+        delegate.setEnvironmentVariables(env);
+        assertEquals("release/1.0", delegate.resolvePullFromBranch("release/1.0"));
+    }
+
+    @Test
+    public void testResolveSourceProtectedBranchDefaultIsNull() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertNull(delegate.resolveSourceProtectedBranch(null));
+    }
+
+    @Test
+    public void testResolveSourceProtectedBranchMavenProperty() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        assertEquals("release/1.2", delegate.resolveSourceProtectedBranch("release/1.2"));
+    }
+
+    @Test
+    public void testResolveSourceProtectedBranchFromEnvVariable() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_SOURCE_PROTECTED_BRANCH", "release/2.0");
+        delegate.setEnvironmentVariables(env);
+        assertEquals("release/2.0", delegate.resolveSourceProtectedBranch(null));
+    }
+
+    @Test
+    public void testResolveSourceProtectedBranchMavenPropertyWinsOverEnv() throws Exception {
+        SanshainMojoDelegate delegate = createDelegate(tempDir.toFile());
+        Map<String, String> env = new HashMap<>();
+        env.put("SANSHAIN_SOURCE_PROTECTED_BRANCH", "release/2.0");
+        delegate.setEnvironmentVariables(env);
+        assertEquals("release/1.2", delegate.resolveSourceProtectedBranch("release/1.2"));
+    }
+
+    // --- detectSourceProtectedBranch: git merge-base auto-detection ---
+
+    /**
+     * The initial branch name (JGit respects the host's init.defaultBranch, so it isn't
+     * reliably "master") is renamed to "master" so tests have a deterministic name to assert on.
+     */
+    private Git initRepoWithCommit(File dir, String message) throws Exception {
+        Git git = Git.init().setDirectory(dir).call();
+        Files.writeString(dir.toPath().resolve("f-" + System.nanoTime() + ".txt"), message);
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage(message)
+                .setAuthor("Test", "test@example.com")
+                .setCommitter("Test", "test@example.com")
+                .call();
+        if (!"master".equals(git.getRepository().getBranch())) {
+            git.branchRename().setNewName("master").call();
+        }
+        return git;
+    }
+
+    private void commit(Git git, File dir, String message) throws Exception {
+        Files.writeString(dir.toPath().resolve("f-" + System.nanoTime() + ".txt"), message);
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage(message)
+                .setAuthor("Test", "test@example.com")
+                .setCommitter("Test", "test@example.com")
+                .call();
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchNoPatternsReturnsNull(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            assertNull(delegate.detectSourceProtectedBranch(Collections.emptyList()));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchNoMatchingBranchReturnsNull(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            assertNull(delegate.detectSourceProtectedBranch(List.of("release/*")));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchPicksDirectAncestor(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            git.branchCreate().setName("feature-x").call();
+            git.checkout().setName("feature-x").call();
+            commit(git, repoDir.toFile(), "feature work");
+
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            assertEquals("master", delegate.detectSourceProtectedBranch(List.of("master")));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchWildcardMatches(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            git.branchCreate().setName("release/1.2").call();
+            git.checkout().setName("feature-x").setCreateBranch(true).call();
+            commit(git, repoDir.toFile(), "feature work");
+
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            assertEquals("release/1.2", delegate.detectSourceProtectedBranch(List.of("release/*")));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchCIHintWinsWhenValidCandidate(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            git.branchCreate().setName("release/1.2").call();
+            git.checkout().setName("feature-x").setCreateBranch(true).call();
+            commit(git, repoDir.toFile(), "feature work");
+
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            Map<String, String> env = new HashMap<>();
+            env.put("GITHUB_BASE_REF", "master");
+            delegate.setEnvironmentVariables(env);
+
+            // Both "master" and "release/1.2" are valid direct-ancestor candidates;
+            // the CI hint must win over merge-base tie-breaking.
+            assertEquals("master", delegate.detectSourceProtectedBranch(List.of("master", "release/*")));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchIgnoresCIHintNotInCandidates(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            git.branchCreate().setName("feature-x").call();
+            git.checkout().setName("feature-x").call();
+            commit(git, repoDir.toFile(), "feature work");
+
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            Map<String, String> env = new HashMap<>();
+            env.put("GITHUB_BASE_REF", "not-a-protected-branch");
+            delegate.setEnvironmentVariables(env);
+
+            assertEquals("master", delegate.detectSourceProtectedBranch(List.of("master")));
+        }
+    }
+
+    @Test
+    public void testDetectSourceProtectedBranchTieBreaksAlphabetically(@TempDir Path repoDir) throws Exception {
+        try (Git git = initRepoWithCommit(repoDir.toFile(), "initial")) {
+            // "main" and "master" both point at the exact same commit as HEAD's ancestor.
+            git.branchCreate().setName("main").call();
+            git.checkout().setName("feature-x").setCreateBranch(true).call();
+            commit(git, repoDir.toFile(), "feature work");
+
+            SanshainMojoDelegate delegate = createDelegate(repoDir.toFile());
+            assertEquals("main", delegate.detectSourceProtectedBranch(List.of("main", "master")));
+        }
     }
 
     @Test
