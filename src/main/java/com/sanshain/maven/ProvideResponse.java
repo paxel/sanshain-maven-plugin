@@ -10,7 +10,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class ProvideResponse {
 
     @JsonProperty("version")
-    private int version;
+    private String version;
+
+    @JsonProperty("stability")
+    private String stability;
 
     @JsonProperty("content_hash")
     private String contentHash;
@@ -21,8 +24,11 @@ public class ProvideResponse {
     /** Creates a new default instance. */
     public ProvideResponse() {}
 
-    /** Gets the version number. @return the version */
-    public int getVersion() { return version; }
+    /** Gets the version read from the provided document. @return the version */
+    public String getVersion() { return version; }
+
+    /** Gets the declared stability the version was stored under. @return the stability */
+    public String getStability() { return stability; }
 
     /** Gets the content hash. @return the content hash */
     public String getContentHash() { return contentHash; }
@@ -38,7 +44,7 @@ public class ProvideResponse {
         int inserts = changes != null ? changes.inserts : 0;
         int updates = changes != null ? changes.updates : 0;
         int deletes = changes != null ? changes.deletes : 0;
-        return "✓ Provided to Sanshain v" + version + ": " +
+        return "✓ Provided to Sanshain as " + version + " (" + stability + "): " +
                 inserts + " new, " + updates + " updated, " + deletes + " deleted endpoints";
     }
 

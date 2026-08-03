@@ -33,15 +33,16 @@ The recommended approach for defining where the Sanshain service is running and 
 
 CI/CD pipelines can easily inject configuration using environment variables:
 
-| Variable                | Description                                         |
-|-------------------------|-----------------------------------------------------|
-| `SANSHAIN_URL`          | URL of the Sanshain service                         |
-| `SANSHAIN_TOKEN`        | Authentication token                                |
-| `SANSHAIN_BRANCH`       | Branch name (auto-detected if not set)              |
-| `SANSHAIN_FORCE`        | Enable force mode (reset shared contract)           |
-| `SANSHAIN_BEST_EFFORT`   | Don't fail the build on server errors               |
+| Variable                | Description                                              |
+|-------------------------|----------------------------------------------------------|
+| `SANSHAIN_URL`          | URL of the Sanshain service                              |
+| `SANSHAIN_TOKEN`        | Authentication token                                     |
+| `SANSHAIN_GA`           | Provide as `ga` instead of `snapshot` (release pipelines) |
+| `SANSHAIN_BEST_EFFORT`  | Don't fail the build on server errors                    |
 
 ## CI/CD Pipeline Integration
+
+Stability is declared per build: feature pipelines publish overwritable `snapshot` versions by default, and the release/protected-branch pipeline sets the GA switch. That is the whole mechanism — there is no branch detection.
 
 ### GitHub Actions Example
 
@@ -51,16 +52,19 @@ CI/CD pipelines can easily inject configuration using environment variables:
   env:
     SANSHAIN_URL: ${{ secrets.SANSHAIN_URL }}
     SANSHAIN_TOKEN: ${{ secrets.SANSHAIN_TOKEN }}
-    SANSHAIN_BRANCH: ${{ github.head_ref || github.ref_name }}
+    # GA only on the release branch pipeline
+    SANSHAIN_GA: ${{ github.ref == 'refs/heads/main' }}
 ```
 
 ### Dry-Run for Pull Requests
 
-To validate that a feature branch is compatible with the target branch before merging, use `dryRun`:
+To validate that a changed spec would be accepted by the version rules (GA immutability, semver honesty) before merging, use `dryRun`:
 
 ```bash
-mvn verify -Dsanshain.branch=main -Dsanshain.dry.run=true
+mvn verify -Dsanshain.dry.run=true
 ```
+
+A `409` response names the `proposed_version` to publish as instead — the fix is always a version bump in the spec file itself.
 
 ## Multi-Module Projects & Parent POMs
 
@@ -76,7 +80,7 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>1.12.0</version>
+            <version>2.0.0</version>
             <executions>
                 <execution>
                     <phase>validate</phase>
@@ -101,15 +105,16 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
 
 - **Safety**: If a child project lacks `sanshain.yaml`, the plugin logs a warning and continues.
 - **Opt-out**: Child projects can disable the plugin by setting `<sanshain.skip>true</sanshain.skip>`.
-    
+
 ## Understanding the Build Cache
 
 The Sanshain Maven Plugin uses a local cache in the `target/` directory to improve build performance and avoid redundant network calls.
 
 ### How it Works
-1.  **Hash Comparison**: Before uploading a specification, the plugin computes a hash of the content and compares it against the last successful upload stored in `target/sanshain-cache.yaml` (or similar).
+1.  **Hash Comparison**: Before uploading a specification, the plugin computes a hash of the content and compares it against the last successful upload stored in `target/.sanshain-cache.json`.
 2.  **Skipping**: If the content hash matches the cached version, the plugin logs: `⏭ Spec unchanged (hash match), skipping provide.`
-3.  **Idempotency**: This ensures that even if `mvn install` is run multiple times, the Sanshain service only receives updates when the API actually changes.
+3.  **ETag Caching**: Require responses are cached by `ETag`; an unchanged pin answers `304 Not Modified` and the output file is not rewritten. A pin on a GA version can never change content; a pin on a snapshot can, which is exactly what the ETag detects.
+4.  **Idempotency**: Even without the cache, re-providing byte-identical content is a server-side no-op — CI re-runs of the same commit never fight.
 
 ### Clearing the Cache
 To force a re-upload or re-download of all snippets, simply run a clean build:

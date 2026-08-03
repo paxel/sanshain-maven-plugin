@@ -29,6 +29,7 @@ provides:
 requires:
   - serviceName: "demo-service"
     apiType: "openapi"
+    version: "1.0.0"
     endpoints:
       - method: "GET"
         path: "/hello"
@@ -64,6 +65,7 @@ EOF
 
 cat > specs/service.proto <<EOF
 syntax = "proto3";
+// sanshain-version: 1.0.0
 package demo;
 service HelloService {
   rpc SayHello (HelloRequest) returns (HelloResponse);

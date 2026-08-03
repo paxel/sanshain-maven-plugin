@@ -68,19 +68,17 @@ public class SanshainCache {
      * Updates the cached provide entry after a successful provide.
      * @param key         the spec file identifier
      * @param contentHash the SHA-256 hash of the content
-     * @param version     the version returned by the server
      */
-    public void updateProvideEntry(String key, String contentHash, int version) {
+    public void updateProvideEntry(String key, String contentHash) {
         ProvideEntry entry = new ProvideEntry();
         entry.contentHash = contentHash;
-        entry.version = version;
         entry.lastProvided = Instant.now().toString();
         state.provides.put(key, entry);
     }
 
     /**
      * Gets the cached require entry for a require key.
-     * @param key the require identifier (e.g. "user-service|main|GET|/api/v1/users")
+     * @param key the require identifier (e.g. "user-service|1.2.0|GET|/api/v1/users")
      * @return the cached entry, or null if not found
      */
     public RequireEntry getRequireEntry(String key) {
@@ -122,23 +120,23 @@ public class SanshainCache {
     /**
      * Builds a require cache key from the given parameters.
      * @param serviceName the service name
-     * @param branch      the branch
+     * @param version     the pinned version
      * @param method      the HTTP method
      * @param path        the API path
      * @return the cache key
      */
-    public static String requireKey(String serviceName, String branch, String method, String path) {
-        return serviceName + "|" + branch + "|" + method + "|" + path;
+    public static String requireKey(String serviceName, String version, String method, String path) {
+        return serviceName + "|" + version + "|" + method + "|" + path;
     }
 
     /**
      * Builds a require-bundle cache key from the given parameters.
      * @param serviceName the service name
-     * @param branch      the branch
+     * @param version     the pinned version
      * @return the cache key
      */
-    public static String requireBundleKey(String serviceName, String branch) {
-        return serviceName + "|" + branch + "|bundle";
+    public static String requireBundleKey(String serviceName, String version) {
+        return serviceName + "|" + version + "|bundle";
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -153,8 +151,6 @@ public class SanshainCache {
     public static class ProvideEntry {
         @JsonProperty("content_hash")
         public String contentHash;
-        @JsonProperty("version")
-        public int version;
         @JsonProperty("last_provided")
         public String lastProvided;
     }

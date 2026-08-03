@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,13 +34,23 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 
 /**
- * HTTP client for communicating with the Sanshain service.
+ * HTTP client for communicating with a Sanshain 2.x service.
+ *
+ * <p>Speaks only the 2.0 wire contract: provides carry a declared {@code stability}
+ * ({@code snapshot}/{@code ga}) and read the version from the spec itself; requires pin an exact
+ * {@code version}. There is no branch, no long-polling, and no optimistic concurrency.</p>
  */
 public class SanshainHttpClient {
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final HttpClient httpClient;
     private final Log log;
     private final ObjectMapper objectMapper;
+
+    /** Memoized result of the lazy wrong-server diagnosis (one GET /version per client). */
+    private boolean serverVersionChecked;
+    private String pre2ServerVersion;
 
     /**
      * Constructs a new SanshainHttpClient.
@@ -107,96 +118,66 @@ public class SanshainHttpClient {
         }
     }
 
-    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String content, boolean compression, boolean dryRun, Integer baseVersion, String apiType, boolean force, String author, String sourceProtectedBranch) throws MojoExecutionException {
+    /**
+     * Provides a specification to the Sanshain service under its declared stability. The version
+     * of the Provide is not a parameter — the server reads it from the spec content itself
+     * ({@code info.version}, or the {@code // sanshain-version:} comment for proto).
+     *
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param producerName the name of the Producer providing the specification
+     * @param content      the full specification content
+     * @param stability    the declared stability ({@code snapshot} or {@code ga})
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to validate and classify without storing
+     * @param apiType      the type of API (openapi, asyncapi, proto)
+     * @param specFile     the spec file the content came from, named in 409 remediation hints
+     * @return the parsed provide response, or null if the 202 body could not be parsed
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
+    public ProvideResponse postProvide(String baseUrl, String token, String producerName, String content,
+                            String stability, boolean compression, boolean dryRun, String apiType,
+                            String specFile) throws MojoExecutionException {
         String path = "/provide";
         String contentField = "openapi_yaml";
-        String type = "openapi";
+        String versionHint = "info.version";
 
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             path = "/provide/asyncapi";
             contentField = "asyncapi_yaml";
-            type = "asyncapi";
         } else if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
             path = "/provide/grpc";
             contentField = "proto_content";
-            type = "proto";
+            versionHint = "the // sanshain-version: comment";
         }
 
-        ProvideGenericPayload payload = new ProvideGenericPayload(serviceName, branch, content, dryRun, type, baseVersion, contentField, force, author, sourceProtectedBranch);
+        ProvidePayload payload = new ProvidePayload(producerName, content, stability, dryRun, contentField);
 
         try {
             String json = objectMapper.writeValueAsString(payload);
-            return postProvideInternal(baseUrl + path, token, json, compression);
+            return postProvideInternal(baseUrl, path, token, json, compression, versionHint, specFile);
         } catch (JsonProcessingException e) {
             throw new MojoExecutionException("Failed to build JSON for " + path, e);
         }
     }
 
-    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion, boolean force, String author, String sourceProtectedBranch) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, baseVersion, "openapi", force, author, sourceProtectedBranch);
-    }
-
-    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression, boolean dryRun, Integer baseVersion, boolean force) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, baseVersion, "openapi", force, null, null);
-    }
-
-    public ProvideResponse postProvide(String baseUrl, String token, String serviceName, String branch,
-                            String openapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, openapiYaml, compression, dryRun, null, false);
-    }
-
-    public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
-                                    String asyncapiYaml, boolean compression, boolean dryRun, Integer baseVersion, boolean force, String author, String sourceProtectedBranch) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, baseVersion, "asyncapi", force, author, sourceProtectedBranch);
-    }
-
-    public ProvideResponse postProvideAsyncApi(String baseUrl, String token, String serviceName, String branch,
-                                    String asyncapiYaml, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvideAsyncApi(baseUrl, token, serviceName, branch, asyncapiYaml, compression, dryRun, null, false, null, null);
-    }
-
-    public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
-                                 String protoContent, boolean compression, boolean dryRun, Integer baseVersion, boolean force, String author, String sourceProtectedBranch) throws MojoExecutionException {
-        return postProvide(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, baseVersion, "proto", force, author, sourceProtectedBranch);
-    }
-
-    public ProvideResponse postProvideProto(String baseUrl, String token, String serviceName, String branch,
-                                 String protoContent, boolean compression, boolean dryRun) throws MojoExecutionException {
-        return postProvideProto(baseUrl, token, serviceName, branch, protoContent, compression, dryRun, null, false, null, null);
-    }
-
-    private static class ProvideGenericPayload {
+    private static class ProvidePayload {
         public final String producername;
-        public final String branch;
-        @com.fasterxml.jackson.annotation.JsonIgnore
-        public final String content;
+        public final String stability;
         @JsonProperty("dry_run")
         public final boolean dryRun;
-        @JsonProperty("api_type")
-        public final String apiType;
-        @JsonProperty("base_version")
-        public final Integer baseVersion;
-        public final boolean force;
-        public final String author;
-        @JsonProperty("source_protected_branch")
-        public final String sourceProtectedBranch;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public final String content;
         @com.fasterxml.jackson.annotation.JsonIgnore
         public final String contentField;
 
-        public ProvideGenericPayload(String producername, String branch, String content, boolean dryRun, String apiType, Integer baseVersion, String contentField, boolean force, String author, String sourceProtectedBranch) {
+        public ProvidePayload(String producername, String content, String stability, boolean dryRun,
+                              String contentField) {
             this.producername = producername;
-            this.branch = branch;
             this.content = content;
+            this.stability = stability;
             this.dryRun = dryRun;
-            this.apiType = apiType;
-            this.baseVersion = baseVersion;
             this.contentField = contentField;
-            this.force = force;
-            this.author = author;
-            this.sourceProtectedBranch = sourceProtectedBranch;
         }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter
@@ -207,11 +188,13 @@ public class SanshainHttpClient {
         }
     }
 
-    private ProvideResponse postProvideInternal(String url, String token, String json, boolean compression) throws MojoExecutionException {
+    private ProvideResponse postProvideInternal(String baseUrl, String path, String token, String json,
+                            boolean compression, String versionHint, String specFile) throws MojoExecutionException {
+        String url = baseUrl + path;
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(30));
+                .timeout(REQUEST_TIMEOUT);
 
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + token);
@@ -247,14 +230,32 @@ public class SanshainHttpClient {
                     log.info("Specification accepted by Sanshain service.");
                     return null;
                 }
+            }
+
+            failOnPre2Server(baseUrl, token);
+
+            if (status == 409) {
+                ErrorBody error = parseErrorBody(responseBody);
+                logAngryCat();
+                log.error("Provide rejected by the version rules (409): " + sanitize(error.message(responseBody)));
+                String message = "Provide rejected (409): " + sanitize(error.message(responseBody));
+                if (error.proposedVersion != null) {
+                    String remedy = "Publish as " + error.proposedVersion + " — update " + versionHint
+                            + " in " + specFile + " and re-run.";
+                    log.error(remedy);
+                    message += " " + remedy;
+                }
+                throw new MojoExecutionException(message);
             } else if (status == 400) {
                 logAngryCat();
                 log.error("Provide failed (400 Bad Request): " + sanitize(responseBody));
-                throw new MojoExecutionException("Bad request: " + sanitize(responseBody));
-            } else if (status == 409) {
+                throw new MojoExecutionException("Invalid specification (400) — most commonly a missing or "
+                        + "non-semver version (" + versionHint + "): " + sanitize(responseBody));
+            } else if (status == 422) {
                 logAngryCat();
-                log.error("Provide failed (409 Conflict): " + sanitize(responseBody));
-                throw new MojoExecutionException("Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.");
+                log.error("Provide failed (422 Unprocessable Entity): " + sanitize(responseBody));
+                throw new MojoExecutionException("Request shape rejected (422) — the server rejects unknown "
+                        + "or missing fields by name: " + sanitize(responseBody));
             } else {
                 logAngryCat();
                 log.error("Provide failed (" + status + "): " + sanitize(responseBody));
@@ -269,101 +270,44 @@ public class SanshainHttpClient {
     }
 
     /**
-     * Downloads an OpenAPI snippet for a specific endpoint from the Sanshain service.
+     * Downloads an endpoint snippet at an exact pinned version, with ETag support.
      *
-     * @param baseUrl     the base URL of the Sanshain service
-     * @param token       the authentication token (optional)
-     * @param serviceNameIdentifier  the name of the client requesting the endpoint
-     * @param serviceName the name of the service providing the API
-     * @param branch      the Git branch name
-     * @param path        the API path
-     * @param method      the HTTP method
-     * @param timeout     the timeout in seconds
-     * @param compression true if GZIP compression should be used
-     * @param dryRun      true to perform a dry run without persisting
-     * @param apiType     the type of API (openapi, asyncapi, proto)
-     * @return the content of the downloaded OpenAPI snippet
-     * @throws MojoExecutionException if the request fails or the endpoint is not found
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param consumerName the name of the requiring Consumer
+     * @param producerName the name of the Producer to require from
+     * @param version      the exact pinned version ({@code MAJOR.MINOR.PATCH})
+     * @param path         the API path / channel / fully qualified gRPC service
+     * @param method       the HTTP verb / PUB / SUB / RPC name
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to resolve without recording the dependency
+     * @param apiType      the type of API (openapi, asyncapi, proto)
+     * @param etag         the ETag from a previous response (optional, for If-None-Match)
+     * @return the require result with content, ETag, and served stability
+     * @throws MojoExecutionException if the request fails or the version/endpoint is unknown
      */
-    public String getRequire(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                             String branch, String path, String method, int timeout,
-                             boolean compression, boolean dryRun, String apiType) throws MojoExecutionException {
-        RequireResult result = getRequireWithEtag(baseUrl, token, serviceNameIdentifier, serviceName,
-                branch, path, method, timeout, compression, dryRun, apiType, null);
-        return result.getContent();
-    }
-
-    /**
-     * Downloads an OpenAPI snippet with ETag support.
-     *
-     * @param baseUrl     the base URL of the Sanshain service
-     * @param token       the authentication token (optional)
-     * @param serviceNameIdentifier  the name of the client requesting the endpoint
-     * @param serviceName the name of the service providing the API
-     * @param branch      the Git branch name
-     * @param path        the API path
-     * @param method      the HTTP method
-     * @param timeout     the timeout in seconds
-     * @param compression true if GZIP compression should be used
-     * @param dryRun      true to perform a dry run without persisting
-     * @param apiType     the type of API (openapi, asyncapi, proto)
-     * @param etag        the ETag from a previous response (optional, for If-None-Match)
-     * @return the require result with content and ETag
-     * @throws MojoExecutionException if the request fails or the endpoint is not found
-     */
-    public RequireResult getRequireWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                             String branch, String path, String method, int timeout,
+    public RequireResult getRequireWithEtag(String baseUrl, String token, String consumerName, String producerName,
+                             String version, String path, String method,
                              boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
-        return getRequireWithEtag(baseUrl, token, serviceNameIdentifier, serviceName, branch, path, method, timeout, compression, dryRun, apiType, etag, null);
-    }
-
-    /**
-     * Downloads an OpenAPI snippet with ETag support and an optional one-shot branch-resolution override.
-     *
-     * @param pullFromBranch one-shot override: resolve this request against exactly this branch,
-     *                       bypassing source_protected_branch and all other fallback resolution (optional)
-     */
-    public RequireResult getRequireWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                             String branch, String path, String method, int timeout,
-                             boolean compression, boolean dryRun, String apiType, String etag, String pullFromBranch) throws MojoExecutionException {
-        return getRequireWithEtag(baseUrl, token, serviceNameIdentifier, serviceName, branch, path, method, timeout, compression, dryRun, apiType, etag, pullFromBranch, null);
-    }
-
-    /**
-     * Downloads an OpenAPI snippet with ETag support, an optional one-shot branch-resolution override,
-     * and an optional sticky per-branch lineage hint.
-     *
-     * @param pullFromBranch        one-shot override: resolve this request against exactly this branch,
-     *                              bypassing source_protected_branch and all other fallback resolution (optional)
-     * @param sourceProtectedBranch best-effort hint: the protected branch this branch defers to when it
-     *                              has no data of its own (optional)
-     */
-    public RequireResult getRequireWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                             String branch, String path, String method, int timeout,
-                             boolean compression, boolean dryRun, String apiType, String etag, String pullFromBranch, String sourceProtectedBranch) throws MojoExecutionException {
         String endpoint = "/require";
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             endpoint = "/require/asyncapi";
-        } else if ("proto".equalsIgnoreCase(apiType)) {
+        } else if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
             endpoint = "/require/grpc";
         }
 
         String url = baseUrl + endpoint + "?" +
-                "consumername=" + urlEncode(serviceNameIdentifier) +
-                "&producername=" + urlEncode(serviceName) +
-                "&branch=" + urlEncode(branch) +
+                "consumername=" + urlEncode(consumerName) +
+                "&producername=" + urlEncode(producerName) +
+                "&version=" + urlEncode(version) +
                 "&path=" + urlEncode(path) +
                 "&method=" + urlEncode(method) +
-                "&timeout=" + timeout +
-                "&dry_run=" + dryRun +
-                "&api_type=" + urlEncode(apiType != null ? apiType : "openapi") +
-                (pullFromBranch != null ? "&pull_from_branch=" + urlEncode(pullFromBranch) : "") +
-                (sourceProtectedBranch != null ? "&source_protected_branch=" + urlEncode(sourceProtectedBranch) : "");
+                "&dry_run=" + dryRun;
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .GET()
-                .timeout(Duration.ofSeconds(timeout + 30));
+                .timeout(REQUEST_TIMEOUT);
 
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + token);
@@ -389,28 +333,30 @@ public class SanshainHttpClient {
                 return RequireResult.notModified();
             } else if (status == 200) {
                 String responseEtag = response.headers().firstValue("ETag").orElse(null);
-                String resolution = response.headers().firstValue("X-Sanshain-Resolution").orElse(null);
-                String servedBranch = response.headers().firstValue("X-Sanshain-Served-Branch").orElse(null);
-                return RequireResult.ok(extractResponseBody(response), responseEtag, resolution, servedBranch);
-            } else if (status == 404) {
-                String errorBody = sanitize(extractResponseBody(response));
+                String stability = response.headers().firstValue("X-Sanshain-Stability").orElse(null);
+                return RequireResult.ok(extractResponseBody(response), responseEtag, stability);
+            }
+
+            failOnPre2Server(baseUrl, token);
+
+            String errorBody = sanitize(extractResponseBody(response));
+            if (status == 404) {
                 logAngryCat();
-                log.error("Require failed (404 Not Found): " + errorBody);
+                log.error("Require failed (404 Unknown): " + errorBody);
                 throw new MojoExecutionException(
-                        "Endpoint not found: " + serviceName + " " + method + " " + path +
-                        " (branch: " + branch + "): " + errorBody);
+                        "Unknown producer or version: " + producerName + "@" + version +
+                        " (" + method + " " + path + ") — fix the 'version' pin in sanshain.yaml" +
+                        " (list available: GET /producers/" + producerName + "/versions): " + errorBody);
             } else if (status == 410) {
-                String errorBody = sanitize(extractResponseBody(response));
                 logAngryCat();
-                log.error("Require failed (410 Gone): " + errorBody);
+                log.error("Require failed (410 Absent): " + errorBody);
                 throw new MojoExecutionException(
-                        "Endpoint deliberately not published: " + serviceName + " " + method + " " + path +
-                        " (branch: " + branch + ") is authoritative and does not serve this endpoint: " + errorBody);
+                        "Endpoint absent: " + producerName + "@" + version + " exists but deliberately does not " +
+                        "include " + method + " " + path + ": " + errorBody);
             } else {
-                String errorBody = sanitize(extractResponseBody(response));
                 logAngryCat();
                 log.error("Require failed (" + status + "): " + errorBody);
-                throw new MojoExecutionException("Unexpected response " + status + " from /require: " + errorBody);
+                throw new MojoExecutionException("Unexpected response " + status + " from " + endpoint + ": " + errorBody);
             }
         } catch (IOException e) {
             throw new MojoExecutionException("Failed to connect to Sanshain service at " + baseUrl, e);
@@ -421,83 +367,32 @@ public class SanshainHttpClient {
     }
 
     /**
-     * Requests a merged OpenAPI specification for multiple endpoints from the same service.
-     * Uses the /require-bundle endpoint which returns a single YAML with deduplicated schemas.
+     * Requests a merged specification for multiple endpoints of one Producer at one pinned
+     * version, with ETag support. Uses the /require-bundle endpoint which returns a single
+     * document with deduplicated schemas.
      *
-     * @param baseUrl     the base URL of the Sanshain service
-     * @param token       the authentication token (optional)
-     * @param serviceNameIdentifier  the name of the client requesting the endpoints
-     * @param serviceName the name of the service providing the API
-     * @param branch      the Git branch name
-     * @param endpoints   the list of endpoints to request
-     * @param timeout     the timeout in seconds
-     * @param compression true if GZIP compression should be used
-     * @param dryRun      true to perform a dry run without persisting
-     * @param apiType     the type of API (openapi, asyncapi, proto)
-     * @return the merged OpenAPI YAML content
-     * @throws MojoExecutionException if the request fails or endpoints are not found
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param consumerName the name of the requiring Consumer
+     * @param producerName the name of the Producer to require from
+     * @param version      the exact pinned version ({@code MAJOR.MINOR.PATCH})
+     * @param endpoints    the list of endpoints to request
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to resolve without recording the dependency
+     * @param apiType      the type of API (openapi, asyncapi, proto)
+     * @param etag         the ETag from a previous response (optional, for If-None-Match)
+     * @return the require result with content, ETag, and served stability
+     * @throws MojoExecutionException if the request fails or the version/endpoints are unknown
      */
-    public String postRequireBundle(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
-                                    int timeout, boolean compression, boolean dryRun, String apiType) throws MojoExecutionException {
-        RequireResult result = postRequireBundleWithEtag(baseUrl, token, serviceNameIdentifier, serviceName,
-                branch, endpoints, timeout, compression, dryRun, apiType, null);
-        return result.getContent();
-    }
-
-    /**
-     * Requests a merged OpenAPI specification with ETag support.
-     *
-     * @param baseUrl     the base URL of the Sanshain service
-     * @param token       the authentication token (optional)
-     * @param serviceNameIdentifier  the name of the client requesting the endpoints
-     * @param serviceName the name of the service providing the API
-     * @param branch      the Git branch name
-     * @param endpoints   the list of endpoints to request
-     * @param timeout     the timeout in seconds
-     * @param compression true if GZIP compression should be used
-     * @param dryRun      true to perform a dry run without persisting
-     * @param apiType     the type of API (openapi, asyncapi, proto)
-     * @param etag        the ETag from a previous response (optional, for If-None-Match)
-     * @return the require result with content and ETag
-     * @throws MojoExecutionException if the request fails or endpoints are not found
-     */
-    public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
-                                    int timeout, boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
-        return postRequireBundleWithEtag(baseUrl, token, serviceNameIdentifier, serviceName, branch, endpoints, timeout, compression, dryRun, apiType, etag, null);
-    }
-
-    /**
-     * Requests a merged OpenAPI specification with ETag support and an optional one-shot branch-resolution override.
-     *
-     * @param pullFromBranch one-shot override: resolve this request against exactly this branch,
-     *                       bypassing source_protected_branch and all other fallback resolution (optional)
-     */
-    public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
-                                    int timeout, boolean compression, boolean dryRun, String apiType, String etag, String pullFromBranch) throws MojoExecutionException {
-        return postRequireBundleWithEtag(baseUrl, token, serviceNameIdentifier, serviceName, branch, endpoints, timeout, compression, dryRun, apiType, etag, pullFromBranch, null);
-    }
-
-    /**
-     * Requests a merged OpenAPI specification with ETag support, an optional one-shot branch-resolution
-     * override, and an optional sticky per-branch lineage hint.
-     *
-     * @param pullFromBranch        one-shot override: resolve this request against exactly this branch,
-     *                              bypassing source_protected_branch and all other fallback resolution (optional)
-     * @param sourceProtectedBranch best-effort hint: the protected branch this branch defers to when it
-     *                              has no data of its own (optional)
-     */
-    public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String serviceNameIdentifier, String serviceName,
-                                    String branch, List<SanshainConfig.EndpointConfig> endpoints,
-                                    int timeout, boolean compression, boolean dryRun, String apiType, String etag, String pullFromBranch, String sourceProtectedBranch) throws MojoExecutionException {
-        String json = buildRequireBundleJson(serviceNameIdentifier, serviceName, branch, endpoints, timeout, dryRun, apiType, pullFromBranch, sourceProtectedBranch);
+    public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String consumerName, String producerName,
+                                    String version, List<SanshainConfig.EndpointConfig> endpoints,
+                                    boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
+        String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType);
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/require-bundle"))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(timeout + 30));
+                .timeout(REQUEST_TIMEOUT);
 
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + token);
@@ -531,30 +426,31 @@ public class SanshainHttpClient {
                 return RequireResult.notModified();
             } else if (status == 200) {
                 String responseEtag = response.headers().firstValue("ETag").orElse(null);
-                String resolution = response.headers().firstValue("X-Sanshain-Resolution").orElse(null);
-                String servedBranch = response.headers().firstValue("X-Sanshain-Served-Branch").orElse(null);
-                return RequireResult.ok(extractResponseBody(response), responseEtag, resolution, servedBranch);
-            } else if (status == 400) {
-                String errorBody = sanitize(extractResponseBody(response));
+                String stability = response.headers().firstValue("X-Sanshain-Stability").orElse(null);
+                return RequireResult.ok(extractResponseBody(response), responseEtag, stability);
+            }
+
+            failOnPre2Server(baseUrl, token);
+
+            String errorBody = sanitize(extractResponseBody(response));
+            if (status == 400) {
                 logAngryCat();
                 log.error("Require-bundle failed (400 Bad Request): " + errorBody);
                 throw new MojoExecutionException("Bad request to /require-bundle: " + errorBody);
             } else if (status == 404) {
-                String errorBody = sanitize(extractResponseBody(response));
                 logAngryCat();
-                log.error("Require-bundle failed (404 Not Found): " + errorBody);
+                log.error("Require-bundle failed (404 Unknown): " + errorBody);
                 throw new MojoExecutionException(
-                        "One or more endpoints not found for service: " + serviceName +
-                        " (branch: " + branch + "): " + errorBody);
+                        "Unknown producer or version: " + producerName + "@" + version +
+                        " — fix the 'version' pin in sanshain.yaml" +
+                        " (list available: GET /producers/" + producerName + "/versions): " + errorBody);
             } else if (status == 410) {
-                String errorBody = sanitize(extractResponseBody(response));
                 logAngryCat();
-                log.error("Require-bundle failed (410 Gone): " + errorBody);
+                log.error("Require-bundle failed (410 Absent): " + errorBody);
                 throw new MojoExecutionException(
-                        "Endpoint deliberately not published for service: " + serviceName +
-                        " (branch: " + branch + ") is authoritative and does not serve one or more requested endpoints: " + errorBody);
+                        "Endpoints absent: " + producerName + "@" + version + " exists but deliberately does not " +
+                        "include one or more requested endpoints: " + errorBody);
             } else {
-                String errorBody = sanitize(extractResponseBody(response));
                 logAngryCat();
                 log.error("Require-bundle failed (" + status + "): " + errorBody);
                 throw new MojoExecutionException("Unexpected response " + status + " from /require-bundle: " + errorBody);
@@ -568,20 +464,33 @@ public class SanshainHttpClient {
     }
 
     /**
-     * Fetches the service's protected branch patterns (e.g. {@code master}, {@code release/*}), used as
-     * merge-base candidates when auto-detecting {@code source_protected_branch}. Never fails the build:
-     * any non-200 response, connection failure, or malformed body results in an empty list.
+     * Lazy wrong-server diagnosis: on the first failure, one {@code GET /version} checks whether
+     * the instance is pre-2.0. If it is, the confusing wire error is replaced with a clear
+     * upgrade message. Never called before a failure (no preflight); the result — including a
+     * negative one — is memoized so this costs at most one request per client instance.
      *
      * @param baseUrl the base URL of the Sanshain service
      * @param token   the authentication token (optional)
-     * @return the protected branch patterns, or an empty list if they could not be fetched
+     * @throws MojoExecutionException if the instance reports a version below 2.0.0
      */
-    public List<String> getProtectedBranches(String baseUrl, String token) {
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/branches/protected"))
-                .GET()
-                .timeout(Duration.ofSeconds(30));
+    private void failOnPre2Server(String baseUrl, String token) throws MojoExecutionException {
+        String oldVersion = detectPre2Server(baseUrl, token);
+        if (oldVersion != null) {
+            throw new MojoExecutionException("Sanshain server at " + baseUrl + " is " + oldVersion
+                    + "; this client requires Sanshain 2.x — upgrade the server.");
+        }
+    }
 
+    private String detectPre2Server(String baseUrl, String token) {
+        if (serverVersionChecked) {
+            return pre2ServerVersion;
+        }
+        serverVersionChecked = true;
+
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/version"))
+                .GET()
+                .timeout(Duration.ofSeconds(10));
         if (token != null && !token.isEmpty()) {
             requestBuilder.header("Authorization", "Bearer " + token);
         }
@@ -590,14 +499,48 @@ public class SanshainHttpClient {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                log.debug("GET /branches/protected returned " + response.statusCode() + ", skipping sourceProtectedBranch detection.");
-                return java.util.Collections.emptyList();
+                return null;
             }
-            String body = extractResponseBody(response);
-            return objectMapper.readValue(body, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            VersionBody versionBody = objectMapper.readValue(extractResponseBody(response), VersionBody.class);
+            if (versionBody.version == null) {
+                return null;
+            }
+            int major = Integer.parseInt(versionBody.version.split("\\.", 2)[0].trim());
+            if (major < 2) {
+                pre2ServerVersion = versionBody.version;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.debug("Failed to fetch protected branches, skipping sourceProtectedBranch detection: " + e.getMessage());
-            return java.util.Collections.emptyList();
+            log.debug("Could not determine server version: " + e.getMessage());
+        }
+        return pre2ServerVersion;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class VersionBody {
+        @JsonProperty("version")
+        public String version;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ErrorBody {
+        @JsonProperty("error")
+        public String error;
+        @JsonProperty("proposed_version")
+        public String proposedVersion;
+
+        String message(String rawBody) {
+            return error != null ? error : rawBody;
+        }
+    }
+
+    private ErrorBody parseErrorBody(String responseBody) {
+        try {
+            return objectMapper.readValue(responseBody, ErrorBody.class);
+        } catch (Exception e) {
+            log.debug("Could not parse error body as JSON: " + e.getMessage());
+            return new ErrorBody();
         }
     }
 
@@ -636,7 +579,7 @@ public class SanshainHttpClient {
     }
 
     private void logResponseHeaders(HttpResponse<?> response) {
-        response.headers().map().forEach((name, values) -> 
+        response.headers().map().forEach((name, values) ->
             values.forEach(value -> log.debug("Response header: " + name + ": " + value))
         );
     }
@@ -649,32 +592,34 @@ public class SanshainHttpClient {
 
     private void logAngryCat() {
         log.error("");
-        log.error("       /\\_/\\");
-        log.error("      ( o.o )");
-        log.error("       > ^ <        HISSSSS!");
-        log.error("      /|   |\\");
-        log.error("     (_|   |_)");
-        log.error("       |   |");
-        log.error("       |_ _|");
-        log.error("      _/| |\\_ ");
-        log.error("     (_/ \\_)");
+        log.error("           .__....._             _.....__,");
+        log.error("            .\": ò :':           ;': ó :\".");
+        log.error("            `. `-' .'.         .'. `-' .'");
+        log.error("              `---'               `---'");
+        log.error("");
+        log.error("    _...----...      ...   ...      ...----..._");
+        log.error(" .-'__..-\"\"'----    `.  `\"`  .'    ----'\"\"-..__`-.");
+        log.error("'.-'   _.--\"\"\"'       `-._.-'       '\"\"\"--._   `-.`");
+        log.error("'  .-\"'                  :                  `\"-.  `     HISSSSSSSS!");
+        log.error("  '   `.              _.'\"'._              .'   `");
+        log.error("        `.       ,.-'\"VvVvVvV\"'-.,       .'");
+        log.error("          `.         ^   ^   ^         .'");
+        log.error("            `-._                   _.-'");
+        log.error("                `\"'--...___...--'\"`");
         log.error("");
         log.error("   Sanshain is NOT happy with this!");
         log.error("");
     }
 
-    private String buildRequireBundleJson(String clientName, String serviceName, String branch,
+    private String buildRequireBundleJson(String consumerName, String producerName, String version,
                                           List<SanshainConfig.EndpointConfig> endpoints,
-                                          int timeout, boolean dryRun, String apiType, String pullFromBranch, String sourceProtectedBranch) throws MojoExecutionException {
+                                          boolean dryRun, String apiType) throws MojoExecutionException {
         RequireBundlePayload payload = new RequireBundlePayload();
-        payload.consumername = clientName;
-        payload.producername = serviceName;
-        payload.branch = branch;
-        payload.timeout = timeout;
+        payload.consumername = consumerName;
+        payload.producername = producerName;
+        payload.version = version;
         payload.dryRun = dryRun;
         payload.apiType = apiType != null ? apiType : "openapi";
-        payload.pullFromBranch = pullFromBranch;
-        payload.sourceProtectedBranch = sourceProtectedBranch;
         payload.endpoints = endpoints.stream()
                 .map(ep -> {
                     RequireBundleEndpoint e = new RequireBundleEndpoint();
@@ -693,17 +638,12 @@ public class SanshainHttpClient {
     static class RequireBundlePayload {
         public String consumername;
         public String producername;
-        public String branch;
+        public String version;
         public List<RequireBundleEndpoint> endpoints;
-        public int timeout;
         @JsonProperty("dry_run")
         public boolean dryRun;
         @JsonProperty("api_type")
         public String apiType;
-        @JsonProperty("pull_from_branch")
-        public String pullFromBranch;
-        @JsonProperty("source_protected_branch")
-        public String sourceProtectedBranch;
     }
 
     static class RequireBundleEndpoint {

@@ -10,6 +10,7 @@ provides:
 requires:
   - serviceName: "demo-service"
     apiType: "openapi"
+    version: "1.0.0"
     endpoints:
       - method: "GET"
         path: "/hello"

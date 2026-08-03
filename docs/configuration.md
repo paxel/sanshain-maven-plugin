@@ -9,19 +9,18 @@ The plugin automatically looks for a `sanshain.yaml` file in your project's root
 ```yaml
 sanshainUrl: https://sanshain.example.com
 serviceName: order-service
-timeout: 120
 compression: true
 bestEffort: true
 
 provides:
-  - file: src/main/resources/openapi.yaml
-  - file: src/main/resources/order.proto
+  - file: src/main/resources/openapi.yaml   # version read from info.version
+  - file: src/main/resources/order.proto    # version read from // sanshain-version:
     apiType: proto
 
 requires:
   - serviceName: user-service
+    version: 2.3.0
     outputDirectory: target/generated-sources/sanshain/user-service
-    timeout: 60
     endpoints:
       - method: GET
         path: /api/v1/users
@@ -37,6 +36,14 @@ You can override the configuration file location using the `configFile` property
 </configuration>
 ```
 
+## Versions and stability
+
+- The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version: MAJOR.MINOR.PATCH` comment for proto) and must be strict three-part semver.
+- Every `requires` entry pins an **exact version** (`version: MAJOR.MINOR.PATCH`). No ranges, no `latest`. A pin that does not exist on the server fails the require immediately (`404`).
+- **Stability** is declared per build: the default is `snapshot`; `-Dsanshain.ga=true` or `SANSHAIN_GA=true` provides as `ga`. There is no stability field in `sanshain.yaml`.
+
+The configuration is validated at parse time, before any network call. Leftover 1.x fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`, `stability` in the YAML) and `requires` entries without a `version` pin are rejected by name with a migration hint.
+
 ## Global Settings
 
 The following settings can be specified in `sanshain.yaml`, overridden via Maven properties, or set as environment variables.
@@ -46,15 +53,13 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
 | Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
-| Timeout (seconds)           | `timeout`       | `-Dsanshain.timeout`     | `$SANSHAIN_TIMEOUT`     | `120`                                              |
+| GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | `false` (provide as `snapshot`)                    |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
 | Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false`                                            |
 | Strict                      | `strict`        | `-Dsanshain.strict`      | —                       | `false`                                            |
 | Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
-| Branch                      | —               | `-Dsanshain.branch`      | `$SANSHAIN_BRANCH`      | auto-detected from Git                             |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
-| Force                       | —               | `-Dsanshain.force`       | `$SANSHAIN_FORCE`       | `false`                                            |
 | Combine                     | `combine`       | `-Dsanshain.combine`     | `$SANSHAIN_COMBINE`     | `true`                                             |
 
 ## Goal: `provide` Parameters
@@ -65,6 +70,7 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                                             |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                                       |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable).                      |
+| `ga`          | `sanshain.ga`           | `false`                                   | Provide as `ga` instead of `snapshot`. Also settable via `$SANSHAIN_GA`.           |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                                            |
 | `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                                     |
 | `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on server errors.                                             |
@@ -72,7 +78,6 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | `skip`        | `sanshain.skip`         | `false`                                   | Skip execution of all sanshain goals.                                              |
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                                           |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing.                                                          |
-| `force`       | `sanshain.force`        | `false`                                   | Force mode — override the existing contract. Also settable via `$SANSHAIN_FORCE`.  |
 | `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications.            |
 | `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning.                                         |
 
@@ -83,7 +88,6 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | `serviceName` | `sanshain.service.name` | —                       | **Required.** The name of the client service requesting the endpoints.       |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
 | `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
-| `timeout`     | `sanshain.timeout`      | `120`                   | Global timeout in seconds for server long-polling.                           |
 | `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
 | `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |
 | `bestEffort`  | `sanshain.bestEffort`   | `false`                 | Don't fail the build on server errors.                                       |
@@ -107,12 +111,6 @@ Designed for non-critical builds or parent POMs. When enabled, server errors or 
 mvn verify -Dsanshain.bestEffort=true
 ```
 
-### Force Mode
-Allows overriding existing contracts on feature branches. Fails on protected branches (e.g., `main`).
-```bash
-mvn verify -Dsanshain.force=true
-```
-
 ### Dry-Run Mode
 Validates requests against the service without persisting data or recording dependencies.
 ```bash
@@ -122,6 +120,7 @@ mvn verify -Dsanshain.dry.run=true
 ## Local Caching
 
 The plugin uses a local cache at `target/.sanshain-cache.json` for:
-- **Optimistic Concurrency**: Tracking `baseVersion` for conflict detection.
-- **Content Caching**: Skipping uploads if the specification hasn't changed.
-- **ETag Caching**: Avoiding file rewrites if the downloaded snippet is unchanged.
+- **Content Caching**: Skipping uploads if the specification hasn't changed (SHA-256 hash comparison).
+- **ETag Caching**: Avoiding file rewrites if the downloaded snippet is unchanged (`304 Not Modified`).
+
+The cache is deleted by `mvn clean`, which forces a full re-synchronization with the server.

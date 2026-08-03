@@ -5,21 +5,16 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
-
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.Ref;
-import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Map;
 
 /**
- * Goal which provides an OpenAPI specification to the Sanshain service.
+ * Goal which provides an API specification to the Sanshain service under its declared stability.
+ * The version of the Provide is read from the spec file itself ({@code info.version}, or a
+ * {@code // sanshain-version:} comment for proto).
  */
 @Mojo(name = "provide", defaultPhase = LifecyclePhase.INITIALIZE, requiresProject = false)
 public class ProvideMojo extends AbstractMojo {
@@ -48,9 +43,6 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.strict", defaultValue = "false")
     private boolean strict;
 
-    @Parameter(property = "sanshain.branch")
-    private String branch;
-
     @Parameter(property = "sanshain.insecure")
     private Boolean insecure;
 
@@ -69,26 +61,24 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.service.name")
     private String serviceName;
 
-    @Parameter(property = "sanshain.timeout")
-    private Integer timeout;
-
     @Parameter(property = "sanshain.provide.skip", defaultValue = "false")
     private boolean skipProvide;
-
-    @Parameter(property = "sanshain.force", defaultValue = "false")
-    private boolean force;
 
     @Parameter(property = "sanshain.bestEffort")
     private Boolean bestEffort;
 
-    @Parameter(property = "sanshain.author")
-    private String author;
+    /**
+     * The explicit GA switch: when true, this build provides as {@code ga} instead of the default
+     * {@code snapshot}. Also settable via {@code SANSHAIN_GA=true}.
+     */
+    @Parameter(property = "sanshain.ga", defaultValue = "false")
+    private boolean ga;
 
-    @Parameter(property = "sanshain.sourceProtectedBranch")
-    private String sourceProtectedBranch;
-
-    /** Set in {@link #execute()}; read by the provide helpers, like {@code baseDir} and {@code force}. */
+    /** Set in {@link #execute()}; read by the provide helpers, like {@code baseDir}. */
     private SanshainMojoDelegate delegate;
+
+    /** Resolved once in {@link #execute()}; the stability declared on every Provide of this run. */
+    private String stability;
 
     private void initDefaults() {
         if (baseDir == null) {
@@ -101,7 +91,7 @@ public class ProvideMojo extends AbstractMojo {
 
     public void execute() throws MojoExecutionException {
         initDefaults();
-        delegate = new SanshainMojoDelegate(getLog(), settings, baseDir, serverId, strict);
+        delegate = new SanshainMojoDelegate(getLog(), settings, serverId, strict);
 
         if (openApiFile == null) {
             openApiFile = new File(new File(baseDir, "target"), "openapi.yaml");
@@ -127,15 +117,14 @@ public class ProvideMojo extends AbstractMojo {
             delegate.handleException(e, resolvedBestEffort);
             config = new SanshainConfig();
         }
-        
+
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
         String resolvedToken = delegate.resolveToken(token);
-        String resolvedBranch = delegate.resolveBranch(branch);
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         boolean resolvedCombine = delegate.resolveCombine(combine, config);
-        force = delegate.resolveForce(force);
+        stability = delegate.resolveStability(ga);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -146,7 +135,7 @@ public class ProvideMojo extends AbstractMojo {
             return;
         }
 
-        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedBranch, resolvedToken, resolvedBestEffort, resolvedCombine);
+        logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedToken, resolvedBestEffort, resolvedCombine);
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
         SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
@@ -154,29 +143,26 @@ public class ProvideMojo extends AbstractMojo {
         if (dryRun) {
             getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
         }
-        if (force) {
-            getLog().info("Force mode enabled — shared contract source will be reset to current upload.");
-        }
 
         try {
-            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedBranch, resolvedCompression, resolvedCombine, cache, resolvedBestEffort);
+            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedCombine, cache, resolvedBestEffort);
         } catch (Exception e) {
             delegate.handleException(e, resolvedBestEffort);
         }
     }
 
-    private void logResolvedValues(String url, String name, boolean comp, boolean ins, String br, String tok, boolean be, boolean comb) {
+    private void logResolvedValues(String url, String name, boolean comp, boolean ins, String tok, boolean be, boolean comb) {
         getLog().debug("Resolved sanshainUrl: " + url);
         getLog().debug("Resolved serviceName: " + name);
         getLog().debug("Resolved compression: " + comp);
         getLog().debug("Resolved insecure: " + ins);
-        getLog().debug("Resolved branch: " + br);
         getLog().debug("Resolved token: " + (tok != null ? "[set]" : "[not set]"));
         getLog().debug("Best effort: " + be);
         getLog().debug("Resolved combine: " + comb);
+        getLog().debug("Resolved stability: " + stability);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, boolean compression, boolean defaultCombine, SanshainCache cache, boolean bestEffort) throws IOException, MojoExecutionException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, SanshainCache cache, boolean bestEffort) throws IOException, MojoExecutionException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
@@ -184,7 +170,7 @@ public class ProvideMojo extends AbstractMojo {
             for (SanshainConfig.ProvideConfig p : config.getProvides()) {
                 if (p.getFile() != null) {
                     boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                    provideConfiguredFile(client, url, token, serviceName, defaultBranch, p, compression, itemCombine, cache);
+                    provideFile(client, url, token, serviceName, new File(baseDir, p.getFile()), p.getApiType(), compression, itemCombine, dryRun, cache);
                     providedAnything = true;
                 }
             }
@@ -195,14 +181,14 @@ public class ProvideMojo extends AbstractMojo {
             SanshainConfig.ProvideConfig p = config.getProvide();
             if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
                 boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                provideSingleConfig(client, url, token, serviceName, defaultBranch, p, compression, itemCombine, cache);
+                provideSingleConfig(client, url, token, serviceName, p, compression, itemCombine, cache);
                 providedAnything = true;
             }
         }
 
         // Fallback to default openApiFile
         if (!providedAnything && openApiFile != null && openApiFile.exists()) {
-            provideFile(client, url, token, serviceName, defaultBranch, openApiFile, "openapi", compression, defaultCombine, dryRun, null, cache);
+            provideFile(client, url, token, serviceName, openApiFile, "openapi", compression, defaultCombine, dryRun, cache);
             providedAnything = true;
         }
 
@@ -211,33 +197,26 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideConfiguredFile(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
-        String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
-        provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, p.getBaseVersion(), cache);
-    }
-
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, String defaultBranch, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
-        String b = p.getBranch() != null ? p.getBranch() : defaultBranch;
-        
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
         if (p.getFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, cache);
         }
         if (p.getOpenApiFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getOpenApiFile()), "openapi", compression, combine, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, new File(baseDir, p.getOpenApiFile()), "openapi", compression, combine, dryRun, cache);
         }
         if (p.getAsyncApiFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, new File(baseDir, p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, cache);
         }
         if (p.getProtoFile() != null) {
-            provideFile(client, url, token, serviceName, b, new File(baseDir, p.getProtoFile()), "proto", compression, combine, dryRun, p.getBaseVersion(), cache);
+            provideFile(client, url, token, serviceName, new File(baseDir, p.getProtoFile()), "proto", compression, combine, dryRun, cache);
         }
     }
 
-    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, String branch, File file, String apiType, boolean compression, boolean combine, boolean dryRun, Integer baseVersion, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, File file, String apiType, boolean compression, boolean combine, boolean dryRun, SanshainCache cache) throws IOException, MojoExecutionException {
         if (!file.exists()) {
             throw new MojoExecutionException("Specification file does not exist: " + file.getAbsolutePath());
         }
-        
+
         String content;
         if (combine) {
             getLog().info("Combining multi-file specification: " + file.getAbsolutePath());
@@ -245,10 +224,10 @@ public class ProvideMojo extends AbstractMojo {
         } else {
             content = Files.readString(file.toPath());
         }
-        
+
         String fileKey = file.getName();
 
-        // Feature 3: Client-side content caching — skip if unchanged
+        // Client-side content caching — skip if unchanged
         String contentHash = SanshainCache.computeHash(content);
         if (cache != null) {
             SanshainCache.ProvideEntry cached = cache.getProvideEntry(fileKey);
@@ -256,34 +235,28 @@ public class ProvideMojo extends AbstractMojo {
                 getLog().info("⏭ Spec unchanged (hash match), skipping provide.");
                 return;
             }
-            // Feature 1: Use cached version as base_version if not explicitly set
-            if (baseVersion == null && cached != null && cached.version > 0) {
-                baseVersion = cached.version;
-            }
         }
 
-        // Resolved here rather than in execute(): detection costs an HTTP request, and the hash-match
-        // return above must stay on the zero-request path. Memoized by the delegate across files.
-        String spb = delegate.resolveSourceProtectedBranch(sourceProtectedBranch, client, url, token);
-
-        ProvideResponse response;
+        String type;
         if (apiType == null || apiType.equalsIgnoreCase("openapi")) {
-            getLog().info("Providing OpenAPI: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvide(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force, author, spb);
+            type = "openapi";
+            getLog().info("Providing OpenAPI: " + serviceName + " (stability: " + stability + ")");
         } else if (apiType.equalsIgnoreCase("asyncapi")) {
-            getLog().info("Providing AsyncAPI: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvideAsyncApi(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force, author, spb);
+            type = "asyncapi";
+            getLog().info("Providing AsyncAPI: " + serviceName + " (stability: " + stability + ")");
         } else if (apiType.equalsIgnoreCase("proto") || apiType.equalsIgnoreCase("grpc")) {
-            getLog().info("Providing Protocol Buffers: " + serviceName + " (branch: " + branch + ")");
-            response = client.postProvideProto(url, token, serviceName, branch, content, compression, dryRun, baseVersion, force, author, spb);
+            type = "proto";
+            getLog().info("Providing Protocol Buffers: " + serviceName + " (stability: " + stability + ")");
         } else {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
         }
 
-        // Feature 2: Save version and content_hash from response
+        ProvideResponse response = client.postProvide(url, token, serviceName, content, stability, compression, dryRun, type, file.getName());
+
+        // Save content_hash from response so unchanged specs skip the next upload
         if (cache != null && response != null) {
             String responseHash = response.getContentHash() != null ? response.getContentHash() : contentHash;
-            cache.updateProvideEntry(fileKey, responseHash, response.getVersion());
+            cache.updateProvideEntry(fileKey, responseHash);
             cache.save();
         }
     }

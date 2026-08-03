@@ -32,7 +32,7 @@ public class SanshainCacheTest {
         SanshainCache cache = new SanshainCache(tempDir);
         assertNull(cache.getProvideEntry("openapi.yaml"));
 
-        cache.updateProvideEntry("openapi.yaml", "sha256:abc123", 5);
+        cache.updateProvideEntry("openapi.yaml", "sha256:abc123");
         cache.save();
 
         // Reload from disk
@@ -40,14 +40,13 @@ public class SanshainCacheTest {
         SanshainCache.ProvideEntry entry = cache2.getProvideEntry("openapi.yaml");
         assertNotNull(entry);
         assertEquals("sha256:abc123", entry.contentHash);
-        assertEquals(5, entry.version);
         assertNotNull(entry.lastProvided);
     }
 
     @Test
     public void testRequireEntryRoundTrip() throws IOException {
         SanshainCache cache = new SanshainCache(tempDir);
-        String key = SanshainCache.requireKey("user-service", "main", "GET", "/api/v1/users");
+        String key = SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users");
         assertNull(cache.getRequireEntry(key));
 
         cache.updateRequireEntry(key, "\"sha256:def456\"");
@@ -62,8 +61,8 @@ public class SanshainCacheTest {
 
     @Test
     public void testRequireKeyFormats() {
-        assertEquals("svc|main|GET|/api", SanshainCache.requireKey("svc", "main", "GET", "/api"));
-        assertEquals("svc|main|bundle", SanshainCache.requireBundleKey("svc", "main"));
+        assertEquals("svc|1.2.0|GET|/api", SanshainCache.requireKey("svc", "1.2.0", "GET", "/api"));
+        assertEquals("svc|1.2.0|bundle", SanshainCache.requireBundleKey("svc", "1.2.0"));
     }
 
     @Test
