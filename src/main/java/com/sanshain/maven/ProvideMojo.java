@@ -74,11 +74,29 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.ga", defaultValue = "false")
     private boolean ga;
 
+    /**
+     * Declares this build as the trunk stream's: its versions and pins maintain the main graph.
+     * Set by trunk CI, not committed to sanshain.yaml. Also settable via {@code SANSHAIN_TRUNK=true}.
+     */
+    @Parameter(property = "sanshain.trunk")
+    private Boolean trunk;
+
+    /**
+     * Declares this build as a named sanshain-branch's — a release or hotfix pipeline updating
+     * that graph instead of trunk. Also settable via {@code SANSHAIN_TAG}. Mutually exclusive
+     * with {@link #trunk}; the branch must already exist or the server answers 404.
+     */
+    @Parameter(property = "sanshain.tag")
+    private String tag;
+
     /** Set in {@link #execute()}; read by the provide helpers, like {@code baseDir}. */
     private SanshainMojoDelegate delegate;
 
     /** Resolved once in {@link #execute()}; the stability declared on every Provide of this run. */
     private String stability;
+
+    /** Resolved once in {@link #execute()}; the graph every call of this run speaks for. */
+    private SanshainStream stream;
 
     private void initDefaults() {
         if (baseDir == null) {
@@ -125,6 +143,7 @@ public class ProvideMojo extends AbstractMojo {
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         boolean resolvedCombine = delegate.resolveCombine(combine, config);
         stability = delegate.resolveStability(ga);
+        stream = delegate.resolveStream(trunk, tag);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -160,6 +179,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Best effort: " + be);
         getLog().debug("Resolved combine: " + comb);
         getLog().debug("Resolved stability: " + stability);
+        getLog().debug("Resolved stream: " + stream);
     }
 
     private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, SanshainCache cache, boolean bestEffort) throws IOException, MojoExecutionException {
@@ -168,7 +188,10 @@ public class ProvideMojo extends AbstractMojo {
         // Handle 'provides' list
         if (config.getProvides() != null && !config.getProvides().isEmpty()) {
             for (SanshainConfig.ProvideConfig p : config.getProvides()) {
-                if (p.getFile() != null) {
+                if (p.isRetired()) {
+                    retireFamily(client, url, token, serviceName, p.getApiType(), compression);
+                    providedAnything = true;
+                } else if (p.getFile() != null) {
                     boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
                     provideFile(client, url, token, serviceName, new File(baseDir, p.getFile()), p.getApiType(), compression, itemCombine, dryRun, cache);
                     providedAnything = true;
@@ -179,7 +202,10 @@ public class ProvideMojo extends AbstractMojo {
         // Handle single 'provide'
         if (config.getProvide() != null) {
             SanshainConfig.ProvideConfig p = config.getProvide();
-            if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
+            if (p.isRetired()) {
+                retireFamily(client, url, token, serviceName, p.getApiType(), compression);
+                providedAnything = true;
+            } else if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
                 boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
                 provideSingleConfig(client, url, token, serviceName, p, compression, itemCombine, cache);
                 providedAnything = true;
@@ -251,13 +277,64 @@ public class ProvideMojo extends AbstractMojo {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
         }
 
-        ProvideResponse response = client.postProvide(url, token, serviceName, content, stability, compression, dryRun, type, file.getName());
+        ProvideResponse response = client.postProvide(url, token, serviceName, content, stability, compression, dryRun, type, file.getName(), stream);
+
+        if (response != null) {
+            reportHarvestedSubscriptions(response);
+        }
 
         // Save content_hash from response so unchanged specs skip the next upload
         if (cache != null && response != null) {
             String responseHash = response.getContentHash() != null ? response.getContentHash() : contentHash;
             cache.updateProvideEntry(fileKey, responseHash);
             cache.save();
+        }
+    }
+
+    /**
+     * Surfaces the {@code subscribe} operations Sanshain harvested from an AsyncAPI
+     * document. Without this the feature is invisible: the server accepts the
+     * provide and records the consumer edges either way, so a subscription that
+     * expects a field no contract guarantees would only ever be discovered later,
+     * on the GA provide that refuses it.
+     *
+     * <p>Advisories never fail the build. The server already answers 409 for a GA
+     * provide whose expectation is unsatisfiable; failing here as well would
+     * punish the snapshot build that is telling you about it in time to fix it.
+     */
+    private void reportHarvestedSubscriptions(ProvideResponse response) {
+        if (response.getHarvestedSubscriptions().isEmpty()) {
+            return;
+        }
+        for (ProvideResponse.HarvestedSubscription sub : response.getHarvestedSubscriptions()) {
+            if (sub.isAdvisory()) {
+                getLog().warn("Subscription: " + sub.describe());
+            } else {
+                getLog().info("Subscription: " + sub.describe());
+            }
+        }
+    }
+
+    /**
+     * Declares that this project no longer provides an API family, because its
+     * {@code sanshain.yaml} entry says {@code retired: true}.
+     */
+    private void retireFamily(SanshainHttpClient client, String url, String token, String serviceName,
+                              String apiType, boolean compression) throws MojoExecutionException {
+        String type = apiType == null ? "openapi" : apiType.toLowerCase(java.util.Locale.ROOT);
+        if (!type.equals("openapi") && !type.equals("asyncapi") && !type.equals("proto") && !type.equals("grpc")) {
+            throw new MojoExecutionException("Unsupported apiType: " + apiType);
+        }
+
+        getLog().info("Retiring " + type + " for " + serviceName
+                + (dryRun ? " (dry run — checking permission only)" : ""));
+        RetiredProtocol result = client.postRetire(url, token, serviceName, compression, dryRun, type);
+        if (dryRun) {
+            getLog().info("✓ Retire would be permitted. Nothing was retired.");
+        } else if (result != null) {
+            getLog().info(result.toSummary());
+        } else {
+            getLog().info("✓ Family retired.");
         }
     }
 }

@@ -14,7 +14,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 
 ## The 2.0 model in one minute
 
-- **The version lives in the spec file.** For OpenAPI and AsyncAPI it is read from `info.version`; for proto from a mandatory `// sanshain-version: MAJOR.MINOR.PATCH` comment. It must be strict three-part semver — no `v` prefix, no `-SNAPSHOT` suffixes. The plugin never sends a version on provide; the server reads it from the document.
+- **The version lives in the spec file.** For OpenAPI and AsyncAPI it is read from `info.version`; for proto from a mandatory `// sanshain-version:` comment. Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v` — omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. No `-SNAPSHOT` or other suffixes. The plugin never sends a version on provide; the server reads it from the document.
 - **Stability is declared on every provide**: `snapshot` (overwritable work-in-progress, expires when unused) or `ga` (immutable; the number is permanently claimed). The default is always `snapshot`; GA is an explicit switch (`-Dsanshain.ga=true` or `SANSHAIN_GA=true`) that CI sets on release pipelines.
 - **Consumers pin exact versions.** Every `requires` entry carries a `version`. Resolution prefers GA, falls back only to the same-numbered snapshot, and otherwise fails immediately — no fallback to other versions, no waiting.
 - **Branches are gone.** There is no branch detection, no branch parameter, no long-polling, no force mode, and no `baseVersion` optimistic concurrency. GA immutability is the concurrency control.
@@ -209,6 +209,47 @@ provides:
   - file: src/main/resources/events.yaml
     apiType: asyncapi
 ```
+
+> ⚠️ **AsyncAPI 2.x perspective.** Sanshain reads 2.x `publish`/`subscribe` from the
+> **application's** perspective: `publish` means *this service publishes to the channel*,
+> `subscribe` means *this service consumes it*. The AsyncAPI 2.x specification defines those
+> keywords from the **client's** perspective — exactly inverted. Sanshain uses the
+> application-perspective reading deliberately, because it matches the unambiguous 3.x
+> `send`/`receive` mapping. A document authored with the spec-literal reading registers its
+> contracts, and has its subscriptions harvested, exactly backwards.
+
+Every `subscribe` operation is harvested as a consumer edge and checked against the publishing
+Producer's contract. The plugin prints each one; those with no publisher yet, or expecting a field
+the contract does not guarantee, are printed as build warnings. They never fail the build — a GA
+provide whose expectation is unsatisfiable is refused by the server with `409`, so the warning on
+the snapshot build is your chance to fix it first.
+
+### Streams: trunk and release branches
+
+A pipeline declares which graph its calls belong to, the same way it declares stability — never in
+`sanshain.yaml`, because the same checkout is built by trunk CI and by a developer's laptop:
+
+- Trunk CI sets `-Dsanshain.trunk=true` or `SANSHAIN_TRUNK=true`.
+- Release and hotfix pipelines set `-Dsanshain.tag=<branch>` or `SANSHAIN_TAG=<branch>`. The branch
+  must already exist; an unknown one fails the build with `404`.
+
+Declaring both fails the build before any request is sent.
+
+### Retiring a protocol
+
+Removing a `provides` entry does not tell Sanshain anything — it cannot distinguish a dropped
+protocol from a pipeline that stopped running. Keep the entry and mark it:
+
+```yaml
+provides:
+  - file: src/main/resources/events.yaml
+    apiType: asyncapi
+    retired: true
+```
+
+The capability tag, the family's place in the current graph and its channel contracts are released;
+version history and existing Consumer pins are untouched. Retiring needs the `releaser` role — which
+a release pipeline already holds — or a maintainer grant on this Producer.
 
 ### Version rules and `409` rejections
 

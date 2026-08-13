@@ -62,6 +62,25 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.bestEffort")
     private Boolean bestEffort;
 
+    /**
+     * Declares this build as the trunk stream's: its pins are recorded in the trunk store that
+     * feeds the main graph. Set by trunk CI, not committed to sanshain.yaml. Also settable via
+     * {@code SANSHAIN_TRUNK=true}.
+     */
+    @Parameter(property = "sanshain.trunk")
+    private Boolean trunk;
+
+    /**
+     * Declares this build as a named sanshain-branch's — a release or hotfix pipeline whose pins
+     * update that graph instead of trunk. Also settable via {@code SANSHAIN_TAG}. Mutually
+     * exclusive with {@link #trunk}; the branch must already exist or the server answers 404.
+     */
+    @Parameter(property = "sanshain.tag")
+    private String tag;
+
+    /** Resolved once in {@link #execute()}; the graph every pin of this run belongs to. */
+    private SanshainStream stream;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -107,6 +126,7 @@ public class RequireMojo extends AbstractMojo {
         String resolvedToken = delegate.resolveToken(token);
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
+        stream = delegate.resolveStream(trunk, tag);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -143,6 +163,7 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved compression: " + comp);
         getLog().debug("Resolved insecure: " + ins);
         getLog().debug("Resolved token: " + (tok != null ? "[set]" : "[not set]"));
+        getLog().debug("Resolved stream: " + stream);
     }
 
     private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
@@ -189,7 +210,7 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag);
+        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream);
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
@@ -217,7 +238,7 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag);
+        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream);
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");

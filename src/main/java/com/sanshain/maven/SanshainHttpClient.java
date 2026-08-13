@@ -132,26 +132,19 @@ public class SanshainHttpClient {
      * @param dryRun       true to validate and classify without storing
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param specFile     the spec file the content came from, named in 409 remediation hints
+     * @param stream       the graph this build speaks for (trunk, a sanshain-branch, or neither)
      * @return the parsed provide response, or null if the 202 body could not be parsed
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public ProvideResponse postProvide(String baseUrl, String token, String producerName, String content,
                             String stability, boolean compression, boolean dryRun, String apiType,
-                            String specFile) throws MojoExecutionException {
-        String path = "/provide";
-        String contentField = "openapi_yaml";
-        String versionHint = "info.version";
+                            String specFile, SanshainStream stream) throws MojoExecutionException {
+        String path = providePath(apiType);
+        String contentField = contentField(apiType);
+        String versionHint = versionHint(apiType);
 
-        if ("asyncapi".equalsIgnoreCase(apiType)) {
-            path = "/provide/asyncapi";
-            contentField = "asyncapi_yaml";
-        } else if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
-            path = "/provide/grpc";
-            contentField = "proto_content";
-            versionHint = "the // sanshain-version: comment";
-        }
-
-        ProvidePayload payload = new ProvidePayload(producerName, content, stability, dryRun, contentField);
+        ProvidePayload payload = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
+                dryRun, contentField, stream);
 
         try {
             String json = objectMapper.writeValueAsString(payload);
@@ -159,6 +152,87 @@ public class SanshainHttpClient {
         } catch (JsonProcessingException e) {
             throw new MojoExecutionException("Failed to build JSON for " + path, e);
         }
+    }
+
+    /**
+     * Declares that this Producer no longer provides an API family. The call is
+     * an ordinary provide for that family carrying {@code retired: true} and no
+     * document — the endpoint already names the family.
+     *
+     * <p>Retiring is a role: the caller needs {@code releaser} (which a build
+     * pipeline already holds in order to publish GA) or a maintainer grant on
+     * this Producer, or the server answers {@code 403}.
+     *
+     * @param baseUrl      the base URL of the Sanshain service
+     * @param token        the authentication token (optional)
+     * @param producerName the name of the Producer retiring the family
+     * @param compression  true if GZIP compression should be used
+     * @param dryRun       true to check permission without retiring anything
+     * @param apiType      the type of API (openapi, asyncapi, proto)
+     * @return what the retire shed, or null if the 202 body could not be parsed
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
+    public RetiredProtocol postRetire(String baseUrl, String token, String producerName, boolean compression,
+                            boolean dryRun, String apiType) throws MojoExecutionException {
+        String path = providePath(apiType);
+        RetirePayload payload = new RetirePayload(producerName, dryRun);
+
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            String body = postRetireInternal(baseUrl, path, token, json, compression);
+            if (body == null) {
+                return null;
+            }
+            return objectMapper.readValue(body, RetiredProtocol.class);
+        } catch (JsonProcessingException e) {
+            throw new MojoExecutionException("Failed to build JSON for " + path, e);
+        } catch (IOException e) {
+            log.debug("Could not parse retire response body: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static String providePath(String apiType) {
+        if ("asyncapi".equalsIgnoreCase(apiType)) {
+            return "/provide/asyncapi";
+        }
+        if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
+            return "/provide/grpc";
+        }
+        return "/provide";
+    }
+
+    private static String contentField(String apiType) {
+        if ("asyncapi".equalsIgnoreCase(apiType)) {
+            return "asyncapi_yaml";
+        }
+        if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
+            return "proto_content";
+        }
+        return "openapi_yaml";
+    }
+
+    private static String versionHint(String apiType) {
+        if ("proto".equalsIgnoreCase(apiType) || "grpc".equalsIgnoreCase(apiType)) {
+            return "the // sanshain-version: comment";
+        }
+        return "info.version";
+    }
+
+    /**
+     * Sanshain compares provided content byte for byte, so a CRLF checkout of an
+     * otherwise identical file hashes differently from an LF one and provokes a
+     * spurious version conflict. Normalising here means a Windows and a Linux
+     * runner publishing the same commit agree.
+     *
+     * @param content the specification as read from disk
+     * @return the same content with LF line endings
+     */
+    static String normalizeLineEndings(String content) {
+        if (content == null || content.indexOf('\r') < 0) {
+            return content;
+        }
+        return content.replace("\r\n", "\n").replace("\r", "\n");
     }
 
     private static class ProvidePayload {
@@ -170,21 +244,50 @@ public class SanshainHttpClient {
         public final String content;
         @com.fasterxml.jackson.annotation.JsonIgnore
         public final String contentField;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public final SanshainStream stream;
 
         public ProvidePayload(String producername, String content, String stability, boolean dryRun,
-                              String contentField) {
+                              String contentField, SanshainStream stream) {
             this.producername = producername;
             this.content = content;
             this.stability = stability;
             this.dryRun = dryRun;
             this.contentField = contentField;
+            this.stream = stream == null ? SanshainStream.none() : stream;
         }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter
         public java.util.Map<String, Object> any() {
             java.util.Map<String, Object> any = new java.util.HashMap<>();
             any.put(contentField, content);
+            // Omitted entirely when undeclared: the server defaults `trunk` to
+            // false and treats an absent `tag` as "no branch", and sending
+            // explicit nulls would be a 422 on a payload that denies unknown
+            // shapes.
+            if (stream.isTrunk()) {
+                any.put("trunk", true);
+            } else if (stream.getTag() != null) {
+                any.put("tag", stream.getTag());
+            }
             return any;
+        }
+    }
+
+    /**
+     * A retire carries no document and no stability — the server refuses a
+     * request that says both {@code retired} and anything a publish needs, so
+     * this payload has no field to hold them.
+     */
+    private static class RetirePayload {
+        public final String producername;
+        public final boolean retired = true;
+        @JsonProperty("dry_run")
+        public final boolean dryRun;
+
+        public RetirePayload(String producername, boolean dryRun) {
+            this.producername = producername;
+            this.dryRun = dryRun;
         }
     }
 
@@ -256,6 +359,10 @@ public class SanshainHttpClient {
                 log.error("Provide failed (422 Unprocessable Entity): " + sanitize(responseBody));
                 throw new MojoExecutionException("Request shape rejected (422) — the server rejects unknown "
                         + "or missing fields by name: " + sanitize(responseBody));
+            } else if (status == 403) {
+                logAngryCat();
+                log.error("Provide refused (403 Forbidden): " + sanitize(responseBody));
+                throw new MojoExecutionException(gaForbiddenMessage(responseBody));
             } else {
                 logAngryCat();
                 log.error("Provide failed (" + status + "): " + sanitize(responseBody));
@@ -283,12 +390,14 @@ public class SanshainHttpClient {
      * @param dryRun       true to resolve without recording the dependency
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
+     * @param stream       the graph this pin belongs to (trunk, a sanshain-branch, or neither)
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoint is unknown
      */
     public RequireResult getRequireWithEtag(String baseUrl, String token, String consumerName, String producerName,
                              String version, String path, String method,
-                             boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
+                             boolean compression, boolean dryRun, String apiType, String etag,
+                             SanshainStream stream) throws MojoExecutionException {
         String endpoint = "/require";
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             endpoint = "/require/asyncapi";
@@ -302,7 +411,8 @@ public class SanshainHttpClient {
                 "&version=" + urlEncode(version) +
                 "&path=" + urlEncode(path) +
                 "&method=" + urlEncode(method) +
-                "&dry_run=" + dryRun;
+                "&dry_run=" + dryRun
+                + (stream == null ? "" : stream.toQueryParams());
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -381,16 +491,20 @@ public class SanshainHttpClient {
      * @param dryRun       true to resolve without recording the dependency
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
+     * @param stream       the graph these pins belong to (trunk, a sanshain-branch, or neither)
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoints are unknown
      */
     public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String consumerName, String producerName,
                                     String version, List<SanshainConfig.EndpointConfig> endpoints,
-                                    boolean compression, boolean dryRun, String apiType, String etag) throws MojoExecutionException {
+                                    boolean compression, boolean dryRun, String apiType, String etag,
+                                    SanshainStream stream) throws MojoExecutionException {
         String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType);
+        String streamParams = stream == null ? "" : stream.toQueryParams();
+        String bundleUrl = baseUrl + "/require-bundle" + (streamParams.isEmpty() ? "" : "?" + streamParams.substring(1));
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/require-bundle"))
+                .uri(URI.create(bundleUrl))
                 .header("Content-Type", "application/json")
                 .timeout(REQUEST_TIMEOUT);
 
@@ -410,7 +524,7 @@ public class SanshainHttpClient {
 
         requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
 
-        log.debug("POST " + baseUrl + "/require-bundle");
+        log.debug("POST " + bundleUrl);
         log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
         log.debug("Request body (uncompressed): " + json);
 
@@ -651,7 +765,86 @@ public class SanshainHttpClient {
         public String method;
     }
 
-    private static String urlEncode(String value) {
+    static String urlEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Publishing GA is a permission, not merely an authenticated act. The build
+     * fails either way; what the message has to supply is the remedy, because
+     * the fix is an administrator granting a role and nothing the Producer can
+     * change in its own repository.
+     *
+     * @param responseBody the server's refusal
+     * @return the message to fail the build with
+     */
+    private String gaForbiddenMessage(String responseBody) {
+        return "Refused (403): " + sanitize(responseBody)
+                + " — publishing a GA version requires the 'releaser' role. Grant it to the user or "
+                + "token this build authenticates as (administrators and root always hold it), or "
+                + "publish as a snapshot by leaving sanshain.ga / SANSHAIN_GA unset.";
+    }
+
+    /**
+     * Retiring answers a different object from a publish, so it does not reuse
+     * the provide response parser; everything else about the exchange — the
+     * refusals, the compression, the logging — is the same.
+     *
+     * @return the raw 202 body, or null if the server sent none
+     */
+    private String postRetireInternal(String baseUrl, String path, String token, String json,
+                            boolean compression) throws MojoExecutionException {
+        String url = baseUrl + path;
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .timeout(REQUEST_TIMEOUT);
+
+        if (token != null && !token.isEmpty()) {
+            requestBuilder.header("Authorization", "Bearer " + token);
+        }
+
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        if (compression) {
+            body = gzipCompress(body);
+            requestBuilder.header("Content-Encoding", "gzip");
+        }
+        requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(body));
+
+        log.debug("POST " + url + " (retire)");
+        try {
+            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            int status = response.statusCode();
+            String responseBody = extractResponseBody(response);
+            log.debug("Response status: " + status);
+            log.debug("Response body: " + sanitize(responseBody));
+
+            if (status == 202) {
+                return responseBody;
+            }
+            if (status == 403) {
+                logAngryCat();
+                log.error("Retire refused (403 Forbidden): " + sanitize(responseBody));
+                throw new MojoExecutionException("Refused (403): " + sanitize(responseBody)
+                        + " — retiring an API family requires the 'releaser' role or a maintainer grant "
+                        + "on this Producer. Grant either to the user or token this build authenticates "
+                        + "as; administrators and root always hold both.");
+            }
+            if (status == 404) {
+                logAngryCat();
+                log.error("Retire failed (404 Not Found): " + sanitize(responseBody));
+                throw new MojoExecutionException("Unknown Producer (404): " + sanitize(responseBody)
+                        + " — nothing was ever provided under this name, so there is no family to retire.");
+            }
+            logAngryCat();
+            log.error("Retire failed (" + status + "): " + sanitize(responseBody));
+            throw new MojoExecutionException("Unexpected response " + status + ": " + sanitize(responseBody));
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to connect to Sanshain service at " + url, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MojoExecutionException("Request interrupted", e);
+        }
     }
 }
