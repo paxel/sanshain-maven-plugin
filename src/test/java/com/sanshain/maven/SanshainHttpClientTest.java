@@ -950,6 +950,45 @@ public class SanshainHttpClientTest {
         assertTrue(provide("openapi").getHarvestedSubscriptions().isEmpty());
     }
 
+    /**
+     * The bundle endpoint reads the stream from the body — its handler has no
+     * query extractor, so a stream on the query string would be silently
+     * dropped and a trunk build would record no trunk pins.
+     */
+    @Test
+    public void testRequireBundleCarriesStreamInTheBody() throws MojoExecutionException {
+        wireMock.stubFor(post(urlPathEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody("paths: {}")));
+
+        java.util.List<SanshainConfig.EndpointConfig> endpoints = new java.util.ArrayList<>();
+        SanshainConfig.EndpointConfig ep = new SanshainConfig.EndpointConfig();
+        ep.setPath("/api/v1/users");
+        ep.setMethod("GET");
+        endpoints.add(ep);
+        SanshainConfig.EndpointConfig ep2 = new SanshainConfig.EndpointConfig();
+        ep2.setPath("/api/v1/users/{id}");
+        ep2.setMethod("GET");
+        endpoints.add(ep2);
+
+        client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
+                false, false, null, null, SanshainStream.trunk());
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.trunk", equalTo("true"))));
+
+        wireMock.resetRequests();
+        client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
+                false, false, null, null, SanshainStream.tag("R"));
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.tag", equalTo("R"))));
+
+        wireMock.resetRequests();
+        client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
+                false, false, null, null, SanshainStream.none());
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
+                .withRequestBody(notMatching(".*trunk.*"))
+                .withRequestBody(notMatching(".*tag.*")));
+    }
+
     private static byte[] gzipCompress(byte[] data) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try (GZIPOutputStream gzip = new GZIPOutputStream(bos)) {

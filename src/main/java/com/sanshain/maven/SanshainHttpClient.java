@@ -499,9 +499,11 @@ public class SanshainHttpClient {
                                     String version, List<SanshainConfig.EndpointConfig> endpoints,
                                     boolean compression, boolean dryRun, String apiType, String etag,
                                     SanshainStream stream) throws MojoExecutionException {
-        String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType);
-        String streamParams = stream == null ? "" : stream.toQueryParams();
-        String bundleUrl = baseUrl + "/require-bundle" + (streamParams.isEmpty() ? "" : "?" + streamParams.substring(1));
+        // The bundle endpoint reads the stream from the body — its handler has no
+        // query extractor, so query parameters would be silently dropped and a
+        // trunk build would record no trunk pins.
+        String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType, stream);
+        String bundleUrl = baseUrl + "/require-bundle";
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(bundleUrl))
@@ -727,13 +729,19 @@ public class SanshainHttpClient {
 
     private String buildRequireBundleJson(String consumerName, String producerName, String version,
                                           List<SanshainConfig.EndpointConfig> endpoints,
-                                          boolean dryRun, String apiType) throws MojoExecutionException {
+                                          boolean dryRun, String apiType,
+                                          SanshainStream stream) throws MojoExecutionException {
         RequireBundlePayload payload = new RequireBundlePayload();
         payload.consumername = consumerName;
         payload.producername = producerName;
         payload.version = version;
         payload.dryRun = dryRun;
         payload.apiType = apiType != null ? apiType : "openapi";
+        if (stream != null && stream.isTrunk()) {
+            payload.trunk = Boolean.TRUE;
+        } else if (stream != null && stream.getTag() != null) {
+            payload.tag = stream.getTag();
+        }
         payload.endpoints = endpoints.stream()
                 .map(ep -> {
                     RequireBundleEndpoint e = new RequireBundleEndpoint();
@@ -758,6 +766,11 @@ public class SanshainHttpClient {
         public boolean dryRun;
         @JsonProperty("api_type")
         public String apiType;
+        // Boxed so an undeclared stream serialises as absent fields, not false/null.
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public Boolean trunk;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public String tag;
     }
 
     static class RequireBundleEndpoint {
