@@ -1,5 +1,16 @@
 name: CI
-on: [push, pull_request]
+# Branch pushes and PRs only: a bare `push` also fires on tag pushes, so every
+# release ran CI a second time next to the Release workflow.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+# A push to a branch with an open PR fires both triggers; group by the bare
+# branch name (head_ref on PR events, ref_name on pushes) so the twins share
+# one group and the loser is cancelled.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
