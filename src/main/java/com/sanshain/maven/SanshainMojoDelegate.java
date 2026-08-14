@@ -123,6 +123,31 @@ public class SanshainMojoDelegate {
         return "snapshot";
     }
 
+    /**
+     * Resolves which graph this build speaks for, on the same terms as stability:
+     * a Maven property or an environment variable, set by the pipeline, absent
+     * from sanshain.yaml. Trunk CI declares {@code trunk}; a release or hotfix
+     * pipeline declares the sanshain-branch it builds for.
+     *
+     * <p>Nothing is inferred from the git branch. A checkout is the same on a
+     * developer's laptop and on the trunk runner, and the trunk pin store is
+     * last-writer-wins — guessing would let a local build quietly overwrite CI.
+     *
+     * @param trunk the {@code sanshain.trunk} Maven property, or null if unset
+     * @param tag   the {@code sanshain.tag} Maven property, or null if unset
+     * @return the resolved stream
+     * @throws MojoExecutionException if the build declares both trunk and a tag
+     */
+    public SanshainStream resolveStream(Boolean trunk, String tag) throws MojoExecutionException {
+        try {
+            return SanshainStream.resolve(trunk, tag,
+                    environmentVariables.get("SANSHAIN_TRUNK"),
+                    environmentVariables.get("SANSHAIN_TAG"));
+        } catch (IllegalArgumentException e) {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+    }
+
     public void handleException(Exception e, boolean bestEffort) throws MojoExecutionException {
         if (bestEffort) {
             log.warn("Sanshain goal failed (best effort): " + e.getMessage());

@@ -319,6 +319,7 @@ public class SanshainConfig {
         private String file;
         private String apiType;
         private Boolean combine;
+        private boolean retired;
 
         // Legacy 1.x fields — parse targets for named validation errors only.
         private String branch;
@@ -353,6 +354,24 @@ public class SanshainConfig {
          * @param apiType the type of API
          */
         public void setApiType(String apiType) { this.apiType = apiType; }
+
+        /**
+         * Whether this project has stopped providing the family.
+         *
+         * <p>Deleting the entry would not say so: Sanshain cannot tell a dropped
+         * protocol from a pipeline that merely stopped running, so absence means
+         * nothing and the capability, graph edges and contracts would linger.
+         * Keeping the entry and marking it retired is the explicit act.
+         *
+         * @return true if the family is retired rather than provided
+         */
+        public boolean isRetired() { return retired; }
+
+        /**
+         * Marks the family as no longer provided. See {@link #isRetired()}.
+         * @param retired true to retire the family
+         */
+        public void setRetired(boolean retired) { this.retired = retired; }
 
         /**
          * Legacy 1.x branch. Parse target only; rejected by validation.

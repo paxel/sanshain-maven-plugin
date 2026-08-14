@@ -38,9 +38,47 @@ You can override the configuration file location using the `configFile` property
 
 ## Versions and stability
 
-- The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version: MAJOR.MINOR.PATCH` comment for proto) and must be strict three-part semver.
+- The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.
 - Every `requires` entry pins an **exact version** (`version: MAJOR.MINOR.PATCH`). No ranges, no `latest`. A pin that does not exist on the server fails the require immediately (`404`).
 - **Stability** is declared per build: the default is `snapshot`; `-Dsanshain.ga=true` or `SANSHAIN_GA=true` provides as `ga`. There is no stability field in `sanshain.yaml`.
+
+## Streams: trunk and release branches
+
+Alongside stability, a pipeline declares which **graph** its calls belong to. Like stability, this is
+a property of the invocation and never appears in `sanshain.yaml` — the same checkout is built by
+trunk CI and by a developer's laptop, and the trunk pin store is last-writer-wins, so a guess would
+let a local build overwrite CI. Nothing is inferred from the git branch.
+
+- **Trunk CI** — the build of your default branch — sets `-Dsanshain.trunk=true` or
+  `SANSHAIN_TRUNK=true`. Its provides mark trunk's current version and its requires become the main
+  graph's pins. Nightly re-runs of an unchanged build are wanted: they keep trunk data fresh instead
+  of ageing out.
+- **Release and hotfix pipelines** set `-Dsanshain.tag=<branch>` or `SANSHAIN_TAG=<branch>`. The
+  calls update that release's graph instead of trunk. The branch must already exist — a releaser
+  creates it at cut time — and an unknown one fails the build with a `404`.
+
+Declaring both fails the build before any request is made. Streams never change what is served or
+any version rule; they only decide which graph records the call.
+
+## Retiring a protocol
+
+Deleting a `provides` entry says nothing: Sanshain cannot tell a dropped protocol from a pipeline
+that merely stopped running, so the capability tag, graph edges and channel contracts would linger.
+Keep the entry and mark it retired:
+
+```yaml
+provides:
+  - file: src/main/resources/asyncapi.yaml
+    apiType: asyncapi
+    retired: true
+```
+
+The plugin sends that family's provide call with `retired: true` and no document. Version history and
+existing Consumer pins are untouched — only the capability is withdrawn.
+
+Retiring is a role, like releasing: the build's token needs `releaser` (which it already holds if it
+publishes GA) or a maintainer grant on this Producer, or the server answers `403`. Under
+`-Dsanshain.dry.run=true` the call checks permission and retires nothing.
 
 The configuration is validated at parse time, before any network call. Leftover 1.x fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`, `stability` in the YAML) and `requires` entries without a `version` pin are rejected by name with a migration hint.
 
@@ -54,6 +92,8 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
 | GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | `false` (provide as `snapshot`)                    |
+| Trunk stream                | —               | `-Dsanshain.trunk`       | `$SANSHAIN_TRUNK`       | `false`                                            |
+| Branch stream               | —               | `-Dsanshain.tag`         | `$SANSHAIN_TAG`         | — (no branch)                                      |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`    | `$SANSHAIN_INSECURE`    | `false`                                            |
 | Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`  | `$SANSHAIN_BEST_EFFORT` | `false`                                            |
@@ -71,6 +111,8 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                                       |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable).                      |
 | `ga`          | `sanshain.ga`           | `false`                                   | Provide as `ga` instead of `snapshot`. Also settable via `$SANSHAIN_GA`.           |
+| `trunk`       | `sanshain.trunk`        | `false`                                   | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`.                        |
+| `tag`         | `sanshain.tag`          | —                                         | This build is a sanshain-branch's. Also settable via `$SANSHAIN_TAG`.              |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                                            |
 | `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors.                                                     |
 | `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on server errors.                                             |
