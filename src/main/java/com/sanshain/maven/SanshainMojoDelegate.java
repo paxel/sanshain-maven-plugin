@@ -26,6 +26,19 @@ public class SanshainMojoDelegate {
         this.strict = strict;
     }
 
+    /**
+     * Reads a {@code SANSHAIN_*} environment switch the same way in every Sanshain client:
+     * trimmed, case-insensitive {@code true} or {@code 1} means on; anything else, or unset, is off.
+     *
+     * @param value the raw environment value, or null if unset
+     * @return true if the switch is on
+     */
+    static boolean isSwitchOn(String value) {
+        if (value == null) return false;
+        String v = value.trim();
+        return v.equalsIgnoreCase("true") || v.equals("1");
+    }
+
     public void abort(String message, boolean bestEffort) throws MojoExecutionException {
         if (bestEffort) {
             log.warn("Sanshain goal skipped (best effort): " + message);
@@ -88,7 +101,7 @@ public class SanshainMojoDelegate {
     public boolean resolveBestEffort(Boolean bestEffort, SanshainConfig config) {
         if (bestEffort != null) return bestEffort;
         String envBestEffort = environmentVariables.get("SANSHAIN_BEST_EFFORT");
-        if (envBestEffort != null) return Boolean.parseBoolean(envBestEffort);
+        if (envBestEffort != null) return isSwitchOn(envBestEffort);
         if (config != null && config.getBestEffort() != null) return config.getBestEffort();
         return false;
     }
@@ -96,7 +109,7 @@ public class SanshainMojoDelegate {
     public boolean resolveCombine(Boolean combine, SanshainConfig config) {
         if (combine != null) return combine;
         String envCombine = environmentVariables.get("SANSHAIN_COMBINE");
-        if (envCombine != null) return Boolean.parseBoolean(envCombine);
+        if (envCombine != null) return isSwitchOn(envCombine);
         if (config != null && config.getCombine() != null) return config.getCombine();
         return true;
     }
@@ -119,7 +132,7 @@ public class SanshainMojoDelegate {
     public String resolveStability(boolean ga) {
         if (ga) return "ga";
         String envGa = environmentVariables.get("SANSHAIN_GA");
-        if (envGa != null && Boolean.parseBoolean(envGa)) return "ga";
+        if (isSwitchOn(envGa)) return "ga";
         return "snapshot";
     }
 

@@ -69,7 +69,7 @@ public final class SanshainStream {
      * @throws IllegalArgumentException if the build declares both trunk and a tag
      */
     public static SanshainStream resolve(Boolean trunkFlag, String tagValue, String envTrunk, String envTag) {
-        boolean isTrunk = trunkFlag != null ? trunkFlag : Boolean.parseBoolean(envTrunk);
+        boolean isTrunk = trunkFlag != null ? trunkFlag : SanshainMojoDelegate.isSwitchOn(envTrunk);
         String resolvedTag = tagValue != null && !tagValue.isBlank() ? tagValue : envTag;
         boolean hasTag = resolvedTag != null && !resolvedTag.isBlank();
 

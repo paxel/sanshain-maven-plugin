@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Root configuration object for the Sanshain plugin.
@@ -44,6 +45,10 @@ public class SanshainConfig {
     /** The directory containing sanshain.yaml; every relative path in it resolves against this. */
     @JsonIgnore
     private File configDirectory;
+
+    /** The environment the overrides are read from; replaceable in tests. */
+    @JsonIgnore
+    private Map<String, String> environmentVariables = System.getenv();
 
     /**
      * Loads the Sanshain configuration from the specified file, applies environment variable
@@ -170,30 +175,35 @@ public class SanshainConfig {
             config.setServiceName(serviceNameEnv);
         }
 
-        String compressionEnv = System.getenv("SANSHAIN_COMPRESSION");
+        String compressionEnv = getEnv("SANSHAIN_COMPRESSION", null);
         if (compressionEnv != null) {
-            config.setCompression(Boolean.parseBoolean(compressionEnv));
+            config.setCompression(SanshainMojoDelegate.isSwitchOn(compressionEnv));
         }
 
-        String insecureEnv = System.getenv("SANSHAIN_INSECURE");
+        String insecureEnv = getEnv("SANSHAIN_INSECURE", null);
         if (insecureEnv != null) {
-            config.setInsecure(Boolean.parseBoolean(insecureEnv));
+            config.setInsecure(SanshainMojoDelegate.isSwitchOn(insecureEnv));
         }
 
-        String bestEffortEnv = System.getenv("SANSHAIN_BEST_EFFORT");
+        String bestEffortEnv = getEnv("SANSHAIN_BEST_EFFORT", null);
         if (bestEffortEnv != null) {
-            config.setBestEffort(Boolean.parseBoolean(bestEffortEnv));
+            config.setBestEffort(SanshainMojoDelegate.isSwitchOn(bestEffortEnv));
         }
 
-        String combineEnv = System.getenv("SANSHAIN_COMBINE");
+        String combineEnv = getEnv("SANSHAIN_COMBINE", null);
         if (combineEnv != null) {
-            config.setCombine(Boolean.parseBoolean(combineEnv));
+            config.setCombine(SanshainMojoDelegate.isSwitchOn(combineEnv));
         }
     }
 
     private String getEnv(String name, String defaultValue) {
-        String value = System.getenv(name);
+        String value = environmentVariables.get(name);
         return value != null ? value : defaultValue;
+    }
+
+    @JsonIgnore
+    void setEnvironmentVariables(Map<String, String> environmentVariables) {
+        this.environmentVariables = environmentVariables;
     }
 
     /**

@@ -109,6 +109,11 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 | Combine                     | `combine`       | `-Dsanshain.combine`     | `$SANSHAIN_COMBINE`     | `true`                                             |
 
+Boolean environment switches (`$SANSHAIN_GA`, `$SANSHAIN_TRUNK`, `$SANSHAIN_BEST_EFFORT`,
+`$SANSHAIN_COMPRESSION`, `$SANSHAIN_INSECURE`, `$SANSHAIN_COMBINE`) are on when the value, trimmed and
+in any case, is `true` or `1`; anything else is off. An explicit Maven property still overrides the
+environment.
+
 ## Goal: `provide` Parameters
 
 | Parameter     | Property                | Default                                   | Description                                                                        |
