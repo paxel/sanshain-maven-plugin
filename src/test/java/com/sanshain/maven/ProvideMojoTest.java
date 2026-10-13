@@ -670,4 +670,44 @@ public class ProvideMojoTest {
                 .withRequestBody(containing("string"))
                 .withRequestBody(notContaining("$ref")));
     }
+
+    @Test
+    public void testSpecFileResolvesNextToConfigInAnotherFolder() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        Path confDir = Files.createDirectories(tempDir.resolve("conf"));
+        Files.writeString(confDir.resolve("api.yaml"), "openapi: 3.0.0\ninfo:\n  title: NextToConfig\n  version: 1.0.0");
+        Files.writeString(tempDir.resolve("api.yaml"), "openapi: 3.0.0\ninfo:\n  title: InBaseDir\n  version: 1.0.0");
+
+        ProvideMojo mojo = createMojo("serviceName: my-service\n" +
+                "provide:\n" +
+                "  file: api.yaml\n", "openapi: 3.0.0");
+        Files.writeString(confDir.resolve("sanshain.yaml"), "serviceName: my-service\n" +
+                "provide:\n" +
+                "  file: api.yaml\n");
+        setField(mojo, "configFile", confDir.resolve("sanshain.yaml").toFile());
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("NextToConfig"))));
+    }
+
+    @Test
+    public void testAbsoluteSpecPathStaysAbsolute() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        Path elsewhere = Files.createDirectories(tempDir.resolve("elsewhere"));
+        Path spec = elsewhere.resolve("abs.yaml");
+        Files.writeString(spec, "openapi: 3.0.0\ninfo:\n  title: Absolute\n  version: 1.0.0");
+
+        ProvideMojo mojo = createMojo("serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: " + spec.toAbsolutePath() + "\n", "openapi: 3.0.0");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("Absolute"))));
+    }
 }

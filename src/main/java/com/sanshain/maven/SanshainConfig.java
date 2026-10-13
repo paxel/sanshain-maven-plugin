@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -40,6 +41,10 @@ public class SanshainConfig {
     private Integer timeout;
     private Object releaseBranches;
 
+    /** The directory containing sanshain.yaml; every relative path in it resolves against this. */
+    @JsonIgnore
+    private File configDirectory;
+
     /**
      * Loads the Sanshain configuration from the specified file, applies environment variable
      * overrides, and validates it against the Sanshain 2.0 configuration shape. Validation
@@ -62,9 +67,30 @@ public class SanshainConfig {
                 throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
             }
         }
+        config.configDirectory = configDirectoryOf(configFile);
         applyEnvOverrides(config);
         config.validate();
         return config;
+    }
+
+    private static File configDirectoryOf(File configFile) {
+        if (configFile == null) {
+            return new File(".").getAbsoluteFile();
+        }
+        File parent = configFile.getAbsoluteFile().getParentFile();
+        return parent != null ? parent : new File(".").getAbsoluteFile();
+    }
+
+    /**
+     * Resolves a path written in sanshain.yaml. A relative path resolves against the directory
+     * containing sanshain.yaml, never the working directory; an absolute path stays absolute.
+     *
+     * @param path the path as written in sanshain.yaml
+     * @return the resolved file
+     */
+    public File resolvePath(String path) {
+        File base = configDirectory != null ? configDirectory : new File(".").getAbsoluteFile();
+        return base.toPath().resolve(path).toFile();
     }
 
     /**

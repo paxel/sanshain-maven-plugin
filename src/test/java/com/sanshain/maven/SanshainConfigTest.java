@@ -332,4 +332,23 @@ public class SanshainConfigTest {
         // Defaults to true when everything is null
         assertTrue(delegate.resolveCombine(null, null, null));
     }
+
+    @Test
+    public void testResolvePathIsRelativeToConfigDirectory() throws IOException, MojoExecutionException {
+        Path confDir = Files.createDirectories(tempDir.resolve("conf"));
+        Path configPath = confDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, "serviceName: x\n");
+        SanshainConfig config = new SanshainConfig().loadConfig(configPath.toFile());
+
+        assertEquals(confDir.resolve("specs/api.yaml").toFile().getAbsoluteFile(), config.resolvePath("specs/api.yaml"));
+        File absolute = tempDir.resolve("abs/api.yaml").toFile().getAbsoluteFile();
+        assertEquals(absolute, config.resolvePath(absolute.getPath()));
+    }
+
+    @Test
+    public void testResolvePathWithMissingConfigUsesItsDirectory() throws MojoExecutionException {
+        Path confDir = tempDir.resolve("missing");
+        SanshainConfig config = new SanshainConfig().loadConfig(confDir.resolve("sanshain.yaml").toFile());
+        assertEquals(confDir.resolve("out").toFile().getAbsoluteFile(), config.resolvePath("out"));
+    }
 }

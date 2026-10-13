@@ -36,6 +36,13 @@ You can override the configuration file location using the `configFile` property
 </configuration>
 ```
 
+Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`,
+`outputDirectory`) resolves against the directory that contains `sanshain.yaml`, never the working
+directory. With the default location that is the project base directory, so nothing changes; a
+`configFile` in another folder finds its spec files and output directories next to itself. Absolute
+paths stay absolute. The default output directory (`target/generated-sources/sanshain`) stays under
+the project's base directory.
+
 ## Versions and stability
 
 - The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.

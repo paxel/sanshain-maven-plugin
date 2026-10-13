@@ -82,6 +82,13 @@ You can override the configuration file location using the `configFile` property
 </configuration>
 ```
 
+Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`,
+`outputDirectory`) resolves against the directory that contains `sanshain.yaml`, never the working
+directory. With the default location that is the project base directory, so nothing changes; a
+`configFile` in another folder finds its spec files and output directories next to itself. Absolute
+paths stay absolute. The default output directory (`target/generated-sources/sanshain`) stays under
+the project's base directory.
+
 > **Note:** The `token` is intentionally **not** stored in `sanshain.yaml`. See [Authentication](#authentication) below.
 
 ### Migrating a 1.x `sanshain.yaml`

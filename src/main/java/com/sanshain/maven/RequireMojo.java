@@ -148,7 +148,7 @@ public class RequireMojo extends AbstractMojo {
         }
 
         for (SanshainConfig.RequireConfig req : requires) {
-            processRequire(req, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedBestEffort, delegate);
+            processRequire(req, config, client, cache, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedBestEffort, delegate);
         }
     }
 
@@ -166,12 +166,12 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved stream: " + stream);
     }
 
-    private void processRequire(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
+    private void processRequire(SanshainConfig.RequireConfig req, SanshainConfig config, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
         String reqServiceName = req.getServiceName();
         String apiType = req.getApiType();
         String version = req.getVersion();
 
-        File outputDirectory = resolveOutputDirectory(req);
+        File outputDirectory = resolveOutputDirectory(req, config);
 
         List<SanshainConfig.EndpointConfig> endpoints = req.getEndpoints();
         if (endpoints == null || endpoints.isEmpty()) {
@@ -190,12 +190,12 @@ public class RequireMojo extends AbstractMojo {
         }
     }
 
-    private File resolveOutputDirectory(SanshainConfig.RequireConfig req) {
+    private File resolveOutputDirectory(SanshainConfig.RequireConfig req, SanshainConfig config) {
         String outputDir = req.getOutputDirectory();
-        if (outputDir == null) {
-            outputDir = "target/generated-sources/sanshain";
-        }
-        File dir = new File(baseDir, outputDir);
+        // A yaml path resolves next to sanshain.yaml; the default belongs to the build's target.
+        File dir = outputDir != null
+                ? config.resolvePath(outputDir)
+                : new File(baseDir, "target/generated-sources/sanshain");
         if (!dir.exists()) {
             dir.mkdirs();
         }

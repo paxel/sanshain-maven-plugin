@@ -484,4 +484,28 @@ public class RequireMojoTest {
         // Should not throw even though server returned 500
         assertDoesNotThrow(mojo::execute);
     }
+
+    @Test
+    public void testOutputDirectoryResolvesNextToConfigInAnotherFolder() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.2.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        Path confDir = Files.createDirectories(tempDir.resolve("conf"));
+        Files.writeString(confDir.resolve("sanshain.yaml"), yaml);
+        setField(mojo, "configFile", confDir.resolve("sanshain.yaml").toFile());
+        mojo.execute();
+
+        assertTrue(Files.exists(confDir.resolve("output/user-service_api_v1_users_GET.yaml")));
+        assertFalse(Files.exists(tempDir.resolve("output")));
+    }
 }

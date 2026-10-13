@@ -193,7 +193,7 @@ public class ProvideMojo extends AbstractMojo {
                     providedAnything = true;
                 } else if (p.getFile() != null) {
                     boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                    provideFile(client, url, token, serviceName, new File(baseDir, p.getFile()), p.getApiType(), compression, itemCombine, dryRun, cache);
+                    provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, itemCombine, dryRun, cache);
                     providedAnything = true;
                 }
             }
@@ -207,7 +207,7 @@ public class ProvideMojo extends AbstractMojo {
                 providedAnything = true;
             } else if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
                 boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                provideSingleConfig(client, url, token, serviceName, p, compression, itemCombine, cache);
+                provideSingleConfig(client, url, token, serviceName, config, p, compression, itemCombine, cache);
                 providedAnything = true;
             }
         }
@@ -223,18 +223,18 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
         if (p.getFile() != null) {
-            provideFile(client, url, token, serviceName, new File(baseDir, p.getFile()), p.getApiType(), compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun, cache);
         }
         if (p.getOpenApiFile() != null) {
-            provideFile(client, url, token, serviceName, new File(baseDir, p.getOpenApiFile()), "openapi", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getOpenApiFile()), "openapi", compression, combine, dryRun, cache);
         }
         if (p.getAsyncApiFile() != null) {
-            provideFile(client, url, token, serviceName, new File(baseDir, p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, cache);
         }
         if (p.getProtoFile() != null) {
-            provideFile(client, url, token, serviceName, new File(baseDir, p.getProtoFile()), "proto", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getProtoFile()), "proto", compression, combine, dryRun, cache);
         }
     }
 
