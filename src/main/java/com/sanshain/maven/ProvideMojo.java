@@ -129,14 +129,16 @@ public class ProvideMojo extends AbstractMojo {
 
         SanshainConfig config;
         try {
-            config = new SanshainConfig().loadConfig(configFile);
+            config = new SanshainConfig().loadConfig(configFile, delegate);
             // Re-resolve to incorporate potential YAML overrides
             resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
+        } catch (MojoFailureException e) {
+            // Unknown fields under strict: a configuration error best-effort does not soften.
+            throw e;
         } catch (Exception e) {
             delegate.handleException(e, resolvedBestEffort);
             config = new SanshainConfig();
         }
-        delegate.reportUnknownFields(config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);

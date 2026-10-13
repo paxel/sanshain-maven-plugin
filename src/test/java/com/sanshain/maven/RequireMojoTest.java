@@ -531,4 +531,42 @@ public class RequireMojoTest {
         org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].endpoints[0].methd' - ignored");
         wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")));
     }
+
+    @Test
+    public void testCatShowsOnBestEffortPathWhenConfigFails() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    verison: 1.2.0\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(log);
+        inOrder.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
+        inOrder.verify(log).warn(org.mockito.ArgumentMatchers.startsWith("Sanshain goal failed (best effort): Invalid sanshain.yaml"));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
+    }
+
+    @Test
+    public void testStrictUnknownFailsBeforeMissingVersionEvenWithBestEffort() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    verison: 1.2.0\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)", ex.getMessage());
+    }
 }

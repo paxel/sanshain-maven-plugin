@@ -163,7 +163,8 @@ public class CatalogMojoTest {
                 .willReturn(aResponse().withStatus(400)
                         .withBody("{\"error\":\"no Component named orders-service\"}")));
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(YAML)::execute);
-        assertEquals("Sanshain rejected catalog-info.yaml: no Component named orders-service. "
+        assertEquals("Sanshain rejected " + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath()
+                + ": no Component named orders-service. "
                 + "The Component's metadata.name must equal serviceName 'orders-service'.", ex.getMessage());
     }
 
@@ -225,7 +226,8 @@ public class CatalogMojoTest {
         CatalogMojo mojo = createMojo(YAML);
         setField(mojo, "bestEffort", true);
         mojo.execute();
-        Mockito.verify(log).warn("Sanshain goal failed (best effort): Sanshain rejected catalog-info.yaml: bad. "
+        Mockito.verify(log).warn("Sanshain goal failed (best effort): Sanshain rejected "
+                + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath() + ": bad. "
                 + "The Component's metadata.name must equal serviceName 'orders-service'.");
     }
 

@@ -47,11 +47,10 @@ public class SanshainMojoDelegate {
      * execution. They are ignored; under strict the build fails instead. Best-effort does not
      * soften this — it is a configuration error, not a failed call.
      *
-     * @param config the loaded configuration
+     * @param unknown the unknown field paths, in file order
      * @throws MojoFailureException under strict, if there is any unknown field
      */
-    public void reportUnknownFields(SanshainConfig config) throws MojoFailureException {
-        List<String> unknown = config.getUnknownFields();
+    public void reportUnknownFields(List<String> unknown) throws MojoFailureException {
         if (unknown == null || unknown.isEmpty()) {
             return;
         }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +26,7 @@ import java.util.Set;
  *
  * <p>Branch-era fields ({@code branch}, {@code timeout}, {@code baseVersion},
  * {@code releaseBranches}, {@code stability}) are still parsed, but only so that
- * {@link #validate()} can reject them by name with a migration hint.</p>
+ * {@link #loadConfig(File, SanshainMojoDelegate)} can reject them by name with a migration hint.</p>
  *
  * <p>Any other field this shape does not know is not an error: it is ignored and listed in
  * {@link #getUnknownFields()}, so the Mojo can name it (and fail under strict).</p>
@@ -61,7 +62,7 @@ public class SanshainConfig {
     private List<String> unknownFields = Collections.emptyList();
 
     // The union of the fields every Sanshain client knows. A field known here but not used by
-    // this plugin is accepted silently; the legacy names are rejected by validate() instead.
+    // this plugin is accepted silently; the legacy names are rejected by name instead.
     private static final Set<String> KNOWN_TOP = new HashSet<>(Arrays.asList(
             "sanshainUrl", "serviceName", "clientName", "compression", "bestEffort", "strict", "force",
             "insecure", "combine", "catalogInfo", "provide", "provides", "requires",
@@ -81,35 +82,88 @@ public class SanshainConfig {
 
     /**
      * Loads the Sanshain configuration from the specified file, applies environment variable
-     * overrides, and validates it against the Sanshain 2.0 configuration shape. Validation
-     * happens at parse time, before any network call: a requires entry without {@code version}
-     * and every leftover branch-era field are hard errors with a migration hint.
+     * overrides, and validates it against the Sanshain 2.0 configuration shape. Unknown fields are
+     * recorded in {@link #getUnknownFields()} without being reported.
      *
      * @param configFile the YAML configuration file
      * @return the loaded and resolved {@link SanshainConfig}
      * @throws MojoExecutionException if loading, parsing, or validation fails
      */
     public SanshainConfig loadConfig(File configFile) throws MojoExecutionException {
-        SanshainConfig config;
-        JsonNode tree = null;
-        if (configFile == null || !configFile.exists()) {
-            config = this;
-        } else {
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
-                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            try {
-                config = mapper.readValue(configFile, SanshainConfig.class);
-                tree = mapper.readTree(configFile);
-            } catch (IOException e) {
-                throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
-            }
+        try {
+            return loadConfig(configFile, null);
+        } catch (MojoFailureException e) {
+            // Unreachable: only a reporter fails on unknown fields.
+            throw new MojoExecutionException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * Loads the Sanshain configuration from the specified file, applies environment variable
+     * overrides, and validates it against the Sanshain 2.0 configuration shape, before any
+     * network call. As soon as the file parses as YAML: first every leftover branch-era field is
+     * rejected by name with a migration hint, then the reporter is told about unknown fields (and
+     * fails under strict), and only then the remaining checks run (a requires entry without
+     * {@code version}). So a typo is named even when it causes a later validation error.
+     *
+     * @param configFile the YAML configuration file
+     * @param reporter   names unknown fields (the puzzled cat); null to only record them
+     * @return the loaded and resolved {@link SanshainConfig}
+     * @throws MojoExecutionException if loading, parsing, or validation fails
+     * @throws MojoFailureException   if the reporter rejects unknown fields (strict)
+     */
+    public SanshainConfig loadConfig(File configFile, SanshainMojoDelegate reporter)
+            throws MojoExecutionException, MojoFailureException {
+        if (configFile == null || !configFile.exists()) {
+            configDirectory = configDirectoryOf(configFile);
+            applyEnvOverrides(this);
+            return this;
+        }
+
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        JsonNode tree;
+        try {
+            tree = mapper.readTree(configFile);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
+        }
+        List<String> unknown = findUnknownFields(tree);
+
+        SanshainConfig config;
+        try {
+            config = mapper.readValue(configFile, SanshainConfig.class);
+        } catch (IOException e) {
+            // The YAML parsed but does not bind: still name the unknown fields first.
+            report(reporter, unknown);
+            throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
+        }
+        config.unknownFields = unknown;
         config.configDirectory = configDirectoryOf(configFile);
         applyEnvOverrides(config);
-        // Legacy fields are rejected by name before anything is said about unknown ones.
-        config.validate();
-        config.unknownFields = findUnknownFields(tree);
+
+        List<String> legacyErrors = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+        config.collectViolations(legacyErrors, errors);
+        if (!legacyErrors.isEmpty()) {
+            throw invalid(errors);
+        }
+        report(reporter, unknown);
+        if (!errors.isEmpty()) {
+            throw invalid(errors);
+        }
         return config;
+    }
+
+    private static void report(SanshainMojoDelegate reporter, List<String> unknown) throws MojoFailureException {
+        if (reporter != null) {
+            reporter.reportUnknownFields(unknown);
+        }
+    }
+
+    private static MojoExecutionException invalid(List<String> errors) {
+        return new MojoExecutionException("Invalid sanshain.yaml for Sanshain 2.0:\n - "
+                + String.join("\n - ", errors));
     }
 
     /**
@@ -184,30 +238,29 @@ public class SanshainConfig {
     }
 
     /**
-     * Validates the configuration against the Sanshain 2.0 shape. Collects all violations and
-     * reports them together, each with a migration hint.
+     * Checks the configuration against the Sanshain 2.0 shape, each violation with a migration
+     * hint. {@code errors} receives every violation in file order; {@code legacyErrors} only the
+     * removed 1.x fields among them.
      *
-     * @throws MojoExecutionException if the configuration uses removed 1.x fields or a requires
-     *                                entry is missing its version pin
+     * @param legacyErrors receives the removed-field violations
+     * @param errors       receives all violations
      */
-    void validate() throws MojoExecutionException {
-        List<String> errors = new ArrayList<>();
-
+    private void collectViolations(List<String> legacyErrors, List<String> errors) {
         if (timeout != null) {
-            errors.add("'timeout' is no longer supported — Sanshain 2.0 resolves requires immediately "
+            legacy(legacyErrors, errors, "'timeout' is no longer supported — Sanshain 2.0 resolves requires immediately "
                     + "(no long-polling); remove it");
         }
         if (releaseBranches != null) {
-            errors.add("'releaseBranches' is no longer supported — the branch model was removed in Sanshain 2.0; "
+            legacy(legacyErrors, errors, "'releaseBranches' is no longer supported — the branch model was removed in Sanshain 2.0; "
                     + "stability is declared per build via -Dsanshain.ga=true / SANSHAIN_GA=true (default: snapshot)");
         }
 
         if (provide != null) {
-            validateProvide(provide, "provide", errors);
+            validateProvide(provide, "provide", legacyErrors, errors);
         }
         if (provides != null) {
             for (int i = 0; i < provides.size(); i++) {
-                validateProvide(provides.get(i), "provides[" + i + "]", errors);
+                validateProvide(provides.get(i), "provides[" + i + "]", legacyErrors, errors);
             }
         }
 
@@ -216,11 +269,11 @@ public class SanshainConfig {
                 RequireConfig req = requires.get(i);
                 String label = "requires[" + i + "]" + (req.getServiceName() != null ? " (" + req.getServiceName() + ")" : "");
                 if (req.branch != null) {
-                    errors.add(label + ": 'branch' is no longer supported — the branch model was removed in "
+                    legacy(legacyErrors, errors, label + ": 'branch' is no longer supported — the branch model was removed in "
                             + "Sanshain 2.0; replace with an exact 'version' pin");
                 }
                 if (req.timeout != null) {
-                    errors.add(label + ": 'timeout' is no longer supported — Sanshain 2.0 resolves immediately; "
+                    legacy(legacyErrors, errors, label + ": 'timeout' is no longer supported — Sanshain 2.0 resolves immediately; "
                             + "a missing pinned version fails fast (404); remove it");
                 }
                 if (req.getVersion() == null) {
@@ -230,24 +283,24 @@ public class SanshainConfig {
                 }
             }
         }
-
-        if (!errors.isEmpty()) {
-            throw new MojoExecutionException("Invalid sanshain.yaml for Sanshain 2.0:\n - "
-                    + String.join("\n - ", errors));
-        }
     }
 
-    private void validateProvide(ProvideConfig p, String label, List<String> errors) {
+    private static void legacy(List<String> legacyErrors, List<String> errors, String message) {
+        legacyErrors.add(message);
+        errors.add(message);
+    }
+
+    private void validateProvide(ProvideConfig p, String label, List<String> legacyErrors, List<String> errors) {
         if (p.branch != null) {
-            errors.add(label + ": 'branch' is no longer supported — the branch model was removed in Sanshain 2.0; "
+            legacy(legacyErrors, errors, label + ": 'branch' is no longer supported — the branch model was removed in Sanshain 2.0; "
                     + "the version is read from the spec file (info.version / // sanshain-version:)");
         }
         if (p.baseVersion != null) {
-            errors.add(label + ": 'baseVersion' is no longer supported — GA immutability replaced optimistic "
+            legacy(legacyErrors, errors, label + ": 'baseVersion' is no longer supported — GA immutability replaced optimistic "
                     + "concurrency in Sanshain 2.0; remove it");
         }
         if (p.stability != null) {
-            errors.add(label + ": 'stability' is not configured in sanshain.yaml — declare it per build via "
+            legacy(legacyErrors, errors, label + ": 'stability' is not configured in sanshain.yaml — declare it per build via "
                     + "-Dsanshain.ga=true / SANSHAIN_GA=true (default: snapshot)");
         }
     }
@@ -330,14 +383,14 @@ public class SanshainConfig {
     public void setClientName(String clientName) { this.serviceName = clientName; }
 
     /**
-     * Legacy 1.x long-polling timeout. Parse target only; rejected by {@link #validate()}.
+     * Legacy 1.x long-polling timeout. Parse target only; rejected by {@link #loadConfig(File, SanshainMojoDelegate)}.
      * @param timeout the removed timeout value
      */
     @JsonProperty("timeout")
     public void setTimeout(Integer timeout) { this.timeout = timeout; }
 
     /**
-     * Legacy 1.x release-branch list. Parse target only; rejected by {@link #validate()}.
+     * Legacy 1.x release-branch list. Parse target only; rejected by {@link #loadConfig(File, SanshainMojoDelegate)}.
      * @param releaseBranches the removed releaseBranches value
      */
     @JsonProperty("releaseBranches")

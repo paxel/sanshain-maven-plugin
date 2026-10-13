@@ -161,7 +161,7 @@ public class SanshainMojoDelegateTest {
     public void testSingleUnknownFieldPrintsTheCat() throws Exception {
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
-        delegate.reportUnknownFields(configWithUnknown("serviceName: x\ncatalogInf: c.yaml\n"));
+        delegate.reportUnknownFields(configWithUnknown("serviceName: x\ncatalogInf: c.yaml\n").getUnknownFields());
 
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(log);
         inOrder.verify(log).warn("   /\\_/\\  ?");
@@ -175,7 +175,7 @@ public class SanshainMojoDelegateTest {
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
         delegate.reportUnknownFields(configWithUnknown("serviceName: x\ncatalogInf: c.yaml\n" +
-                "requires:\n  - serviceName: y\n    version: 1.0.0\n    verison: 1.0.0\n"));
+                "requires:\n  - serviceName: y\n    version: 1.0.0\n    verison: 1.0.0\n").getUnknownFields());
 
         org.mockito.Mockito.verify(log).warn(
                 "  ( O_o )   sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' - ignored");
@@ -186,7 +186,7 @@ public class SanshainMojoDelegateTest {
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
         org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class,
-                () -> delegate.reportUnknownFields(configWithUnknown("serviceName: x\nprovide:\n  fiel: a.yaml\n")));
+                () -> delegate.reportUnknownFields(configWithUnknown("serviceName: x\nprovide:\n  fiel: a.yaml\n").getUnknownFields()));
         assertEquals("sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)", ex.getMessage());
         org.mockito.Mockito.verify(log).warn("   /\\_/\\  ?");
         org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)");
@@ -197,7 +197,68 @@ public class SanshainMojoDelegateTest {
     public void testNoUnknownFieldsNoCat() throws Exception {
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
-        delegate.reportUnknownFields(configWithUnknown("serviceName: x\nforce: true\nstrict: true\n"));
+        delegate.reportUnknownFields(configWithUnknown("serviceName: x\nforce: true\nstrict: true\n").getUnknownFields());
         org.mockito.Mockito.verifyNoInteractions(log);
+    }
+
+    // --- order: legacy rejection, then the cat, then the other checks ---
+
+    private Path writeConfig(String yaml) throws IOException {
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, yaml);
+        return configPath;
+    }
+
+    private static final String TYPO_MISSING_VERSION = "serviceName: x\n" +
+            "requires:\n" +
+            "  - serviceName: users\n" +
+            "    verison: 1.0.0\n" +
+            "    endpoints:\n" +
+            "      - method: GET\n" +
+            "        path: /a\n";
+
+    @Test
+    public void testCatShowsBeforeLaterValidationError() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
+        Path configPath = writeConfig(TYPO_MISSING_VERSION);
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class,
+                () -> new SanshainConfig().loadConfig(configPath.toFile(), delegate));
+        assertTrue(ex.getMessage().contains("missing 'version'"), ex.getMessage());
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
+    }
+
+    @Test
+    public void testStrictFailsOnUnknownBeforeLaterValidation() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
+        Path configPath = writeConfig(TYPO_MISSING_VERSION);
+
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class,
+                () -> new SanshainConfig().loadConfig(configPath.toFile(), delegate));
+        assertEquals("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)", ex.getMessage());
+    }
+
+    @Test
+    public void testLegacyFieldErrorsBeforeTheCat() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
+        Path configPath = writeConfig("serviceName: x\ncatalogInf: c.yaml\ntimeout: 30\n");
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class,
+                () -> new SanshainConfig().loadConfig(configPath.toFile(), delegate));
+        assertTrue(ex.getMessage().contains("'timeout' is no longer supported"), ex.getMessage());
+        org.mockito.Mockito.verifyNoInteractions(log);
+    }
+
+    @Test
+    public void testCatShowsWhenBindingFails() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
+        Path configPath = writeConfig("serviceName: x\ncatalogInf: c.yaml\nrequires: not-a-list\n");
+
+        assertThrows(MojoExecutionException.class, () -> new SanshainConfig().loadConfig(configPath.toFile(), delegate));
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored");
     }
 }

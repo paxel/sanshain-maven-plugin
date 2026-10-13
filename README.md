@@ -425,7 +425,8 @@ graph only (`dev`). A sanshain-branch tag is never sent on this call.
   `serviceName` and `catalogInfo` for this goal, never `provides` or `requires`.
 - **File missing or unreadable** — fails naming the resolved path.
 - **`400`** — Sanshain could not read the file as this service's Component:
-  `Sanshain rejected catalog-info.yaml: <server error>. The Component's metadata.name must equal serviceName 'orders-service'.`
+  `Sanshain rejected /path/to/catalog-info.yaml: <server error>. The Component's metadata.name must equal serviceName 'orders-service'.`
+  (the resolved path of the file)
 - **`404`** — the service is older than 2.4.0 (see above).
 - Everything else (`401`, `403`, `413`, `422`, `5xx`, network) fails like the other goals.
 

@@ -204,7 +204,7 @@ public class SanshainHttpClient {
      * @param token       the authentication token (optional)
      * @param systemName  the system the file describes (the serviceName)
      * @param content     the catalog-info.yaml content
-     * @param fileLabel   the catalogInfo file as configured, named in a 400 rejection
+     * @param fileLabel   the resolved catalogInfo path, named in a 400 rejection
      * @param compression true if GZIP compression should be used
      * @param trunk       true if this build speaks for the trunk stream
      * @return the recorded periphery

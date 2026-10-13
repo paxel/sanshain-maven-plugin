@@ -95,13 +95,15 @@ public class CatalogMojo extends AbstractMojo {
 
         SanshainConfig config;
         try {
-            config = new SanshainConfig().loadConfig(configFile);
+            config = new SanshainConfig().loadConfig(configFile, delegate);
             resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
+        } catch (MojoFailureException e) {
+            // Unknown fields under strict: a configuration error best-effort does not soften.
+            throw e;
         } catch (Exception e) {
             delegate.handleException(e, resolvedBestEffort);
             config = new SanshainConfig();
         }
-        delegate.reportUnknownFields(config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
@@ -149,7 +151,7 @@ public class CatalogMojo extends AbstractMojo {
             getLog().info("Pushing catalog for " + resolvedServiceName + ": " + catalogFile.getAbsolutePath());
             SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
             CatalogResponse response = client.putCatalog(resolvedUrl, resolvedToken, resolvedServiceName, content,
-                    config.getCatalogInfo(), resolvedCompression, stream.isTrunk());
+                    catalogFile.getAbsolutePath(), resolvedCompression, stream.isTrunk());
 
             getLog().info(response.toSummary());
             for (String resource : response.getResources()) {
