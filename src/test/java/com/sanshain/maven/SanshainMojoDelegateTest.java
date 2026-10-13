@@ -150,4 +150,54 @@ public class SanshainMojoDelegateTest {
         assertEquals("http://property", delegate(settingsWithUrl("http://settings"), Collections.emptyMap())
                 .resolveUrl("http://property", config));
     }
+
+    // --- the puzzled cat ---
+
+    private SanshainConfig configWithUnknown(String yaml) throws Exception {
+        return loadConfig(yaml, Collections.emptyMap());
+    }
+
+    @Test
+    public void testSingleUnknownFieldPrintsTheCat() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
+        delegate.reportUnknownFields(configWithUnknown("serviceName: x\ncatalogInf: c.yaml\n"));
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(log);
+        inOrder.verify(log).warn("   /\\_/\\  ?");
+        inOrder.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored");
+        inOrder.verify(log).warn(" ---U-U---");
+        org.mockito.Mockito.verifyNoMoreInteractions(log);
+    }
+
+    @Test
+    public void testSeveralUnknownFieldsInOneLine() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, false);
+        delegate.reportUnknownFields(configWithUnknown("serviceName: x\ncatalogInf: c.yaml\n" +
+                "requires:\n  - serviceName: y\n    version: 1.0.0\n    verison: 1.0.0\n"));
+
+        org.mockito.Mockito.verify(log).warn(
+                "  ( O_o )   sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' - ignored");
+    }
+
+    @Test
+    public void testUnknownFieldUnderStrictFails() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class,
+                () -> delegate.reportUnknownFields(configWithUnknown("serviceName: x\nprovide:\n  fiel: a.yaml\n")));
+        assertEquals("sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)", ex.getMessage());
+        org.mockito.Mockito.verify(log).warn("   /\\_/\\  ?");
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)");
+        org.mockito.Mockito.verify(log).warn(" ---U-U---");
+    }
+
+    @Test
+    public void testNoUnknownFieldsNoCat() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        SanshainMojoDelegate delegate = new SanshainMojoDelegate(log, null, null, true);
+        delegate.reportUnknownFields(configWithUnknown("serviceName: x\nforce: true\nstrict: true\n"));
+        org.mockito.Mockito.verifyNoInteractions(log);
+    }
 }

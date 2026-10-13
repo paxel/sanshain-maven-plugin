@@ -1,11 +1,14 @@
 package com.sanshain.maven;
 
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Shared logic for Sanshain Mojos using composition. Centralizes the resolution of URL, token,
@@ -37,6 +40,30 @@ public class SanshainMojoDelegate {
         if (value == null) return false;
         String v = value.trim();
         return v.equalsIgnoreCase("true") || v.equals("1");
+    }
+
+    /**
+     * Names the fields of sanshain.yaml no Sanshain client knows, with a puzzled cat, once per
+     * execution. They are ignored; under strict the build fails instead. Best-effort does not
+     * soften this — it is a configuration error, not a failed call.
+     *
+     * @param config the loaded configuration
+     * @throws MojoFailureException under strict, if there is any unknown field
+     */
+    public void reportUnknownFields(SanshainConfig config) throws MojoFailureException {
+        List<String> unknown = config.getUnknownFields();
+        if (unknown == null || unknown.isEmpty()) {
+            return;
+        }
+        String message = "sanshain.yaml: unknown field" + (unknown.size() == 1 ? " " : "s ")
+                + unknown.stream().map(f -> "'" + f + "'").collect(Collectors.joining(", "))
+                + " - " + (strict ? "rejected (strict)" : "ignored");
+        log.warn("   /\\_/\\  ?");
+        log.warn("  ( O_o )   " + message);
+        log.warn(" ---U-U---");
+        if (strict) {
+            throw new MojoFailureException(message);
+        }
     }
 
     public void abort(String message, boolean bestEffort) throws MojoExecutionException {

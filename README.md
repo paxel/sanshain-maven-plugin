@@ -101,6 +101,23 @@ The plugin validates the configuration at parse time, before any network call, a
 - `baseVersion` → GA immutability replaced optimistic concurrency. Remove it.
 - `releaseBranches` / `stability` in the YAML → stability is declared per build via the [GA switch](#stability-the-ga-switch), not configured in the file.
 
+### Unknown fields
+
+A field in `sanshain.yaml` that no Sanshain client knows (a typo such as `catalogInf` or
+`requires[0].outputDirectroy`) does not fail the build. The plugin names it once per goal and
+carries on:
+
+```
+   /\_/\  ?
+  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored
+ ---U-U---
+```
+
+With `-Dsanshain.strict=true` the same cat says `rejected (strict)` and the goal fails. Best-effort
+does not soften this, because it is a configuration error, not a failed call. Fields other Sanshain
+clients know but this plugin does not use (for example `force`) are accepted silently. The removed
+1.x fields listed above still fail by name first.
+
 ## Authentication
 
 The plugin supports token-based authentication via `Authorization: Bearer <token>`. The token is resolved from the following sources (highest priority first):

@@ -43,6 +43,23 @@ directory. With the default location that is the project base directory, so noth
 paths stay absolute. The default output directory (`target/generated-sources/sanshain`) stays under
 the project's base directory.
 
+## Unknown fields
+
+A field in `sanshain.yaml` that no Sanshain client knows (a typo such as `catalogInf` or
+`requires[0].outputDirectroy`) does not fail the build. The plugin names it once per goal and
+carries on:
+
+```
+   /\_/\  ?
+  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored
+ ---U-U---
+```
+
+With `-Dsanshain.strict=true` the same cat says `rejected (strict)` and the goal fails. Best-effort
+does not soften this, because it is a configuration error, not a failed call. Fields other Sanshain
+clients know but this plugin does not use (for example `force`) are accepted silently. The removed
+1.x fields still fail by name first.
+
 ## Versions and stability
 
 - The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.

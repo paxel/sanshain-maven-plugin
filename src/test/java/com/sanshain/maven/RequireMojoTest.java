@@ -508,4 +508,27 @@ public class RequireMojoTest {
         assertTrue(Files.exists(confDir.resolve("output/user-service_api_v1_users_GET.yaml")));
         assertFalse(Files.exists(tempDir.resolve("output")));
     }
+
+    @Test
+    public void testUnknownEndpointFieldIsNamedAndRequireContinues() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.2.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n" +
+                "        methd: POST\n";
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].endpoints[0].methd' - ignored");
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")));
+    }
 }

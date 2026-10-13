@@ -710,4 +710,43 @@ public class ProvideMojoTest {
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.openapi_yaml", containing("Absolute"))));
     }
+
+    @Test
+    public void testUnknownFieldIsIgnoredAndProvideContinues() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo("serviceName: my-service\ncatalogInf: c.yaml\n" +
+                "provide:\n  openApiFile: openapi.yaml\n", "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored");
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testUnknownFieldUnderStrictFailsEvenWithBestEffort() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo("serviceName: my-service\ncatalogInf: c.yaml\n" +
+                "provide:\n  openApiFile: openapi.yaml\n", "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)", ex.getMessage());
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testLegacyFieldErrorsBeforeAnyCat() throws Exception {
+        ProvideMojo mojo = createMojo("serviceName: my-service\ncatalogInf: c.yaml\nreleaseBranches: [main]\n", "openapi: 3.0.0");
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("'releaseBranches' is no longer supported"), ex.getMessage());
+        org.mockito.Mockito.verify(log, org.mockito.Mockito.never()).warn(org.mockito.ArgumentMatchers.contains("O_o"));
+    }
 }

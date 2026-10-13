@@ -2,6 +2,8 @@ package com.sanshain.maven;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -9,8 +11,13 @@ import org.apache.maven.plugin.MojoExecutionException;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Root configuration object for the Sanshain plugin.
@@ -18,8 +25,10 @@ import java.util.Map;
  *
  * <p>Branch-era fields ({@code branch}, {@code timeout}, {@code baseVersion},
  * {@code releaseBranches}, {@code stability}) are still parsed, but only so that
- * {@link #validate()} can reject them by name with a migration hint instead of
- * failing with a generic unknown-field error.</p>
+ * {@link #validate()} can reject them by name with a migration hint.</p>
+ *
+ * <p>Any other field this shape does not know is not an error: it is ignored and listed in
+ * {@link #getUnknownFields()}, so the Mojo can name it (and fail under strict).</p>
  */
 public class SanshainConfig {
 
@@ -32,6 +41,7 @@ public class SanshainConfig {
     private Boolean insecure;
     private Boolean bestEffort;
     private Boolean combine;
+    private String catalogInfo;
     private ProvideConfig provide;
     @JsonProperty("provides")
     private List<ProvideConfig> provides;
@@ -45,6 +55,25 @@ public class SanshainConfig {
     /** The directory containing sanshain.yaml; every relative path in it resolves against this. */
     @JsonIgnore
     private File configDirectory;
+
+    /** Fields of sanshain.yaml no Sanshain client knows, as paths in file order. */
+    @JsonIgnore
+    private List<String> unknownFields = Collections.emptyList();
+
+    // The union of the fields every Sanshain client knows. A field known here but not used by
+    // this plugin is accepted silently; the legacy names are rejected by validate() instead.
+    private static final Set<String> KNOWN_TOP = new HashSet<>(Arrays.asList(
+            "sanshainUrl", "serviceName", "clientName", "compression", "bestEffort", "strict", "force",
+            "insecure", "combine", "catalogInfo", "provide", "provides", "requires",
+            "timeout", "releaseBranches"));
+    private static final Set<String> KNOWN_PROVIDE = new HashSet<>(Arrays.asList(
+            "file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine",
+            "branch", "baseVersion", "stability"));
+    private static final Set<String> KNOWN_REQUIRE = new HashSet<>(Arrays.asList(
+            "serviceName", "apiType", "version", "outputDirectory", "endpoints",
+            "branch", "timeout"));
+    private static final Set<String> KNOWN_ENDPOINT = new HashSet<>(Arrays.asList(
+            "method", "path"));
 
     /** The environment the overrides are read from; replaceable in tests. */
     @JsonIgnore
@@ -62,20 +91,76 @@ public class SanshainConfig {
      */
     public SanshainConfig loadConfig(File configFile) throws MojoExecutionException {
         SanshainConfig config;
+        JsonNode tree = null;
         if (configFile == null || !configFile.exists()) {
             config = this;
         } else {
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+            ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
+                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
             try {
                 config = mapper.readValue(configFile, SanshainConfig.class);
+                tree = mapper.readTree(configFile);
             } catch (IOException e) {
                 throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
             }
         }
         config.configDirectory = configDirectoryOf(configFile);
         applyEnvOverrides(config);
+        // Legacy fields are rejected by name before anything is said about unknown ones.
         config.validate();
+        config.unknownFields = findUnknownFields(tree);
         return config;
+    }
+
+    /**
+     * Lists every field the known sanshain.yaml shape does not have, as a path such as
+     * {@code catalogInf}, {@code provides[1].verison} or {@code requires[0].endpoints[2].methd},
+     * in file order.
+     */
+    private static List<String> findUnknownFields(JsonNode root) {
+        List<String> unknown = new ArrayList<>();
+        if (root == null || !root.isObject()) {
+            return unknown;
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            String name = field.getKey();
+            JsonNode value = field.getValue();
+            if (!KNOWN_TOP.contains(name)) {
+                unknown.add(name);
+            } else if (name.equals("provide")) {
+                collectUnknown(value, "provide.", KNOWN_PROVIDE, unknown);
+            } else if (name.equals("provides") && value.isArray()) {
+                for (int i = 0; i < value.size(); i++) {
+                    collectUnknown(value.get(i), "provides[" + i + "].", KNOWN_PROVIDE, unknown);
+                }
+            } else if (name.equals("requires") && value.isArray()) {
+                for (int i = 0; i < value.size(); i++) {
+                    collectUnknown(value.get(i), "requires[" + i + "].", KNOWN_REQUIRE, unknown);
+                }
+            }
+        }
+        return unknown;
+    }
+
+    private static void collectUnknown(JsonNode node, String prefix, Set<String> known, List<String> unknown) {
+        if (node == null || !node.isObject()) {
+            return;
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            String name = field.getKey();
+            if (!known.contains(name)) {
+                unknown.add(prefix + name);
+            } else if (known == KNOWN_REQUIRE && name.equals("endpoints") && field.getValue().isArray()) {
+                JsonNode endpoints = field.getValue();
+                for (int j = 0; j < endpoints.size(); j++) {
+                    collectUnknown(endpoints.get(j), prefix + "endpoints[" + j + "].", KNOWN_ENDPOINT, unknown);
+                }
+            }
+        }
     }
 
     private static File configDirectoryOf(File configFile) {
@@ -305,6 +390,27 @@ public class SanshainConfig {
      * @param combine true if files should be combined
      */
     public void setCombine(Boolean combine) { this.combine = combine; }
+
+    /**
+     * Gets the path to the Backstage {@code catalog-info.yaml} pushed by the catalog goal,
+     * relative to the directory containing sanshain.yaml.
+     * @return the catalogInfo path, or null if not configured
+     */
+    public String getCatalogInfo() { return catalogInfo; }
+
+    /**
+     * Sets the path to the Backstage {@code catalog-info.yaml} pushed by the catalog goal.
+     * @param catalogInfo the catalogInfo path
+     */
+    public void setCatalogInfo(String catalogInfo) { this.catalogInfo = catalogInfo; }
+
+    /**
+     * Fields of sanshain.yaml that no Sanshain client knows, as paths in file order
+     * (e.g. {@code catalogInf}, {@code requires[0].verison}).
+     * @return the unknown field paths; empty when there are none
+     */
+    @JsonIgnore
+    public List<String> getUnknownFields() { return unknownFields; }
 
     /**
      * Gets the configuration for the provide goal.

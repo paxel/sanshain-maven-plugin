@@ -351,4 +351,61 @@ public class SanshainConfigTest {
         SanshainConfig config = new SanshainConfig().loadConfig(confDir.resolve("sanshain.yaml").toFile());
         assertEquals(confDir.resolve("out").toFile().getAbsoluteFile(), config.resolvePath("out"));
     }
+
+    @Test
+    public void testUnknownTopLevelFieldIsIgnoredAndNamed() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\ncatalogInf: catalog-info.yaml\n");
+        assertEquals(java.util.Arrays.asList("catalogInf"), config.getUnknownFields());
+        assertEquals("x", config.getServiceName());
+    }
+
+    @Test
+    public void testUnknownNestedFieldsAreNamedByPathInFileOrder() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\n" +
+                "provide:\n" +
+                "  fiel: a.yaml\n" +
+                "requires:\n" +
+                "  - serviceName: users\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectroy: out\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /a\n" +
+                "      - method: GET\n" +
+                "        path: /b\n" +
+                "      - methd: GET\n" +
+                "        path: /c\n" +
+                "catalogInf: c.yaml\n" +
+                "provides:\n" +
+                "  - file: a.yaml\n" +
+                "  - file: b.yaml\n" +
+                "    verison: 1.0.0\n");
+        assertEquals(java.util.Arrays.asList(
+                "provide.fiel",
+                "requires[0].outputDirectroy",
+                "requires[0].endpoints[2].methd",
+                "catalogInf",
+                "provides[1].verison"), config.getUnknownFields());
+    }
+
+    @Test
+    public void testKnownButUnsupportedFieldsAreNotUnknown() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\n" +
+                "clientName: x\n" +
+                "strict: true\n" +
+                "force: true\n" +
+                "catalogInfo: catalog-info.yaml\n" +
+                "provides:\n" +
+                "  - file: a.yaml\n" +
+                "    retired: false\n" +
+                "    combine: true\n");
+        assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
+        assertEquals("catalog-info.yaml", config.getCatalogInfo());
+    }
+
+    @Test
+    public void testLegacyFieldStillErrorsByNameBeforeUnknownFields() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\ncatalogInf: c.yaml\ntimeout: 30\n");
+        assertTrue(ex.getMessage().contains("'timeout' is no longer supported"), ex.getMessage());
+    }
 }
