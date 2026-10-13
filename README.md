@@ -6,10 +6,11 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 
 - `sanshain:provide`: Uploads a full API specification to the Sanshain service under its declared version and stability. Defaults to the `initialize` phase.
 - `sanshain:require`: Downloads specific endpoint snippets at exact pinned versions. Defaults to the `initialize` phase.
+- `sanshain:catalog`: Pushes this service's Backstage `catalog-info.yaml` (the `catalogInfo` field) so the network graph shows the peripheral resources it depends on. Defaults to the `initialize` phase. Needs Sanshain Service 2.4.0 or later.
 
 ## Requirements
 
-- **Sanshain service 2.x.** Plugin 2.x speaks Sanshain Service 2.x — this is a clean break from the 1.x branch-based contract; neither side accepts the other's old fields.
+- **Sanshain service 2.x.** Plugin 2.x speaks Sanshain Service 2.x — this is a clean break from the 1.x branch-based contract; neither side accepts the other's old fields. The `catalog` goal needs Sanshain Service 2.4.0 or later; all other goals work with any 2.x service.
 - Java 11 or later.
 
 ## The 2.0 model in one minute
@@ -51,6 +52,7 @@ sanshainUrl: https://sanshain.example.com
 serviceName: order-service
 compression: true
 bestEffort: true
+catalogInfo: catalog-info.yaml   # optional, pushed by sanshain:catalog
 
 provides:
   - file: src/main/resources/openapi.yaml   # version read from info.version
@@ -83,7 +85,7 @@ You can override the configuration file location using the `configFile` property
 ```
 
 Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`,
-`outputDirectory`) resolves against the directory that contains `sanshain.yaml`, never the working
+`outputDirectory`, `catalogInfo`) resolves against the directory that contains `sanshain.yaml`, never the working
 directory. With the default location that is the project base directory, so nothing changes; a
 `configFile` in another folder finds its spec files and output directories next to itself. Absolute
 paths stay absolute. The default output directory (`target/generated-sources/sanshain`) stays under
@@ -356,6 +358,79 @@ If a provide or require fails against a server that turns out to be pre-2.0, the
 Sanshain server at https://sanshain.example.com is 1.7.0; this client requires Sanshain 2.x — upgrade the server.
 ```
 
+## Goal: `catalog`
+
+Pushes this service's Backstage `catalog-info.yaml` to Sanshain (`PUT /catalog/<serviceName>`), so the
+network graph can show the **peripheral resources** it depends on — databases, buckets, queues. Sanshain
+reads only the `Component` whose `metadata.name` equals `serviceName`, and of it only `spec.dependsOn`;
+only `resource:` refs become graph nodes. Each push replaces the previous set.
+
+Needs **Sanshain Service 2.4.0 or later**. An older service answers `404`, which the goal reports as:
+
+```
+sanshain catalog needs Sanshain Service 2.4.0 or later (server is 2.3.1)
+```
+
+Point `catalogInfo` in `sanshain.yaml` at the file (relative to `sanshain.yaml`):
+
+```yaml
+serviceName: orders-service
+catalogInfo: catalog-info.yaml
+```
+
+Run it as its own goal, or add it to an execution next to `provide`/`require`:
+
+```bash
+mvn sanshain:catalog
+```
+
+```xml
+<goals>
+    <goal>provide</goal>
+    <goal>require</goal>
+    <goal>catalog</goal>
+</goals>
+```
+
+On success it prints the recorded resources:
+
+```
+Catalog recorded for orders-service (main+dev): 1 resources
+  resource:default/orders-db
+```
+
+`main+dev` means a trunk build (`-Dsanshain.trunk=true` / `SANSHAIN_TRUNK=true`), which sends
+`"trunk": true` and updates the main graph as well as the dev graph; any other build updates the dev
+graph only (`dev`). A sanshain-branch tag is never sent on this call.
+
+### Parameters
+
+| Parameter     | Property                | Default                 | Description |
+|---------------|-------------------------|-------------------------|-------------|
+| `serviceName` | `sanshain.service.name` | —                       | **Required.** The system the file describes. |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service. |
+| `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable). |
+| `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for the upload. |
+| `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors. |
+| `bestEffort`  | `sanshain.bestEffort`   | `false`                 | Turn a failed push into a warning (see [Best-Effort Mode](#best-effort-mode)). |
+| `trunk`       | `sanshain.trunk`        | `false`                 | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`. |
+| `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup. |
+| `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals. |
+| `strict`      | `sanshain.strict`       | `false`                 | Fail when `serviceName` or `catalogInfo` is missing. |
+
+### Failure modes
+
+- **No `catalogInfo`** — warns `No catalogInfo in sanshain.yaml - skipping catalog.` and succeeds;
+  under strict it fails with `strict: sanshain.yaml has no catalogInfo`. Strict checks only
+  `serviceName` and `catalogInfo` for this goal, never `provides` or `requires`.
+- **File missing or unreadable** — fails naming the resolved path.
+- **`400`** — Sanshain could not read the file as this service's Component:
+  `Sanshain rejected catalog-info.yaml: <server error>. The Component's metadata.name must equal serviceName 'orders-service'.`
+- **`404`** — the service is older than 2.4.0 (see above).
+- Everything else (`401`, `403`, `413`, `422`, `5xx`, network) fails like the other goals.
+
+With best-effort, every failure after the `catalogInfo` check becomes a warning and the build goes on.
+
 ## Combined Example
 
 If your service both provides an API and consumes other APIs, configure everything in `sanshain.yaml`:
@@ -584,6 +659,7 @@ mvn verify -Dsanshain.dry.run=true
 In dry-run mode:
 - **`provide`**: The spec is parsed, its version read, and the provide classified against the version rules (including GA immutability and semver honesty), but nothing is stored.
 - **`require`**: Endpoint lookups are performed at the pinned versions, but no dependencies are recorded.
+- **`catalog`**: The catalog call has no dry run; the goal pushes as usual.
 
 ## Specification Combining/Bundling
 
@@ -638,6 +714,14 @@ export SANSHAIN_URL=https://sanshain.example.com
 export SANSHAIN_TOKEN=san_abc123...
 export SANSHAIN_BEST_EFFORT=true          # optional, don't fail on server errors
 mvn verify
+```
+
+To push the service's `catalog-info.yaml` (needs Sanshain Service 2.4.0), add the catalog goal as a
+step; trunk CI sets the trunk switch so the main graph is updated too:
+
+```bash
+export SANSHAIN_TRUNK=true                # trunk pipeline only
+mvn sanshain:catalog
 ```
 
 On release/protected-branch pipelines, additionally set the GA switch:

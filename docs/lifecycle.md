@@ -39,6 +39,11 @@ graph TD
 - **Purpose**: Downloads the endpoint snippets required by the service at their exact pinned versions.
 - **Why `initialize`?**: It ensures that the required snippets are downloaded and ready before the `generate-sources` phase begins. This provides a clean separation between downloading dependencies and generating code from them.
 
+### `sanshain:catalog`
+- **Default Phase**: `initialize`
+- **Purpose**: Pushes the service's Backstage `catalog-info.yaml` (the `catalogInfo` field of `sanshain.yaml`) so the network graph shows the peripheral resources it depends on. Needs Sanshain Service 2.4.0 or later.
+- **Optional**: Without `catalogInfo` the goal warns and skips (fails under strict), so it is safe to add to every project.
+
 ## Key Mechanisms
 
 ### Automatic Bundling

@@ -11,6 +11,7 @@ sanshainUrl: https://sanshain.example.com
 serviceName: order-service
 compression: true
 bestEffort: true
+catalogInfo: catalog-info.yaml   # optional, pushed by sanshain:catalog (Sanshain Service 2.4.0+)
 
 provides:
   - file: src/main/resources/openapi.yaml   # version read from info.version
@@ -37,7 +38,7 @@ You can override the configuration file location using the `configFile` property
 ```
 
 Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`,
-`outputDirectory`) resolves against the directory that contains `sanshain.yaml`, never the working
+`outputDirectory`, `catalogInfo`) resolves against the directory that contains `sanshain.yaml`, never the working
 directory. With the default location that is the project base directory, so nothing changes; a
 `configFile` in another folder finds its spec files and output directories next to itself. Absolute
 paths stay absolute. The default output directory (`target/generated-sources/sanshain`) stays under
@@ -151,6 +152,15 @@ environment.
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing.                                                          |
 | `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications.            |
 | `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning.                                         |
+
+## Goal: `catalog`
+
+`sanshain:catalog` pushes the Backstage `catalog-info.yaml` named by `catalogInfo` (relative to
+`sanshain.yaml`) to `PUT /catalog/<serviceName>`. It needs Sanshain Service 2.4.0 or later; all other
+goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict). It
+takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecure`, `bestEffort`,
+`trunk`, `skip` and `strict` like the other goals; see the
+[README](../README.md#goal-catalog) for output and failure modes.
 
 ## Goal: `require` Parameters
 

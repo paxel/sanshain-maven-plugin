@@ -48,9 +48,9 @@ public class SanshainHttpClient {
     private final Log log;
     private final ObjectMapper objectMapper;
 
-    /** Memoized result of the lazy wrong-server diagnosis (one GET /version per client). */
+    /** Memoized result of the lazy GET /version probe (at most one per client); null if unknown. */
     private boolean serverVersionChecked;
-    private String pre2ServerVersion;
+    private String serverVersion;
 
     /**
      * Constructs a new SanshainHttpClient.
@@ -189,6 +189,107 @@ public class SanshainHttpClient {
         } catch (IOException e) {
             log.debug("Could not parse retire response body: " + e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Pushes this system's Backstage {@code catalog-info.yaml} so the graph can show the
+     * peripheral resources it depends on. Needs Sanshain Service 2.4.0 or later.
+     *
+     * <p>{@code trunk: true} is sent only for a trunk build; otherwise the field is omitted. A
+     * sanshain-branch tag is never sent — the endpoint does not take one and answers 422 to
+     * unknown fields.
+     *
+     * @param baseUrl     the base URL of the Sanshain service
+     * @param token       the authentication token (optional)
+     * @param systemName  the system the file describes (the serviceName)
+     * @param content     the catalog-info.yaml content
+     * @param fileLabel   the catalogInfo file as configured, named in a 400 rejection
+     * @param compression true if GZIP compression should be used
+     * @param trunk       true if this build speaks for the trunk stream
+     * @return the recorded periphery
+     * @throws MojoExecutionException if the request fails or is rejected
+     */
+    public CatalogResponse putCatalog(String baseUrl, String token, String systemName, String content,
+                                      String fileLabel, boolean compression, boolean trunk)
+            throws MojoExecutionException {
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("catalog_info_yaml", content);
+        if (trunk) {
+            payload.put("trunk", true);
+        }
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new MojoExecutionException("Failed to build JSON for /catalog", e);
+        }
+
+        // urlEncode is form encoding; a path segment needs %20 for a space, not '+'.
+        String url = baseUrl + "/catalog/" + urlEncode(systemName).replace("+", "%20");
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .timeout(REQUEST_TIMEOUT);
+        if (token != null && !token.isEmpty()) {
+            requestBuilder.header("Authorization", "Bearer " + token);
+        }
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        if (compression) {
+            body = gzipCompress(body);
+            requestBuilder.header("Content-Encoding", "gzip");
+        }
+        requestBuilder.PUT(HttpRequest.BodyPublishers.ofByteArray(body));
+
+        log.debug("PUT " + url);
+        log.debug("Request body size: " + body.length + " bytes" + (compression ? " (gzip)" : ""));
+
+        try {
+            HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            int status = response.statusCode();
+            String responseBody = extractResponseBody(response);
+            log.debug("Response status: " + status);
+            logResponseHeaders(response);
+            log.debug("Response body: " + sanitize(responseBody));
+
+            if (status == 200) {
+                try {
+                    return objectMapper.readValue(responseBody, CatalogResponse.class);
+                } catch (IOException e) {
+                    throw new MojoExecutionException("Could not read the catalog response: " + sanitize(responseBody), e);
+                }
+            }
+            if (status == 404) {
+                String version = serverVersion(baseUrl, token);
+                logAngryCat();
+                throw new MojoExecutionException("sanshain catalog needs Sanshain Service 2.4.0 or later ("
+                        + (version != null ? "server is " + version : "server version unknown") + ")");
+            }
+
+            failOnPre2Server(baseUrl, token);
+
+            if (status == 400) {
+                ErrorBody error = parseErrorBody(responseBody);
+                logAngryCat();
+                throw new MojoExecutionException("Sanshain rejected " + fileLabel + ": "
+                        + sanitize(error.message(responseBody)) + ". The Component's metadata.name must equal "
+                        + "serviceName '" + systemName + "'.");
+            } else if (status == 422) {
+                logAngryCat();
+                log.error("Catalog failed (422 Unprocessable Entity): " + sanitize(responseBody));
+                throw new MojoExecutionException("Request shape rejected (422) — the server rejects unknown "
+                        + "or missing fields by name: " + sanitize(responseBody));
+            } else {
+                logAngryCat();
+                log.error("Catalog failed (" + status + "): " + sanitize(responseBody));
+                throw new MojoExecutionException("Unexpected response " + status + ": " + sanitize(responseBody));
+            }
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failed to connect to Sanshain service at " + url, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MojoExecutionException("Request interrupted", e);
         }
     }
 
@@ -590,16 +691,34 @@ public class SanshainHttpClient {
      * @throws MojoExecutionException if the instance reports a version below 2.0.0
      */
     private void failOnPre2Server(String baseUrl, String token) throws MojoExecutionException {
-        String oldVersion = detectPre2Server(baseUrl, token);
+        String oldVersion = pre2Version(serverVersion(baseUrl, token));
         if (oldVersion != null) {
             throw new MojoExecutionException("Sanshain server at " + baseUrl + " is " + oldVersion
                     + "; this client requires Sanshain 2.x — upgrade the server.");
         }
     }
 
-    private String detectPre2Server(String baseUrl, String token) {
+    private static String pre2Version(String version) {
+        if (version == null) {
+            return null;
+        }
+        try {
+            int major = Integer.parseInt(version.split("\\.", 2)[0].trim());
+            return major < 2 ? version : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The version the server reports on {@code GET /version}. Asked lazily, only after a failure,
+     * and memoized — including a negative result — so this costs at most one request per client.
+     *
+     * @return the server's version, or null if it could not be determined
+     */
+    private String serverVersion(String baseUrl, String token) {
         if (serverVersionChecked) {
-            return pre2ServerVersion;
+            return serverVersion;
         }
         serverVersionChecked = true;
 
@@ -618,19 +737,13 @@ public class SanshainHttpClient {
                 return null;
             }
             VersionBody versionBody = objectMapper.readValue(extractResponseBody(response), VersionBody.class);
-            if (versionBody.version == null) {
-                return null;
-            }
-            int major = Integer.parseInt(versionBody.version.split("\\.", 2)[0].trim());
-            if (major < 2) {
-                pre2ServerVersion = versionBody.version;
-            }
+            serverVersion = versionBody.version;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.debug("Could not determine server version: " + e.getMessage());
         }
-        return pre2ServerVersion;
+        return serverVersion;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
