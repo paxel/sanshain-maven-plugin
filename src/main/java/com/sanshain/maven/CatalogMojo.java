@@ -38,6 +38,10 @@ public class CatalogMojo extends AbstractMojo {
     @Parameter(property = "sanshain.skip", defaultValue = "false")
     private boolean skip;
 
+    /** Read and check the catalogInfo file locally, but push nothing. */
+    @Parameter(property = "sanshain.dry.run", defaultValue = "false")
+    private boolean dryRun;
+
     /**
      * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
      * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
@@ -141,6 +145,7 @@ public class CatalogMojo extends AbstractMojo {
         getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
         getLog().debug("Best effort: " + resolvedBestEffort);
         getLog().debug("Resolved stream: " + stream);
+        getLog().debug("Dry run: " + dryRun);
 
         try {
             File catalogFile = config.resolvePath(config.getCatalogInfo());
@@ -150,6 +155,11 @@ public class CatalogMojo extends AbstractMojo {
             } catch (IOException e) {
                 throw new MojoExecutionException("Cannot read catalogInfo file " + catalogFile.getAbsolutePath()
                         + ": " + e.getMessage(), e);
+            }
+
+            if (dryRun) {
+                getLog().info("Dry run - catalog not pushed: " + catalogFile.getAbsolutePath());
+                return;
             }
 
             getLog().info("Pushing catalog for " + resolvedServiceName + ": " + catalogFile.getAbsolutePath());

@@ -275,4 +275,50 @@ public class CatalogMojoTest {
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
         assertEquals("strict: sanshain.yaml has no catalogInfo", ex.getMessage());
     }
+
+    @Test
+    public void testDryRunChecksFileLocallyAndSendsNothing() throws Exception {
+        stubRecorded(false);
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "dryRun", true);
+        mojo.execute();
+
+        Mockito.verify(log).info("Dry run - catalog not pushed: "
+                + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testDryRunStillFailsOnMissingFile() throws Exception {
+        CatalogMojo mojo = createMojo(tempDir.resolve("conf/sanshain.yaml"), YAML);
+        setField(mojo, "dryRun", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains(tempDir.resolve("conf/catalog-info.yaml").toFile().getAbsolutePath()), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testDryRunMissingFileWarnsUnderBestEffort() throws Exception {
+        CatalogMojo mojo = createMojo(tempDir.resolve("conf/sanshain.yaml"), YAML);
+        setField(mojo, "dryRun", true);
+        setField(mojo, "bestEffort", true);
+        mojo.execute();
+        Mockito.verify(log).warn(Mockito.startsWith("Sanshain goal failed (best effort): Cannot read catalogInfo file "));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testDryRunWithoutCatalogInfoStillWarnsOrStrictFails() throws Exception {
+        CatalogMojo warn = createMojo("serviceName: orders-service\n");
+        setField(warn, "dryRun", true);
+        warn.execute();
+        Mockito.verify(log).warn("No catalogInfo in sanshain.yaml - skipping catalog.");
+
+        CatalogMojo strict = createMojo("serviceName: orders-service\n");
+        setField(strict, "dryRun", true);
+        setField(strict, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, strict::execute);
+        assertEquals("strict: sanshain.yaml has no catalogInfo", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
 }

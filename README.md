@@ -416,6 +416,7 @@ graph only (`dev`). A sanshain-branch tag is never sent on this call.
 | `trunk`       | `sanshain.trunk`        | `false`                 | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`. |
 | `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup. |
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals. |
+| `dryRun`      | `sanshain.dry.run`      | `false`                 | Read and check the file locally, push nothing (see [Dry-Run Mode](#dry-run-mode)). |
 | `strict`      | `sanshain.strict`       | `false`                 | Fail when `serviceName` or `catalogInfo` is missing. |
 
 ### Failure modes
@@ -670,7 +671,7 @@ mvn verify -Dsanshain.dry.run=true
 In dry-run mode:
 - **`provide`**: The spec is parsed, its version read, and the provide classified against the version rules (including GA immutability and semver honesty), but nothing is stored.
 - **`require`**: Endpoint lookups are performed at the pinned versions, but no dependencies are recorded.
-- **`catalog`**: The catalog call has no dry run; the goal pushes as usual.
+- **`catalog`**: The `catalogInfo` file is read and checked locally, and the goal logs `Dry run - catalog not pushed: <path>` instead of pushing; nothing is sent.
 
 ## Specification Combining/Bundling
 

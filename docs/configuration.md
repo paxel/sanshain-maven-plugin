@@ -159,7 +159,8 @@ environment.
 `sanshain.yaml`) to `PUT /catalog/<serviceName>`. It needs Sanshain Service 2.4.0 or later; all other
 goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict). It
 takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecure`, `bestEffort`,
-`trunk`, `skip` and `strict` like the other goals; see the
+`trunk`, `skip`, `dryRun` and `strict` like the other goals (under `-Dsanshain.dry.run=true` it reads
+and checks the file locally and pushes nothing); see the
 [README](../README.md#goal-catalog) for output and failure modes.
 
 ## Goal: `require` Parameters
