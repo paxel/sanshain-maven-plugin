@@ -361,8 +361,8 @@ For multiple endpoints (2+), the merged bundle is saved as `{outputDirectory}/{s
 `format: openapi` on an `apiType: asyncapi` entry asks Sanshain to answer the required AsyncAPI
 endpoints as an OpenAPI document, so a consumer can generate its DTOs with OpenAPI tooling. It is the
 only conversion there is: `format` with any other `apiType`, or any other value, fails the build before
-any call. It needs **Sanshain Service 2.4.0 or later**; an older service ignores the request and answers
-AsyncAPI, which the plugin reports as:
+any call. It needs **Sanshain Service 2.4.0 or later**. An older service rejects the single-endpoint
+request or returns AsyncAPI; the client reports that it needs 2.4.0:
 
 ```
 format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)

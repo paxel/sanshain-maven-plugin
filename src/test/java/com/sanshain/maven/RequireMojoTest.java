@@ -776,4 +776,58 @@ public class RequireMojoTest {
         org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("format 'avro' is not supported"));
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
+
+    private void stubFormatRejected() {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(400)
+                        .withBody("{\"error\":\"Failed to deserialize query string: unknown field `format`\"}")));
+    }
+
+    @Test
+    public void testOldServerRejectingFormatNeedsService240() throws Exception {
+        stubFormatRejected();
+        wireMock.stubFor(get(urlEqualTo("/version"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"version\":\"2.3.0\"}")));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(asyncYaml("openapi", null))::execute);
+        assertEquals("format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)", ex.getMessage());
+    }
+
+    @Test
+    public void testFormatRejectedWithUnknownVersion() throws Exception {
+        stubFormatRejected();
+        wireMock.stubFor(get(urlEqualTo("/version")).willReturn(aResponse().withStatus(500)));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(asyncYaml("openapi", null))::execute);
+        assertEquals("format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)", ex.getMessage());
+    }
+
+    @Test
+    public void testNewServerConversionErrorPassesThrough() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(400)
+                        .withBody("{\"error\":\"cannot convert Avro payload of 'orders' to format openapi\"}")));
+        wireMock.stubFor(get(urlEqualTo("/version"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"version\":\"2.4.0\"}")));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(asyncYaml("openapi", null))::execute);
+        assertTrue(ex.getMessage().contains("cannot convert Avro payload of 'orders' to format openapi"), ex.getMessage());
+        assertFalse(ex.getMessage().contains("needs Sanshain Service 2.4.0"), ex.getMessage());
+    }
+
+    @Test
+    public void testOldServerRejectingFormatUnderBestEffortWarns() throws Exception {
+        stubFormatRejected();
+        wireMock.stubFor(get(urlEqualTo("/version"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"version\":\"2.3.0\"}")));
+        RequireMojo mojo = createMojo(asyncYaml("openapi", null));
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal failed (best effort): "
+                + "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)");
+        assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
+    }
 }

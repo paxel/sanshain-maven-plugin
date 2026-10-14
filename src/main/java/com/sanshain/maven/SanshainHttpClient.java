@@ -552,9 +552,10 @@ public class SanshainHttpClient {
                 return RequireResult.ok(content, responseEtag, stability);
             }
 
+            String errorBody = sanitize(extractResponseBody(response));
+            failOnFormatUnsupported(format, status, errorBody, baseUrl, token);
             failOnPre2Server(baseUrl, token);
 
-            String errorBody = sanitize(extractResponseBody(response));
             if (status == 404) {
                 logAngryCat();
                 log.error("Require failed (404 Unknown): " + errorBody);
@@ -654,9 +655,10 @@ public class SanshainHttpClient {
                 return RequireResult.ok(content, responseEtag, stability);
             }
 
+            String errorBody = sanitize(extractResponseBody(response));
+            failOnFormatUnsupported(format, status, errorBody, baseUrl, token);
             failOnPre2Server(baseUrl, token);
 
-            String errorBody = sanitize(extractResponseBody(response));
             if (status == 400) {
                 logAngryCat();
                 log.error("Require-bundle failed (400 Bad Request): " + errorBody);
@@ -700,8 +702,40 @@ public class SanshainHttpClient {
         if (!"openapi".equals(format) || isOpenApiDocument(content)) {
             return;
         }
+        throw needsService240(serverVersion(baseUrl, token));
+    }
+
+    /**
+     * A service older than 2.4.0 rejects the {@code format} query parameter with a 400 naming it.
+     * Such a 400 is reported as the version problem it is; a 2.4.0+ service's own 400 (for example
+     * a payload it cannot convert) passes through to the normal error mapping.
+     */
+    private void failOnFormatUnsupported(String format, int status, String errorBody, String baseUrl, String token)
+            throws MojoExecutionException {
+        if (!"openapi".equals(format) || status != 400
+                || !errorBody.toLowerCase(java.util.Locale.ROOT).contains("format")) {
+            return;
+        }
         String version = serverVersion(baseUrl, token);
-        throw new MojoExecutionException("format: openapi needs Sanshain Service 2.4.0 or later ("
+        if (version == null || isOlderThan240(version)) {
+            logAngryCat();
+            throw needsService240(version);
+        }
+    }
+
+    private static boolean isOlderThan240(String version) {
+        try {
+            String[] parts = version.trim().replaceFirst("^v", "").split("\\.");
+            int major = Integer.parseInt(parts[0]);
+            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
+            return major < 2 || (major == 2 && minor < 4);
+        } catch (NumberFormatException e) {
+            return true;
+        }
+    }
+
+    private static MojoExecutionException needsService240(String version) {
+        return new MojoExecutionException("format: openapi needs Sanshain Service 2.4.0 or later ("
                 + (version != null ? "server is " + version : "server version unknown") + ")");
     }
 
