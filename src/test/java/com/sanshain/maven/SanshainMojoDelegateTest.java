@@ -261,4 +261,29 @@ public class SanshainMojoDelegateTest {
         assertThrows(MojoExecutionException.class, () -> new SanshainConfig().loadConfig(configPath.toFile(), delegate));
         org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored");
     }
+
+    // --- strict: explicit property > yaml strict > off ---
+
+    @Test
+    public void testStrictResolution() throws Exception {
+        SanshainConfig yamlOn = loadConfig("serviceName: x\nstrict: true\n", Collections.emptyMap());
+        SanshainConfig yamlOff = loadConfig("serviceName: x\nstrict: false\n", Collections.emptyMap());
+        SanshainConfig yamlUnset = loadConfig("serviceName: x\n", Collections.emptyMap());
+
+        SanshainMojoDelegate unset = new SanshainMojoDelegate(new DefaultLog(new ConsoleLogger()), null, null, null);
+        unset.resolveStrict(yamlOn);
+        assertTrue(unset.isStrict());
+
+        SanshainMojoDelegate unset2 = new SanshainMojoDelegate(new DefaultLog(new ConsoleLogger()), null, null, null);
+        unset2.resolveStrict(yamlUnset);
+        assertFalse(unset2.isStrict());
+
+        SanshainMojoDelegate off = new SanshainMojoDelegate(new DefaultLog(new ConsoleLogger()), null, null, false);
+        off.resolveStrict(yamlOn);
+        assertFalse(off.isStrict());
+
+        SanshainMojoDelegate on = new SanshainMojoDelegate(new DefaultLog(new ConsoleLogger()), null, null, true);
+        on.resolveStrict(yamlOff);
+        assertTrue(on.isStrict());
+    }
 }

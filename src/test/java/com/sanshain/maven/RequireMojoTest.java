@@ -569,4 +569,18 @@ public class RequireMojoTest {
         org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
         assertEquals("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)", ex.getMessage());
     }
+
+    @Test
+    public void testNoRequiresFailsWhenYamlStrict() throws Exception {
+        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("No requires configured"), ex.getMessage());
+    }
+
+    @Test
+    public void testNoRequiresOnlyWarnsWhenPropertyOverridesYamlStrict() throws Exception {
+        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n");
+        setField(mojo, "strict", false);
+        mojo.execute();
+    }
 }

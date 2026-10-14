@@ -19,14 +19,38 @@ public class SanshainMojoDelegate {
     private final Log log;
     private final Settings settings;
     private final String serverId;
-    private final boolean strict;
+    /** The {@code sanshain.strict} property, or null if the build did not set it. */
+    private final Boolean strictProperty;
+    /** The resolved strict mode: the property if set, else sanshain.yaml's {@code strict}, else off. */
+    private boolean strict;
     private Map<String, String> environmentVariables = System.getenv();
 
-    public SanshainMojoDelegate(Log log, Settings settings, String serverId, boolean strict) {
+    public SanshainMojoDelegate(Log log, Settings settings, String serverId, Boolean strict) {
         this.log = log;
         this.settings = settings;
         this.serverId = serverId != null ? serverId : "sanshain";
-        this.strict = strict;
+        this.strictProperty = strict;
+        this.strict = strict != null && strict;
+    }
+
+    /**
+     * Resolves strict mode once sanshain.yaml is read: an explicitly set {@code sanshain.strict}
+     * (true or false) wins; otherwise the yaml {@code strict} field decides; otherwise off.
+     *
+     * @param config the loaded configuration
+     */
+    public void resolveStrict(SanshainConfig config) {
+        if (strictProperty == null && config != null && config.getStrict() != null) {
+            strict = config.getStrict();
+        }
+    }
+
+    /**
+     * Whether this execution runs in strict mode (see {@link #resolveStrict(SanshainConfig)}).
+     * @return true if strict
+     */
+    public boolean isStrict() {
+        return strict;
     }
 
     /**

@@ -749,4 +749,48 @@ public class ProvideMojoTest {
         assertTrue(ex.getMessage().contains("'releaseBranches' is no longer supported"), ex.getMessage());
         org.mockito.Mockito.verify(log, org.mockito.Mockito.never()).warn(org.mockito.ArgumentMatchers.contains("O_o"));
     }
+
+    @Test
+    public void testYamlStrictFailsOnUnknownField() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo("serviceName: my-service\nstrict: true\ncatalogInf: c.yaml\n" +
+                "provide:\n  openApiFile: openapi.yaml\n", "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)", ex.getMessage());
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testStrictPropertyFalseOverridesYamlStrict() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo("serviceName: my-service\nstrict: true\ncatalogInf: c.yaml\n" +
+                "provide:\n  openApiFile: openapi.yaml\n", "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "strict", false);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored");
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testStrictPropertyTrueOverridesYamlStrictOff() throws Exception {
+        ProvideMojo mojo = createMojo("serviceName: my-service\nstrict: false\ncatalogInf: c.yaml\n" +
+                "provide:\n  openApiFile: openapi.yaml\n", "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "strict", true);
+
+        org.apache.maven.plugin.MojoFailureException ex = assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)", ex.getMessage());
+    }
+
+    @Test
+    public void testYamlStrictFailsWhenNothingToProvide() throws Exception {
+        ProvideMojo mojo = createMojo("serviceName: my-service\nstrict: true\n", "openapi: 3.0.0");
+        setField(mojo, "openApiFile", tempDir.resolve("missing.yaml").toFile());
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("No specification files found"), ex.getMessage());
+    }
 }

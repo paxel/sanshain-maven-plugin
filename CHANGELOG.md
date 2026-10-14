@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `sanshain:catalog` goal: pushes the service's Backstage `catalog-info.yaml`, named by the new `catalogInfo` field in `sanshain.yaml`, so the network graph shows the peripheral resources it depends on; a trunk build updates the main graph as well as the dev graph.
 - `catalog` requires Sanshain Service 2.4.0; all other commands work with any 2.x service.
+- `strict: true` in `sanshain.yaml` turns on strict mode; an explicitly set `-Dsanshain.strict` (true or false) overrides it.
 
 ### Changed
 - Relative paths in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`, `catalogInfo`) resolve against the directory containing `sanshain.yaml` instead of the project base directory; with the default `configFile` nothing moves.

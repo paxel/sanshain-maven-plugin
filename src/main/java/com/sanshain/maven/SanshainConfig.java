@@ -41,6 +41,7 @@ public class SanshainConfig {
     private Boolean compression;
     private Boolean insecure;
     private Boolean bestEffort;
+    private Boolean strict;
     private Boolean combine;
     private String catalogInfo;
     private ProvideConfig provide;
@@ -139,6 +140,9 @@ public class SanshainConfig {
             throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
         }
         config.unknownFields = unknown;
+        if (reporter != null) {
+            reporter.resolveStrict(config);
+        }
         config.configDirectory = configDirectoryOf(configFile);
         applyEnvOverrides(config);
 
@@ -431,6 +435,19 @@ public class SanshainConfig {
      * @param bestEffort true if errors should be logged as warnings
      */
     public void setBestEffort(Boolean bestEffort) { this.bestEffort = bestEffort; }
+
+    /**
+     * Gets the yaml strict switch: fail on missing configuration and unknown fields.
+     * An explicitly set {@code sanshain.strict} property overrides it.
+     * @return the yaml strict value, or null if not set
+     */
+    public Boolean getStrict() { return strict; }
+
+    /**
+     * Sets the yaml strict switch.
+     * @param strict true to fail on missing configuration and unknown fields
+     */
+    public void setStrict(Boolean strict) { this.strict = strict; }
 
     /**
      * Gets whether to recursively resolve and inline relative references/imports.

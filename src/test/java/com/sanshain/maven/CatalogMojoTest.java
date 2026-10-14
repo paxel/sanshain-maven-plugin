@@ -268,4 +268,11 @@ public class CatalogMojoTest {
         mojo.execute();
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
+
+    @Test
+    public void testNoCatalogInfoFailsWhenYamlStrict() throws Exception {
+        CatalogMojo mojo = createMojo("serviceName: orders-service\nstrict: true\n");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("strict: sanshain.yaml has no catalogInfo", ex.getMessage());
+    }
 }

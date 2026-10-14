@@ -38,8 +38,12 @@ public class CatalogMojo extends AbstractMojo {
     @Parameter(property = "sanshain.skip", defaultValue = "false")
     private boolean skip;
 
-    @Parameter(property = "sanshain.strict", defaultValue = "false")
-    private boolean strict;
+    /**
+     * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
+     * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
+     */
+    @Parameter(property = "sanshain.strict")
+    private Boolean strict;
 
     @Parameter(property = "sanshain.insecure")
     private Boolean insecure;
@@ -120,7 +124,7 @@ public class CatalogMojo extends AbstractMojo {
         // Only the missing catalogInfo itself is strict's business here; best-effort covers
         // failed calls, not this configuration check.
         if (config.getCatalogInfo() == null) {
-            if (strict) {
+            if (delegate.isStrict()) {
                 throw new MojoExecutionException("strict: sanshain.yaml has no catalogInfo");
             }
             getLog().warn("No catalogInfo in sanshain.yaml - skipping catalog.");

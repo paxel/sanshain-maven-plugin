@@ -56,7 +56,7 @@ carries on:
  ---U-U---
 ```
 
-With `-Dsanshain.strict=true` the same cat says `rejected (strict)` and the goal fails. Best-effort
+In strict mode (`-Dsanshain.strict=true` or `strict: true` in `sanshain.yaml`) the same cat says `rejected (strict)` and the goal fails. Best-effort
 does not soften this, because it is a configuration error, not a failed call. Fields other Sanshain
 clients know but this plugin does not use (for example `force`) are accepted silently. The removed
 1.x fields still fail by name first.
@@ -185,6 +185,8 @@ By default, the plugin warns and skips when configuration is incomplete. Enable 
 ```bash
 mvn verify -Dsanshain.strict=true
 ```
+or set `strict: true` in `sanshain.yaml`. An explicitly set `sanshain.strict` property (`true` or
+`false`) wins over the yaml value. Strict mode also fails the build on unknown `sanshain.yaml` fields.
 
 ### Best-Effort Mode
 Designed for non-critical builds or parent POMs. When enabled, server errors or timeouts are logged as warnings instead of failing the build.

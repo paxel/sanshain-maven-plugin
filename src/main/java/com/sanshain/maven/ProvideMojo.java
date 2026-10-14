@@ -41,8 +41,12 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.dry.run", defaultValue = "false")
     private boolean dryRun;
 
-    @Parameter(property = "sanshain.strict", defaultValue = "false")
-    private boolean strict;
+    /**
+     * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
+     * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
+     */
+    @Parameter(property = "sanshain.strict")
+    private Boolean strict;
 
     @Parameter(property = "sanshain.insecure")
     private Boolean insecure;

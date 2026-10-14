@@ -115,7 +115,7 @@ carries on:
  ---U-U---
 ```
 
-With `-Dsanshain.strict=true` the same cat says `rejected (strict)` and the goal fails. Best-effort
+In strict mode (`-Dsanshain.strict=true` or `strict: true` in `sanshain.yaml`) the same cat says `rejected (strict)` and the goal fails. Best-effort
 does not soften this, because it is a configuration error, not a failed call. Fields other Sanshain
 clients know but this plugin does not use (for example `force`) are accepted silently. The removed
 1.x fields listed above still fail by name first.
@@ -544,10 +544,20 @@ Or in `pom.xml`:
 </configuration>
 ```
 
+Or in `sanshain.yaml`:
+
+```yaml
+strict: true
+```
+
+An explicitly set `sanshain.strict` property (`true` or `false`) wins over the `sanshain.yaml` value;
+when the property is not set, `sanshain.yaml` decides; otherwise strict mode is off.
+
 When strict mode is enabled:
 - Missing `serviceName` → build failure
 - No `provides` configured → build failure
 - No `requires` configured → build failure
+- Unknown fields in `sanshain.yaml` → build failure (see [Unknown fields](#unknown-fields))
 
 Note that an *invalid* `sanshain.yaml` — including leftover 1.x fields or a `requires` entry without a `version` pin — is always a hard error regardless of strict mode (only [Best-Effort Mode](#best-effort-mode) downgrades it to a warning).
 
