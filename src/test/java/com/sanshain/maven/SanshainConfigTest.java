@@ -408,4 +408,38 @@ public class SanshainConfigTest {
         MojoExecutionException ex = loadExpectingError("serviceName: x\ncatalogInf: c.yaml\ntimeout: 30\n");
         assertTrue(ex.getMessage().contains("'timeout' is no longer supported"), ex.getMessage());
     }
+
+    @Test
+    public void testFormatOpenApiWithAsyncApiIsKnownAndValid() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\n" +
+                "requires:\n" +
+                "  - serviceName: events\n" +
+                "    apiType: asyncapi\n" +
+                "    format: openapi\n" +
+                "    version: 1.0.0\n");
+        assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
+        assertEquals("openapi", config.getRequires().get(0).getFormat());
+    }
+
+    @Test
+    public void testFormatWithOtherApiTypeIsRejected() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\n" +
+                "requires:\n" +
+                "  - serviceName: users\n" +
+                "    format: openapi\n" +
+                "    version: 1.0.0\n");
+        assertTrue(ex.getMessage().contains("requires[0] (users): format: openapi is only valid with apiType: asyncapi"), ex.getMessage());
+    }
+
+    @Test
+    public void testUnknownFormatValueIsRejected() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\n" +
+                "requires:\n" +
+                "  - serviceName: events\n" +
+                "    apiType: asyncapi\n" +
+                "    format: json-schema\n" +
+                "    version: 1.0.0\n");
+        assertTrue(ex.getMessage().contains("requires[0] (events): format 'json-schema' is not supported"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("apiType: asyncapi with format: openapi"), ex.getMessage());
+    }
 }

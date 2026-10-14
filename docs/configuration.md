@@ -163,6 +163,14 @@ takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecur
 and checks the file locally and pushes nothing); see the
 [README](../README.md#goal-catalog) for output and failure modes.
 
+## `requires`: `format: openapi`
+
+A `requires` entry with `apiType: asyncapi` may set `format: openapi` to receive its endpoints as an
+OpenAPI document instead of AsyncAPI (needs Sanshain Service 2.4.0 or later). It is the only allowed
+combination; any other `apiType` or value fails before any call. The output file name is unchanged, so
+to get both formats list the entry twice with different `outputDirectory`s. See the
+[README](../README.md#asyncapi-as-openapi-format-openapi) for the consumer pom example.
+
 ## Goal: `require` Parameters
 
 | Parameter     | Property                | Default                 | Description                                                                  |

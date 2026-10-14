@@ -612,8 +612,8 @@ public class RequireMojoTest {
         bundle.execute();
 
         SanshainCache cache = new SanshainCache(tempDir.resolve("target").toFile());
-        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users")));
-        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0")));
+        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null)));
+        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0", null)));
 
         // The next real run therefore asks without If-None-Match.
         createMojo(ONE_ENDPOINT).execute();
@@ -629,5 +629,151 @@ public class RequireMojoTest {
         createMojo(ONE_ENDPOINT).execute();
 
         wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
+
+    private static String asyncYaml(String format, String extraEndpoint) {
+        return "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: events\n" +
+                "    apiType: asyncapi\n" +
+                (format != null ? "    format: " + format + "\n" : "") +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: out\n" +
+                "    endpoints:\n" +
+                "      - method: SUB\n" +
+                "        path: orders\n" +
+                (extraEndpoint != null ? extraEndpoint : "");
+    }
+
+    private static final String OPENAPI_DOC = "openapi: 3.0.3\ninfo:\n  title: events\n  version: 1.0.0\npaths: {}\n";
+    private static final String ASYNCAPI_DOC = "asyncapi: 3.0.0\ninfo:\n  title: events\n  version: 1.0.0\n";
+
+    @Test
+    public void testFormatSentOnSingleAsyncApiRequire() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(200).withBody(OPENAPI_DOC)));
+        createMojo(asyncYaml("openapi", null)).execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require/asyncapi")).withQueryParam("format", equalTo("openapi")));
+        assertEquals(OPENAPI_DOC, Files.readString(tempDir.resolve("out/events_orders_SUB.yaml")));
+    }
+
+    @Test
+    public void testFormatSentOnBundle() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody(OPENAPI_DOC)));
+        createMojo(asyncYaml("openapi", "      - method: PUB\n        path: payments\n")).execute();
+
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle")).withQueryParam("format", equalTo("openapi")));
+        assertTrue(Files.exists(tempDir.resolve("out/events_bundle.yaml")));
+    }
+
+    @Test
+    public void testNoFormatParamWithoutFormat() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(200).withBody(ASYNCAPI_DOC)));
+        wireMock.stubFor(post(urlPathEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody(ASYNCAPI_DOC)));
+        createMojo(asyncYaml(null, null)).execute();
+        createMojo(asyncYaml(null, "      - method: PUB\n        path: payments\n")).execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require/asyncapi")).withQueryParam("format", absent()));
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle")));
+    }
+
+    @Test
+    public void testFormatWithWrongApiTypeRejectedBeforeAnyCall() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: users\n" +
+                "    apiType: openapi\n" +
+                "    format: openapi\n" +
+                "    version: 1.0.0\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /users\n";
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(yaml)::execute);
+        assertTrue(ex.getMessage().contains("format: openapi is only valid with apiType: asyncapi"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testUnknownFormatRejectedBeforeAnyCall() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(asyncYaml("avro", null))::execute);
+        assertTrue(ex.getMessage().contains("format 'avro' is not supported"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testNonOpenApiAnswerNeedsService240WithVersion() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(200).withBody(ASYNCAPI_DOC)));
+        wireMock.stubFor(get(urlEqualTo("/version"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"version\":\"2.3.1\"}")));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(asyncYaml("openapi", null))::execute);
+        assertEquals("format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)", ex.getMessage());
+        assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
+    }
+
+    @Test
+    public void testNonOpenApiBundleAnswerNeedsService240VersionUnknown() throws Exception {
+        wireMock.stubFor(post(urlPathEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody(ASYNCAPI_DOC)));
+        wireMock.stubFor(get(urlEqualTo("/version")).willReturn(aResponse().withStatus(404)));
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class,
+                createMojo(asyncYaml("openapi", "      - method: PUB\n        path: payments\n"))::execute);
+        assertEquals("format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)", ex.getMessage());
+    }
+
+    @Test
+    public void testNonOpenApiAnswerUnderBestEffortWarnsAndWritesNothing() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi"))
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"a1\"").withBody(ASYNCAPI_DOC)));
+        wireMock.stubFor(get(urlEqualTo("/version"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"version\":\"2.3.1\"}")));
+        RequireMojo mojo = createMojo(asyncYaml("openapi", null));
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal failed (best effort): "
+                + "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)");
+        assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
+        assertNull(new SanshainCache(tempDir.resolve("target").toFile())
+                .getRequireEntry(SanshainCache.requireKey("events", "1.0.0", "SUB", "orders", "openapi")));
+    }
+
+    @Test
+    public void testEtagIsKeyedPerFormat() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi")).withQueryParam("format", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"native\"").withBody(ASYNCAPI_DOC)));
+        wireMock.stubFor(get(urlPathEqualTo("/require/asyncapi")).withQueryParam("format", equalTo("openapi"))
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"converted\"").withBody(OPENAPI_DOC)));
+
+        createMojo(asyncYaml(null, null)).execute();
+        createMojo(asyncYaml("openapi", null)).execute();
+        createMojo(asyncYaml("openapi", null)).execute();
+
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require/asyncapi"))
+                .withQueryParam("format", equalTo("openapi")).withoutHeader("If-None-Match"));
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require/asyncapi"))
+                .withQueryParam("format", equalTo("openapi")).withHeader("If-None-Match", equalTo("\"converted\"")));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require/asyncapi"))
+                .withHeader("If-None-Match", equalTo("\"native\"")));
+    }
+
+    @Test
+    public void testFormatConfigErrorUnderBestEffortWarnsAndCallsNothing() throws Exception {
+        RequireMojo mojo = createMojo(asyncYaml("avro", null));
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("format 'avro' is not supported"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 }

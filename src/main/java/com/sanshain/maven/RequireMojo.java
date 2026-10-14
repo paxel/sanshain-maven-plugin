@@ -214,11 +214,11 @@ public class RequireMojo extends AbstractMojo {
         String reqServiceName = req.getServiceName();
         getLog().info("Requiring bundle: " + reqServiceName + "@" + version + " (" + req.getEndpoints().size() + " endpoints)");
 
-        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version);
+        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version, req.getFormat());
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream);
+        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat());
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
@@ -243,11 +243,11 @@ public class RequireMojo extends AbstractMojo {
 
         getLog().info("Requiring: " + reqServiceName + "@" + version + " " + method + " " + path);
 
-        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path);
+        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path, req.getFormat());
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream);
+        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat());
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");

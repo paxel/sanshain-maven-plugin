@@ -300,7 +300,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.getRequireWithEtag(baseUrl, null, "client", "service",
-                        "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none()));
+                        "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("is 1.6.2; this client requires Sanshain 2.x — upgrade the server."),
                 ex.getMessage());
     }
@@ -349,7 +349,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, "token", "client", "service",
-                "1.2.0", "/api/users", "GET", false, false, null, null, SanshainStream.none());
+                "1.2.0", "/api/users", "GET", false, false, null, null, SanshainStream.none(), null);
 
         assertEquals("openapi: 3.0.0", result.getContent());
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
@@ -368,7 +368,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(get(urlPathEqualTo("/require"))
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
-        client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none());
+        client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withoutHeader("Authorization"));
@@ -382,9 +382,9 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("proto snippet")));
 
         assertEquals("channel yaml", client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "orders.created", "PUB", false, false, "asyncapi", null, SanshainStream.none()).getContent());
+                "1.0.0", "orders.created", "PUB", false, false, "asyncapi", null, SanshainStream.none(), null).getContent());
         assertEquals("proto snippet", client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "inventory.v1.InventoryService", "GetProduct", false, false, "proto", null, SanshainStream.none()).getContent());
+                "1.0.0", "inventory.v1.InventoryService", "GetProduct", false, false, "proto", null, SanshainStream.none(), null).getContent());
     }
 
     @Test
@@ -396,7 +396,7 @@ public class SanshainHttpClientTest {
                         .withBody(compressed)));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "/api", "GET", true, false, null, null, SanshainStream.none());
+                "1.0.0", "/api", "GET", true, false, null, null, SanshainStream.none(), null);
 
         assertEquals("openapi: 3.0.0", result.getContent());
     }
@@ -406,7 +406,7 @@ public class SanshainHttpClientTest {
         wireMock.stubFor(get(urlPathEqualTo("/require"))
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
-        client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", true, false, null, null, SanshainStream.none());
+        client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", true, false, null, null, SanshainStream.none(), null);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withHeader("Accept-Encoding", equalTo("gzip")));
@@ -418,7 +418,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(404).withBody("{\"error\":\"unknown version\"}")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.getRequireWithEtag(baseUrl, null, "client", "service", "9.9.9", "/api", "GET", false, false, null, null, SanshainStream.none()));
+                client.getRequireWithEtag(baseUrl, null, "client", "service", "9.9.9", "/api", "GET", false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("service@9.9.9"), ex.getMessage());
         assertTrue(ex.getMessage().contains("fix the 'version' pin"), ex.getMessage());
         assertTrue(ex.getMessage().contains("GET /producers/service/versions"), ex.getMessage());
@@ -430,7 +430,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(410).withBody("{\"error\":\"endpoint absent\"}")));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none()));
+                client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("deliberately"), "message should distinguish 410 from 404: " + ex.getMessage());
         assertFalse(ex.getMessage().contains("Unexpected response"), "410 must not fall into the generic branch: " + ex.getMessage());
     }
@@ -441,7 +441,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(500)));
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
-                client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none()));
+                client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("Unexpected response 500"));
     }
 
@@ -451,7 +451,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("yaml")));
 
         client.getRequireWithEtag(baseUrl, null, "my client", "my service",
-                "1.0.0", "/api/v1/users/{id}", "GET", false, false, null, null, SanshainStream.none());
+                "1.0.0", "/api/v1/users/{id}", "GET", false, false, null, null, SanshainStream.none(), null);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withQueryParam("consumername", equalTo("my client"))
@@ -466,7 +466,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(304)));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "/api", "GET", false, false, null, "\"sha256:abc\"", SanshainStream.none());
+                "1.0.0", "/api", "GET", false, false, null, "\"sha256:abc\"", SanshainStream.none(), null);
 
         assertTrue(result.isNotModified());
         assertNull(result.getContent());
@@ -480,7 +480,7 @@ public class SanshainHttpClientTest {
                         .withBody("openapi: 3.0.0")));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none());
+                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null);
 
         assertFalse(result.isNotModified());
         assertEquals("openapi: 3.0.0", result.getContent());
@@ -495,7 +495,7 @@ public class SanshainHttpClientTest {
                         .withBody("openapi: 3.0.0")));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none());
+                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null);
 
         assertEquals("snapshot", result.getStability());
     }
@@ -515,7 +515,7 @@ public class SanshainHttpClientTest {
         ep2.setPath("/api/v1/users/{id}");
 
         RequireResult result = client.postRequireBundleWithEtag(baseUrl, "token", "client", "service",
-                "1.2.0", List.of(ep1, ep2), false, false, null, null, SanshainStream.none());
+                "1.2.0", List.of(ep1, ep2), false, false, null, null, SanshainStream.none(), null);
 
         assertEquals("merged openapi yaml", result.getContent());
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
@@ -546,7 +546,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0",
-                List.of(ep), false, false, null, null, SanshainStream.none());
+                List.of(ep), false, false, null, null, SanshainStream.none(), null);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
                 .withoutHeader("Authorization"));
@@ -562,7 +562,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0",
-                List.of(ep), true, false, null, null, SanshainStream.none());
+                List.of(ep), true, false, null, null, SanshainStream.none(), null);
 
         wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
                 .withHeader("Content-Encoding", equalTo("gzip"))
@@ -582,7 +582,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         RequireResult result = client.postRequireBundleWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", List.of(ep), true, false, null, null, SanshainStream.none());
+                "1.0.0", List.of(ep), true, false, null, null, SanshainStream.none(), null);
 
         assertEquals("merged yaml", result.getContent());
     }
@@ -598,7 +598,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0",
-                        List.of(ep), false, false, null, null, SanshainStream.none()));
+                        List.of(ep), false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("Bad request"));
         assertTrue(ex.getMessage().contains("Empty endpoints"));
     }
@@ -614,7 +614,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "9.9.9",
-                        List.of(ep), false, false, null, null, SanshainStream.none()));
+                        List.of(ep), false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("service@9.9.9"), ex.getMessage());
         assertTrue(ex.getMessage().contains("fix the 'version' pin"), ex.getMessage());
     }
@@ -630,7 +630,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0",
-                        List.of(ep), false, false, null, null, SanshainStream.none()));
+                        List.of(ep), false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("deliberately"), "message should distinguish 410 from 404: " + ex.getMessage());
         assertFalse(ex.getMessage().contains("Unexpected response"), "410 must not fall into the generic branch: " + ex.getMessage());
     }
@@ -646,7 +646,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0",
-                        List.of(ep), false, false, null, null, SanshainStream.none()));
+                        List.of(ep), false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("Unexpected response 500"));
     }
 
@@ -658,7 +658,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postRequireBundleWithEtag("http://localhost:1", null, "client", "service",
-                        "1.0.0", List.of(ep), false, false, null, null, SanshainStream.none()));
+                        "1.0.0", List.of(ep), false, false, null, null, SanshainStream.none(), null));
         assertTrue(ex.getMessage().contains("Failed to connect"));
     }
 
@@ -673,7 +673,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         RequireResult result = client.postRequireBundleWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", List.of(ep), false, false, null, "\"sha256:bundleHash\"", SanshainStream.none());
+                "1.0.0", List.of(ep), false, false, null, "\"sha256:bundleHash\"", SanshainStream.none(), null);
 
         assertTrue(result.isNotModified());
     }
@@ -690,7 +690,7 @@ public class SanshainHttpClientTest {
         ep.setPath("/api");
 
         RequireResult result = client.postRequireBundleWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", List.of(ep), false, false, null, null, SanshainStream.none());
+                "1.0.0", List.of(ep), false, false, null, null, SanshainStream.none(), null);
 
         assertFalse(result.isNotModified());
         assertEquals("merged yaml", result.getContent());
@@ -707,7 +707,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("redirected yaml")));
 
         RequireResult result = client.getRequireWithEtag(baseUrl, null, "client", "service",
-                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none());
+                "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null);
 
         assertEquals("redirected yaml", result.getContent());
     }
@@ -724,7 +724,7 @@ public class SanshainHttpClientTest {
 
             SanshainHttpClient insecureClient = new SanshainHttpClient(Mockito.mock(Log.class), true);
             RequireResult result = insecureClient.getRequireWithEtag(httpsBaseUrl, null, "client", "service",
-                    "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none());
+                    "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null);
 
             assertEquals("secure yaml", result.getContent());
         } finally {
@@ -741,7 +741,7 @@ public class SanshainHttpClientTest {
         SanshainHttpClient localClient = new SanshainHttpClient(log);
 
         assertThrows(MojoExecutionException.class, () ->
-                localClient.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none()));
+                localClient.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET", false, false, null, null, SanshainStream.none(), null));
 
         verify(log, atLeastOnce()).error(contains("NOT happy"));
     }
@@ -797,7 +797,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(200).withBody("paths: {}")));
 
         client.getRequireWithEtag(baseUrl, null, "client", "service", "1.0.0", "/api", "GET",
-                false, false, null, null, SanshainStream.trunk());
+                false, false, null, null, SanshainStream.trunk(), null);
 
         wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
                 .withQueryParam("trunk", equalTo("true")));
@@ -971,19 +971,19 @@ public class SanshainHttpClientTest {
         endpoints.add(ep2);
 
         client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
-                false, false, null, null, SanshainStream.trunk());
+                false, false, null, null, SanshainStream.trunk(), null);
         wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
                 .withRequestBody(matchingJsonPath("$.trunk", equalTo("true"))));
 
         wireMock.resetRequests();
         client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
-                false, false, null, null, SanshainStream.tag("R"));
+                false, false, null, null, SanshainStream.tag("R"), null);
         wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
                 .withRequestBody(matchingJsonPath("$.tag", equalTo("R"))));
 
         wireMock.resetRequests();
         client.postRequireBundleWithEtag(baseUrl, null, "client", "service", "1.0.0", endpoints,
-                false, false, null, null, SanshainStream.none());
+                false, false, null, null, SanshainStream.none(), null);
         wireMock.verify(postRequestedFor(urlPathEqualTo("/require-bundle"))
                 .withRequestBody(notMatching(".*trunk.*"))
                 .withRequestBody(notMatching(".*tag.*")));

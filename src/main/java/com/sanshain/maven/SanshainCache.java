@@ -83,20 +83,26 @@ public class SanshainCache {
      * @param version     the pinned version
      * @param method      the HTTP method
      * @param path        the API path
-     * @return the cache key
+     * @param format      the requested format, or null for the native one
+     * @return the cache key; a requested format is part of it, so formats never share an ETag
      */
-    public static String requireKey(String serviceName, String version, String method, String path) {
-        return serviceName + "|" + version + "|" + method + "|" + path;
+    public static String requireKey(String serviceName, String version, String method, String path, String format) {
+        return serviceName + "|" + version + "|" + method + "|" + path + formatSuffix(format);
     }
 
     /**
      * Builds a require-bundle cache key from the given parameters.
      * @param serviceName the service name
      * @param version     the pinned version
-     * @return the cache key
+     * @param format      the requested format, or null for the native one
+     * @return the cache key; a requested format is part of it, so formats never share an ETag
      */
-    public static String requireBundleKey(String serviceName, String version) {
-        return serviceName + "|" + version + "|bundle";
+    public static String requireBundleKey(String serviceName, String version, String format) {
+        return serviceName + "|" + version + "|bundle" + formatSuffix(format);
+    }
+
+    private static String formatSuffix(String format) {
+        return format == null ? "" : "|format=" + format;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `sanshain:catalog` goal: pushes the service's Backstage `catalog-info.yaml`, named by the new `catalogInfo` field in `sanshain.yaml`, so the network graph shows the peripheral resources it depends on; a trunk build updates the main graph as well as the dev graph, and `-Dsanshain.dry.run=true` only checks the file locally.
 - `catalog` requires Sanshain Service 2.4.0; all other commands work with any 2.x service.
+- `format: openapi` on an `apiType: asyncapi` require entry receives the endpoints as an OpenAPI document (needs Sanshain Service 2.4.0).
 - `strict: true` in `sanshain.yaml` turns on strict mode; an explicitly set `-Dsanshain.strict` (true or false) overrides it.
 
 ### Changed

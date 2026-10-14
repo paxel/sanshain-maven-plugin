@@ -345,6 +345,98 @@ For a single endpoint, the snippet is saved as `{outputDirectory}/{serviceName}_
 
 For multiple endpoints (2+), the merged bundle is saved as `{outputDirectory}/{serviceName}_bundle.yaml`.
 
+### `requires` entry fields
+
+| Field             | Required | Default                              | Description |
+|-------------------|----------|--------------------------------------|-------------|
+| `serviceName`     | yes      | —                                    | The Producer to require from. |
+| `version`         | yes      | —                                    | Exact pinned version (`MAJOR.MINOR.PATCH`). |
+| `apiType`         | no       | `openapi`                            | `openapi`, `asyncapi` or `proto`. |
+| `format`          | no       | — (native format)                    | Only `openapi`, and only with `apiType: asyncapi`: receive the AsyncAPI endpoints as an OpenAPI document. Needs Sanshain Service 2.4.0 or later. |
+| `outputDirectory` | no       | `target/generated-sources/sanshain`  | Where the snippet or bundle is written (relative to `sanshain.yaml`). |
+| `endpoints`       | yes      | —                                    | `method` + `path` pairs to require. |
+
+### AsyncAPI as OpenAPI (`format: openapi`)
+
+`format: openapi` on an `apiType: asyncapi` entry asks Sanshain to answer the required AsyncAPI
+endpoints as an OpenAPI document, so a consumer can generate its DTOs with OpenAPI tooling. It is the
+only conversion there is: `format` with any other `apiType`, or any other value, fails the build before
+any call. It needs **Sanshain Service 2.4.0 or later**; an older service ignores the request and answers
+AsyncAPI, which the plugin reports as:
+
+```
+format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)
+```
+
+The file name does not change (`{serviceName}_bundle.yaml` or `{serviceName}_{path}_{method}.yaml`).
+To get both formats, list the entry twice with different `outputDirectory`s:
+
+```yaml
+requires:
+  - serviceName: order-events
+    apiType: asyncapi
+    version: 1.4.0
+    outputDirectory: target/generated-sources/sanshain/order-events
+    endpoints:
+      - method: SUB
+        path: orders
+      - method: SUB
+        path: payments
+  - serviceName: order-events
+    apiType: asyncapi
+    format: openapi
+    version: 1.4.0
+    outputDirectory: target/generated-sources/sanshain/order-events-openapi
+    endpoints:
+      - method: SUB
+        path: orders
+      - method: SUB
+        path: payments
+```
+
+A consumer pom that requires the OpenAPI form in `initialize` and generates Spring models from it:
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>io.github.paxel.sanshain</groupId>
+            <artifactId>sanshain-maven-plugin</artifactId>
+            <version>2.2.0</version>
+            <executions>
+                <execution>
+                    <phase>initialize</phase>
+                    <goals>
+                        <goal>require</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+        <plugin>
+            <groupId>org.openapitools</groupId>
+            <artifactId>openapi-generator-maven-plugin</artifactId>
+            <version>7.8.0</version>
+            <executions>
+                <execution>
+                    <phase>generate-sources</phase>
+                    <goals>
+                        <goal>generate</goal>
+                    </goals>
+                    <configuration>
+                        <inputSpec>${project.build.directory}/generated-sources/sanshain/order-events-openapi/order-events_bundle.yaml</inputSpec>
+                        <generatorName>spring</generatorName>
+                        <generateApis>false</generateApis>
+                        <output>${project.build.directory}/generated-sources/openapi</output>
+                        <modelPackage>com.example.orders.events.model</modelPackage>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+```
+
+
 ### Failure modes
 
 The plugin surfaces the two failure modes distinctly:

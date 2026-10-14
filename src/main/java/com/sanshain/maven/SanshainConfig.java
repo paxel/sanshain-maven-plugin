@@ -72,7 +72,7 @@ public class SanshainConfig {
             "file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine",
             "branch", "baseVersion", "stability"));
     private static final Set<String> KNOWN_REQUIRE = new HashSet<>(Arrays.asList(
-            "serviceName", "apiType", "version", "outputDirectory", "endpoints",
+            "serviceName", "apiType", "version", "format", "outputDirectory", "endpoints",
             "branch", "timeout"));
     private static final Set<String> KNOWN_ENDPOINT = new HashSet<>(Arrays.asList(
             "method", "path"));
@@ -284,6 +284,16 @@ public class SanshainConfig {
                     String producer = req.getServiceName() != null ? req.getServiceName() : "<producer>";
                     errors.add(label + ": missing 'version' — Sanshain 2.0 pins exact versions; "
                             + "add version: 1.2.0 (list available: GET /producers/" + producer + "/versions)");
+                }
+                if (req.getFormat() != null) {
+                    if (!"openapi".equals(req.getFormat())) {
+                        errors.add(label + ": format '" + req.getFormat() + "' is not supported — the only "
+                                + "allowed combination is apiType: asyncapi with format: openapi");
+                    } else if (!"asyncapi".equalsIgnoreCase(req.getApiType())) {
+                        errors.add(label + ": format: openapi is only valid with apiType: asyncapi"
+                                + (req.getApiType() != null ? " (not " + req.getApiType() + ")" : "")
+                                + " — the only allowed combination is apiType: asyncapi with format: openapi");
+                    }
                 }
             }
         }
@@ -664,6 +674,7 @@ public class SanshainConfig {
         private String serviceName;
         private String apiType;
         private String version;
+        private String format;
         private String outputDirectory;
         private List<EndpointConfig> endpoints;
 
@@ -706,6 +717,19 @@ public class SanshainConfig {
          * @param version the pinned version
          */
         public void setVersion(String version) { this.version = version; }
+
+        /**
+         * Gets the format to receive the spec in: {@code openapi} turns an AsyncAPI require into
+         * an OpenAPI document (needs Sanshain Service 2.4.0). Only valid with apiType asyncapi.
+         * @return the requested format, or null for the native one
+         */
+        public String getFormat() { return format; }
+
+        /**
+         * Sets the format to receive the spec in (only {@code openapi}, with apiType asyncapi).
+         * @param format the requested format
+         */
+        public void setFormat(String format) { this.format = format; }
 
         /**
          * Legacy 1.x branch. Parse target only; rejected by validation.

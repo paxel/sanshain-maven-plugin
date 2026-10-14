@@ -492,13 +492,14 @@ public class SanshainHttpClient {
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
      * @param stream       the graph this pin belongs to (trunk, a sanshain-branch, or neither)
+     * @param format       the requested format ({@code openapi} for an AsyncAPI require), or null
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoint is unknown
      */
     public RequireResult getRequireWithEtag(String baseUrl, String token, String consumerName, String producerName,
                              String version, String path, String method,
                              boolean compression, boolean dryRun, String apiType, String etag,
-                             SanshainStream stream) throws MojoExecutionException {
+                             SanshainStream stream, String format) throws MojoExecutionException {
         String endpoint = "/require";
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             endpoint = "/require/asyncapi";
@@ -513,7 +514,8 @@ public class SanshainHttpClient {
                 "&path=" + urlEncode(path) +
                 "&method=" + urlEncode(method) +
                 "&dry_run=" + dryRun
-                + (stream == null ? "" : stream.toQueryParams());
+                + (stream == null ? "" : stream.toQueryParams())
+                + formatQuery(format, "&");
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -545,7 +547,9 @@ public class SanshainHttpClient {
             } else if (status == 200) {
                 String responseEtag = response.headers().firstValue("ETag").orElse(null);
                 String stability = response.headers().firstValue("X-Sanshain-Stability").orElse(null);
-                return RequireResult.ok(extractResponseBody(response), responseEtag, stability);
+                String content = extractResponseBody(response);
+                checkFormat(format, content, baseUrl, token);
+                return RequireResult.ok(content, responseEtag, stability);
             }
 
             failOnPre2Server(baseUrl, token);
@@ -593,18 +597,19 @@ public class SanshainHttpClient {
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
      * @param stream       the graph these pins belong to (trunk, a sanshain-branch, or neither)
+     * @param format       the requested format ({@code openapi} for an AsyncAPI require), or null
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoints are unknown
      */
     public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String consumerName, String producerName,
                                     String version, List<SanshainConfig.EndpointConfig> endpoints,
                                     boolean compression, boolean dryRun, String apiType, String etag,
-                                    SanshainStream stream) throws MojoExecutionException {
+                                    SanshainStream stream, String format) throws MojoExecutionException {
         // The bundle endpoint reads the stream from the body — its handler has no
         // query extractor, so query parameters would be silently dropped and a
         // trunk build would record no trunk pins.
         String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType, stream);
-        String bundleUrl = baseUrl + "/require-bundle";
+        String bundleUrl = baseUrl + "/require-bundle" + formatQuery(format, "?");
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(bundleUrl))
@@ -644,7 +649,9 @@ public class SanshainHttpClient {
             } else if (status == 200) {
                 String responseEtag = response.headers().firstValue("ETag").orElse(null);
                 String stability = response.headers().firstValue("X-Sanshain-Stability").orElse(null);
-                return RequireResult.ok(extractResponseBody(response), responseEtag, stability);
+                String content = extractResponseBody(response);
+                checkFormat(format, content, baseUrl, token);
+                return RequireResult.ok(content, responseEtag, stability);
             }
 
             failOnPre2Server(baseUrl, token);
@@ -677,6 +684,34 @@ public class SanshainHttpClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("Request interrupted", e);
+        }
+    }
+
+    private static String formatQuery(String format, String separator) {
+        return format == null ? "" : separator + "format=" + urlEncode(format);
+    }
+
+    /**
+     * With {@code format: openapi} the answer must be an OpenAPI document. An older service
+     * ignores the parameter and answers the native AsyncAPI; that is named as the version
+     * problem it is, using the lazy {@code GET /version} probe.
+     */
+    private void checkFormat(String format, String content, String baseUrl, String token) throws MojoExecutionException {
+        if (!"openapi".equals(format) || isOpenApiDocument(content)) {
+            return;
+        }
+        String version = serverVersion(baseUrl, token);
+        throw new MojoExecutionException("format: openapi needs Sanshain Service 2.4.0 or later ("
+                + (version != null ? "server is " + version : "server version unknown") + ")");
+    }
+
+    private static boolean isOpenApiDocument(String content) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = new ObjectMapper(
+                    new com.fasterxml.jackson.dataformat.yaml.YAMLFactory()).readTree(content);
+            return root != null && root.isObject() && root.has("openapi");
+        } catch (IOException e) {
+            return false;
         }
     }
 
