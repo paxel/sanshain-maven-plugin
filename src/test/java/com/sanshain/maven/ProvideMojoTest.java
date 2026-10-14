@@ -480,35 +480,55 @@ public class ProvideMojoTest {
         assertThrows(MojoExecutionException.class, mojo::execute);
     }
 
-    /**
-     * A build whose spec is unchanged must stay on the zero-request path that client-side
-     * content caching exists to provide.
-     */
+    /** Provides are never cached: the service treats an identical re-provide as a no-op. */
     @Test
-    public void testUnchangedSpecMakesNoRequestsAtAll() throws Exception {
-        String yaml = "sanshainUrl: " + baseUrl + "\n" +
-                "serviceName: my-service\n" +
+    public void testTwoConsecutiveProvidesBothUpload() throws Exception {
+        String yaml = "serviceName: my-service\n" +
                 "provide:\n" +
                 "  openApiFile: openapi.yaml\n";
         String spec = "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 1.0.0";
-
-        ProvideMojo first = createMojo(yaml, spec);
-
-        // The server hashes the bytes it receives with the same algorithm and format the client uses,
-        // so echo back the hash of what will actually be uploaded — anything else never re-matches.
-        String uploadedHash = SanshainCache.computeHash(
-                new SpecCombiner().combine(tempDir.resolve("openapi.yaml").toFile(), "openapi"));
-
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"version\":\"1.0.0\",\"stability\":\"snapshot\",\"content_hash\":\"" + uploadedHash
-                                + "\",\"changes\":{\"inserts\":1,\"updates\":0,\"deletes\":0}}")));
+                        .withBody("{\"version\":\"1.0.0\",\"stability\":\"snapshot\",\"content_hash\":\"sha256:x\","
+                                + "\"changes\":{\"inserts\":1,\"updates\":0,\"deletes\":0}}")));
 
-        // First run uploads and primes target/.sanshain-cache.json.
-        first.execute();
-        // Second run sees an identical spec and must short-circuit before any HTTP call.
         createMojo(yaml, spec).execute();
+        createMojo(yaml, spec).execute();
+
+        wireMock.verify(2, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testDryRunProvideDoesNotBlockTheFollowingPublish() throws Exception {
+        String yaml = "serviceName: my-service\n" +
+                "provide:\n" +
+                "  openApiFile: openapi.yaml\n";
+        String spec = "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 1.0.0";
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"version\":\"1.0.0\",\"stability\":\"snapshot\",\"content_hash\":\"sha256:x\"}")));
+
+        ProvideMojo dry = createMojo(yaml, spec);
+        setField(dry, "dryRun", true);
+        dry.execute();
+        createMojo(yaml, spec).execute();
+
+        wireMock.verify(2, postRequestedFor(urlEqualTo("/provide")));
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.dry_run", equalTo("false"))));
+    }
+
+    @Test
+    public void testOldCacheFileWithProvidesDoesNotSkip() throws Exception {
+        Path target = Files.createDirectories(tempDir.resolve("target"));
+        Files.writeString(target.resolve(".sanshain-cache.json"),
+                "{\"provides\":{\"openapi.yaml\":{\"content_hash\":\"sha256:anything\"}},\"requires\":{}}");
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+
+        createMojo("serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n",
+                "openapi: 3.0.0\ninfo:\n  version: 1.0.0").execute();
 
         wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
     }

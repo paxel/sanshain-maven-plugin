@@ -15,35 +15,6 @@ public class SanshainCacheTest {
     File tempDir;
 
     @Test
-    public void testComputeHash() {
-        String content = "hello world";
-        String hash = SanshainCache.computeHash(content);
-        assertEquals("sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9", hash);
-    }
-
-    @Test
-    public void testComputeHashEmpty() {
-        assertEquals("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", SanshainCache.computeHash(""));
-        assertEquals("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", SanshainCache.computeHash(null));
-    }
-
-    @Test
-    public void testProvideEntryRoundTrip() throws IOException {
-        SanshainCache cache = new SanshainCache(tempDir);
-        assertNull(cache.getProvideEntry("openapi.yaml"));
-
-        cache.updateProvideEntry("openapi.yaml", "sha256:abc123");
-        cache.save();
-
-        // Reload from disk
-        SanshainCache cache2 = new SanshainCache(tempDir);
-        SanshainCache.ProvideEntry entry = cache2.getProvideEntry("openapi.yaml");
-        assertNotNull(entry);
-        assertEquals("sha256:abc123", entry.contentHash);
-        assertNotNull(entry.lastProvided);
-    }
-
-    @Test
     public void testRequireEntryRoundTrip() throws IOException {
         SanshainCache cache = new SanshainCache(tempDir);
         String key = SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users");
@@ -71,12 +42,27 @@ public class SanshainCacheTest {
         Files.writeString(cacheFile.toPath(), "not valid json{{{");
 
         SanshainCache cache = new SanshainCache(tempDir);
-        assertNull(cache.getProvideEntry("anything"));
+        assertNull(cache.getRequireEntry("anything"));
     }
 
     @Test
     public void testMissingCacheStartsFresh() {
         SanshainCache cache = new SanshainCache(new File(tempDir, "nonexistent"));
-        assertNull(cache.getProvideEntry("anything"));
+        assertNull(cache.getRequireEntry("anything"));
+    }
+
+    @Test
+    public void testOldProvidesSectionIsHarmless() throws IOException {
+        File cacheFile = new File(tempDir, ".sanshain-cache.json");
+        Files.writeString(cacheFile.toPath(), "{\n"
+                + "  \"provides\": {\"openapi.yaml\": {\"content_hash\": \"sha256:abc\", \"last_provided\": \"2026-01-01T00:00:00Z\"}},\n"
+                + "  \"requires\": {\"svc|1.0.0|bundle\": {\"etag\": \"\\\"e1\\\"\", \"last_fetched\": \"2026-01-01T00:00:00Z\"}}\n"
+                + "}");
+
+        SanshainCache cache = new SanshainCache(tempDir);
+        assertEquals("\"e1\"", cache.getRequireEntry("svc|1.0.0|bundle").etag);
+        cache.updateRequireEntry("svc|2.0.0|bundle", "\"e2\"");
+        cache.save();
+        assertEquals("\"e2\"", new SanshainCache(tempDir).getRequireEntry("svc|2.0.0|bundle").etag);
     }
 }

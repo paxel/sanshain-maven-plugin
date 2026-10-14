@@ -15,9 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Relative paths in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`, `catalogInfo`) resolve against the directory containing `sanshain.yaml` instead of the project base directory; with the default `configFile` nothing moves.
 - Unknown fields in `sanshain.yaml` no longer fail the build: a warning names them and they are ignored, unless `sanshain.strict` is on, which fails the goal.
+- `provide` always uploads; the client-side content-hash cache that skipped unchanged specs is gone (an identical re-provide is a no-op on the server).
 - `SANSHAIN_*` boolean environment variables are on for `true` or `1` in any case and with surrounding whitespace; any other value is off.
 
 ### Fixed
+- A dry-run `provide` no longer makes the following real `provide` log "Spec unchanged" and publish nothing.
 - Absolute paths in `sanshain.yaml` are used as given instead of being appended to the project directory.
 
 ---

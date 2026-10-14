@@ -204,7 +204,9 @@ mvn verify -Dsanshain.dry.run=true
 ## Local Caching
 
 The plugin uses a local cache at `target/.sanshain-cache.json` for:
-- **Content Caching**: Skipping uploads if the specification hasn't changed (SHA-256 hash comparison).
 - **ETag Caching**: Avoiding file rewrites if the downloaded snippet is unchanged (`304 Not Modified`).
+
+Provides are never cached: every `provide` uploads, and the server treats a byte-identical
+re-provide as a no-op.
 
 The cache is deleted by `mvn clean`, which forces a full re-synchronization with the server.

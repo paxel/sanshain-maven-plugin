@@ -165,14 +165,13 @@ public class ProvideMojo extends AbstractMojo {
         logResolvedValues(resolvedUrl, resolvedServiceName, resolvedCompression, resolvedInsecure, resolvedToken, resolvedBestEffort, resolvedCombine);
 
         SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
-        SanshainCache cache = new SanshainCache(new File(baseDir, "target"));
 
         if (dryRun) {
             getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
         }
 
         try {
-            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedCombine, cache, resolvedBestEffort);
+            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedCombine, resolvedBestEffort);
         } catch (Exception e) {
             delegate.handleException(e, resolvedBestEffort);
         }
@@ -190,7 +189,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved stream: " + stream);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, SanshainCache cache, boolean bestEffort) throws IOException, MojoExecutionException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
@@ -201,7 +200,7 @@ public class ProvideMojo extends AbstractMojo {
                     providedAnything = true;
                 } else if (p.getFile() != null) {
                     boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                    provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, itemCombine, dryRun, cache);
+                    provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, itemCombine, dryRun);
                     providedAnything = true;
                 }
             }
@@ -215,14 +214,14 @@ public class ProvideMojo extends AbstractMojo {
                 providedAnything = true;
             } else if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
                 boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                provideSingleConfig(client, url, token, serviceName, config, p, compression, itemCombine, cache);
+                provideSingleConfig(client, url, token, serviceName, config, p, compression, itemCombine);
                 providedAnything = true;
             }
         }
 
         // Fallback to default openApiFile
         if (!providedAnything && openApiFile != null && openApiFile.exists()) {
-            provideFile(client, url, token, serviceName, openApiFile, "openapi", compression, defaultCombine, dryRun, cache);
+            provideFile(client, url, token, serviceName, openApiFile, "openapi", compression, defaultCombine, dryRun);
             providedAnything = true;
         }
 
@@ -231,22 +230,22 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine) throws IOException, MojoExecutionException {
         if (p.getFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun);
         }
         if (p.getOpenApiFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getOpenApiFile()), "openapi", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getOpenApiFile()), "openapi", compression, combine, dryRun);
         }
         if (p.getAsyncApiFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun);
         }
         if (p.getProtoFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getProtoFile()), "proto", compression, combine, dryRun, cache);
+            provideFile(client, url, token, serviceName, config.resolvePath(p.getProtoFile()), "proto", compression, combine, dryRun);
         }
     }
 
-    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, File file, String apiType, boolean compression, boolean combine, boolean dryRun, SanshainCache cache) throws IOException, MojoExecutionException {
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, File file, String apiType, boolean compression, boolean combine, boolean dryRun) throws IOException, MojoExecutionException {
         if (!file.exists()) {
             throw new MojoExecutionException("Specification file does not exist: " + file.getAbsolutePath());
         }
@@ -257,18 +256,6 @@ public class ProvideMojo extends AbstractMojo {
             content = new SpecCombiner().combine(file, apiType);
         } else {
             content = Files.readString(file.toPath());
-        }
-
-        String fileKey = file.getName();
-
-        // Client-side content caching — skip if unchanged
-        String contentHash = SanshainCache.computeHash(content);
-        if (cache != null) {
-            SanshainCache.ProvideEntry cached = cache.getProvideEntry(fileKey);
-            if (cached != null && contentHash.equals(cached.contentHash)) {
-                getLog().info("⏭ Spec unchanged (hash match), skipping provide.");
-                return;
-            }
         }
 
         String type;
@@ -289,13 +276,6 @@ public class ProvideMojo extends AbstractMojo {
 
         if (response != null) {
             reportHarvestedSubscriptions(response);
-        }
-
-        // Save content_hash from response so unchanged specs skip the next upload
-        if (cache != null && response != null) {
-            String responseHash = response.getContentHash() != null ? response.getContentHash() : contentHash;
-            cache.updateProvideEntry(fileKey, responseHash);
-            cache.save();
         }
     }
 

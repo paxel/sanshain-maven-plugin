@@ -486,15 +486,10 @@ The server returns a `202 Accepted` response with a JSON body containing the sto
 ✓ Provided to Sanshain as 1.4.0 (ga): 2 new, 1 updated, 0 deleted endpoints
 ```
 
-### Client-Side Content Caching (Skip-if-unchanged)
+### Provides are always uploaded
 
-Before uploading, the plugin computes the SHA-256 hash of the spec file and compares it with the hash from the last successful provide (stored in `target/.sanshain-cache.json`). If the hash matches, the API call is skipped entirely:
-
-```
-⏭ Spec unchanged (hash match), skipping provide.
-```
-
-This saves network roundtrips and is especially valuable in CI pipelines where specs rarely change between builds.
+Every `provide` uploads its spec; nothing is cached on the client. Re-providing byte-identical
+content is a no-op on the server, so CI re-runs of the same commit are harmless.
 
 ### Require-Side ETag Caching
 
@@ -508,16 +503,10 @@ This avoids unnecessary code generation and speeds up incremental builds. A pin 
 
 ### State File
 
-The local cache is stored at `target/.sanshain-cache.json` and is automatically deleted by `mvn clean`. The format is:
+The local cache is stored at `target/.sanshain-cache.json` and is automatically deleted by `mvn clean`. It holds only require ETags; a `provides` section written by an older plugin version is ignored. The format is:
 
 ```json
 {
-  "provides": {
-    "openapi.yaml": {
-      "content_hash": "sha256:abc123...",
-      "last_provided": "2026-04-25T12:00:00Z"
-    }
-  },
   "requires": {
     "user-service|2.3.0|GET|/api/v1/users": {
       "etag": "\"sha256:def456...\"",

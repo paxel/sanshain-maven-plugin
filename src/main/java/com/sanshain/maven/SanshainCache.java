@@ -7,15 +7,16 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
 import java.io.IOException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manages the local state cache file for Sanshain provide/require operations.
+ * Manages the local ETag cache for Sanshain require operations.
  * State file location: target/.sanshain-cache.json (deleted on mvn clean).
+ *
+ * <p>Provides are never cached: every provide uploads, and the service treats an identical
+ * re-provide as a no-op. A {@code provides} section left by an older plugin is ignored.</p>
  */
 public class SanshainCache {
 
@@ -56,27 +57,6 @@ public class SanshainCache {
     }
 
     /**
-     * Gets the cached provide entry for a spec file key.
-     * @param key the spec file identifier (e.g. "openapi.yaml")
-     * @return the cached entry, or null if not found
-     */
-    public ProvideEntry getProvideEntry(String key) {
-        return state.provides.get(key);
-    }
-
-    /**
-     * Updates the cached provide entry after a successful provide.
-     * @param key         the spec file identifier
-     * @param contentHash the SHA-256 hash of the content
-     */
-    public void updateProvideEntry(String key, String contentHash) {
-        ProvideEntry entry = new ProvideEntry();
-        entry.contentHash = contentHash;
-        entry.lastProvided = Instant.now().toString();
-        state.provides.put(key, entry);
-    }
-
-    /**
      * Gets the cached require entry for a require key.
      * @param key the require identifier (e.g. "user-service|1.2.0|GET|/api/v1/users")
      * @return the cached entry, or null if not found
@@ -95,26 +75,6 @@ public class SanshainCache {
         entry.etag = etag;
         entry.lastFetched = Instant.now().toString();
         state.requires.put(key, entry);
-    }
-
-    /**
-     * Computes the SHA-256 hash of the given content.
-     * @param content the content to hash
-     * @return the hash in "sha256:hex" format
-     */
-    public static String computeHash(String content) {
-        if (content == null) return "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; // Empty string hash
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return "sha256:" + hex;
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
     }
 
     /**
@@ -141,18 +101,8 @@ public class SanshainCache {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     static class CacheState {
-        @JsonProperty("provides")
-        public Map<String, ProvideEntry> provides = new LinkedHashMap<>();
         @JsonProperty("requires")
         public Map<String, RequireEntry> requires = new LinkedHashMap<>();
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ProvideEntry {
-        @JsonProperty("content_hash")
-        public String contentHash;
-        @JsonProperty("last_provided")
-        public String lastProvided;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

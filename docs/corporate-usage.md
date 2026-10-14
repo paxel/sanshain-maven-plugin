@@ -113,10 +113,8 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
 The Sanshain Maven Plugin uses a local cache in the `target/` directory to improve build performance and avoid redundant network calls.
 
 ### How it Works
-1.  **Hash Comparison**: Before uploading a specification, the plugin computes a hash of the content and compares it against the last successful upload stored in `target/.sanshain-cache.json`.
-2.  **Skipping**: If the content hash matches the cached version, the plugin logs: `⏭ Spec unchanged (hash match), skipping provide.`
-3.  **ETag Caching**: Require responses are cached by `ETag`; an unchanged pin answers `304 Not Modified` and the output file is not rewritten. A pin on a GA version can never change content; a pin on a snapshot can, which is exactly what the ETag detects.
-4.  **Idempotency**: Even without the cache, re-providing byte-identical content is a server-side no-op — CI re-runs of the same commit never fight.
+1.  **ETag Caching**: Require responses are cached by `ETag` in `target/.sanshain-cache.json`; an unchanged pin answers `304 Not Modified` and the output file is not rewritten. A pin on a GA version can never change content; a pin on a snapshot can, which is exactly what the ETag detects.
+2.  **Provides always upload**: Provides are not cached. Re-providing byte-identical content is a server-side no-op — CI re-runs of the same commit never fight.
 
 ### Clearing the Cache
 To force a re-upload or re-download of all snippets, simply run a clean build:
