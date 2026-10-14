@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - A dry-run `provide` no longer makes the following real `provide` log "Spec unchanged" and publish nothing.
+- A dry-run `require` no longer writes ETags to the local cache.
 - Absolute paths in `sanshain.yaml` are used as given instead of being appended to the project directory.
 
 ---

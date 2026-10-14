@@ -583,4 +583,51 @@ public class RequireMojoTest {
         setField(mojo, "strict", false);
         mojo.execute();
     }
+
+    private static final String ONE_ENDPOINT = "serviceName: test-client\n" +
+            "requires:\n" +
+            "  - serviceName: user-service\n" +
+            "    version: 1.2.0\n" +
+            "    outputDirectory: output\n" +
+            "    endpoints:\n" +
+            "      - method: GET\n" +
+            "        path: /api/v1/users\n";
+
+    private static final String TWO_ENDPOINTS = ONE_ENDPOINT +
+            "      - method: GET\n" +
+            "        path: /api/v1/users/{id}\n";
+
+    @Test
+    public void testDryRunRequireWritesNoEtag() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"b1\"").withBody("openapi: 3.0.0")));
+
+        RequireMojo single = createMojo(ONE_ENDPOINT);
+        setField(single, "dryRun", true);
+        single.execute();
+        RequireMojo bundle = createMojo(TWO_ENDPOINTS);
+        setField(bundle, "dryRun", true);
+        bundle.execute();
+
+        SanshainCache cache = new SanshainCache(tempDir.resolve("target").toFile());
+        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users")));
+        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0")));
+
+        // The next real run therefore asks without If-None-Match.
+        createMojo(ONE_ENDPOINT).execute();
+        wireMock.verify(2, getRequestedFor(urlPathEqualTo("/require")).withoutHeader("If-None-Match"));
+    }
+
+    @Test
+    public void testNormalRequireSendsIfNoneMatchOnNextRun() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+
+        createMojo(ONE_ENDPOINT).execute();
+        createMojo(ONE_ENDPOINT).execute();
+
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
 }

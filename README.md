@@ -659,7 +659,7 @@ mvn verify -Dsanshain.dry.run=true
 
 In dry-run mode:
 - **`provide`**: The spec is parsed, its version read, and the provide classified against the version rules (including GA immutability and semver honesty), but nothing is stored.
-- **`require`**: Endpoint lookups are performed at the pinned versions, but no dependencies are recorded.
+- **`require`**: Endpoint lookups are performed at the pinned versions, but no dependencies are recorded, and no ETag is written to the local cache.
 - **`catalog`**: The `catalogInfo` file is read and checked locally, and the goal logs `Dry run - catalog not pushed: <path>` instead of pushing; nothing is sent.
 
 ## Specification Combining/Bundling

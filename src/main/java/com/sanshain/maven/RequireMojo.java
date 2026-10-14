@@ -228,7 +228,8 @@ public class RequireMojo extends AbstractMojo {
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved bundle: " + outputFile + servedAs(result));
 
-            if (result.getEtag() != null) {
+            // A dry run records nothing, locally either: its ETag must not short-circuit a real run.
+            if (result.getEtag() != null && !dryRun) {
                 cache.updateRequireEntry(cacheKey, result.getEtag());
                 cache.save();
             }
@@ -256,7 +257,8 @@ public class RequireMojo extends AbstractMojo {
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved: " + outputFile + servedAs(result));
 
-            if (result.getEtag() != null) {
+            // A dry run records nothing, locally either: its ETag must not short-circuit a real run.
+            if (result.getEtag() != null && !dryRun) {
                 cache.updateRequireEntry(cacheKey, result.getEtag());
                 cache.save();
             }
