@@ -228,7 +228,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only. |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing (see [Dry-Run Mode](#dry-run-mode)). |
 | `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications (see [Specification Combining/Bundling](#specification-combiningbundling)). |
-| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config, or when Sanshain sends a warning, instead of warning (see [Strict Mode](#strict-mode)). |
 
 These parameters can also be provided via the `provides` list in `sanshain.yaml`:
 
@@ -262,9 +262,12 @@ A pipeline declares which graph its calls belong to, the same way it declares st
 
 - Trunk CI sets `-Dsanshain.trunk=true` or `SANSHAIN_TRUNK=true`.
 - Release and hotfix pipelines set `-Dsanshain.tag=<branch>` or `SANSHAIN_TAG=<branch>`. The branch
-  must already exist; an unknown one fails the build with `404`.
+  must already exist; for an unknown one Sanshain still serves the call but records the build in no
+  release graph, and says so with a [warning](#warnings).
 
-Declaring both fails the build before any request is sent.
+Declaring both records the build in neither graph: the goal warns
+`trunk and tag are mutually exclusive - this build is recorded in neither` and sends neither. Under
+[strict mode](#strict-mode) it fails before any request is sent.
 
 ### Retiring a protocol
 
@@ -325,7 +328,7 @@ When a service has **2 or more endpoints** configured, the plugin automatically 
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals. |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only. |
 | `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies (see [Dry-Run Mode](#dry-run-mode)). |
-| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config instead of warning (see [Strict Mode](#strict-mode)). |
+| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config, or when Sanshain sends a warning, instead of warning (see [Strict Mode](#strict-mode)). |
 
 The required endpoints are defined in the `requires` section of `sanshain.yaml`; each entry pins an exact version:
 
@@ -509,21 +512,23 @@ graph only (`dev`). A sanshain-branch tag is never sent on this call.
 | `serverId`    | `sanshain.serverId`     | `sanshain`              | Server ID for `settings.xml` token lookup. |
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals. |
 | `dryRun`      | `sanshain.dry.run`      | `false`                 | Read and check the file locally, push nothing (see [Dry-Run Mode](#dry-run-mode)). |
-| `strict`      | `sanshain.strict`       | `false`                 | Fail when `serviceName` or `catalogInfo` is missing. |
+| `strict`      | `sanshain.strict`       | `false`                 | Fail when `serviceName` or `catalogInfo` is missing, or when Sanshain sends a warning. |
 
 ### Failure modes
 
 - **No `catalogInfo`** — warns `No catalogInfo in sanshain.yaml - skipping catalog.` and succeeds;
-  under strict it fails with `strict: sanshain.yaml has no catalogInfo`. Strict checks only
-  `serviceName` and `catalogInfo` for this goal, never `provides` or `requires`.
+  under strict it fails with `strict: sanshain.yaml has no catalogInfo`. Of the configuration,
+  strict checks only `serviceName` and `catalogInfo` for this goal, never `provides` or `requires`.
 - **File missing or unreadable** — fails naming the resolved path.
-- **`400`** — Sanshain could not read the file as this service's Component:
-  `Sanshain rejected /path/to/catalog-info.yaml: <server error>. The Component's metadata.name must equal serviceName 'orders-service'.`
-  (the resolved path of the file)
+- **File Sanshain cannot read** — invalid YAML, no `Component` whose `metadata.name` is `serviceName`,
+  a malformed `dependsOn`: Sanshain records nothing (the previous periphery stays) and answers with a
+  [warning](#warnings) naming the reason, which the goal prints before succeeding. Under strict it
+  fails with `strict: Sanshain warned: <reason>`.
 - **`404`** — the service is older than 2.4.0 (see above).
 - Everything else (`401`, `403`, `413`, `422`, `5xx`, network) fails like the other goals.
 
-With best-effort, every failure after the `catalogInfo` check becomes a warning and the build goes on.
+With best-effort, every failure after the `catalogInfo` check becomes a warning and the build goes on,
+except the strict failures.
 
 ## Combined Example
 
@@ -608,6 +613,21 @@ The local cache is stored at `target/.sanshain-cache.json` and is automatically 
 }
 ```
 
+## Warnings
+
+The dependency graph is informational and never fails a build. Where Sanshain does not record a call
+in a graph — an unknown `sanshain.tag`, a `catalog-info.yaml` it cannot read — the call still
+succeeds, and the response carries a `Sanshain-Warning` header, one line per warning. Every goal
+prints each one as a Maven warning, as received, from every call (`provide`, retire, `require`,
+`catalog`), whether the call succeeded or not:
+
+```
+[WARNING] no sanshain-branch 'release-9' - this build was not recorded in a release graph
+```
+
+The build carries on. Under [strict mode](#strict-mode) a warning fails the goal after the call,
+with `strict: Sanshain warned: <text>` naming the first one; best-effort does not soften that.
+
 ## Strict Mode
 
 By default, the plugin warns and skips when configuration is incomplete (e.g., no `serviceName`, no `provides`, or no `requires`). This makes it safe to include both goals in every project even if only one applies.
@@ -640,6 +660,11 @@ When strict mode is enabled:
 - No `provides` configured → build failure
 - No `requires` configured → build failure
 - Unknown fields in `sanshain.yaml` → build failure (see [Unknown fields](#unknown-fields))
+- Any [warning](#warnings) Sanshain sends → build failure after the call (`strict: Sanshain warned: <text>`)
+- Both trunk and a tag declared → build failure before any request
+  (`strict: trunk and tag are mutually exclusive - this build is recorded in neither`)
+
+Best-effort never softens these.
 
 Note that an *invalid* `sanshain.yaml` — including leftover 1.x fields or a `requires` entry without a `version` pin — is always a hard error regardless of strict mode (only [Best-Effort Mode](#best-effort-mode) downgrades it to a warning).
 

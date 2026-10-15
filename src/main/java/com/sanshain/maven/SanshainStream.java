@@ -10,21 +10,30 @@ package com.sanshain.maven;
  * {@code sanshain.yaml}. A developer's laptop build and the trunk CI job run the
  * same configuration; only the pipeline knows which of them speaks for trunk.
  *
- * <p>Trunk and a tag are mutually exclusive — the server answers {@code 400} for a
- * request carrying both — so this type cannot hold both. Declaring both on one
- * build is a misconfiguration worth naming locally rather than a round trip.
+ * <p>Trunk and a tag are mutually exclusive, so this type cannot hold both. A build
+ * declaring both is recorded in neither graph: it resolves to a stream that sends
+ * nothing and carries {@link #MUTUALLY_EXCLUSIVE} as its {@link #getWarning() warning}.
+ * The graph is informational, so this is a warning, not a failure (strict mode fails).
  */
 public final class SanshainStream {
 
-    private static final SanshainStream NONE = new SanshainStream(false, null);
-    private static final SanshainStream TRUNK = new SanshainStream(true, null);
+    /** The warning for a build that declares both trunk and a tag. */
+    public static final String MUTUALLY_EXCLUSIVE =
+            "trunk and tag are mutually exclusive - this build is recorded in neither";
+
+    private static final SanshainStream NONE = new SanshainStream(false, null, null);
+    private static final SanshainStream TRUNK = new SanshainStream(true, null, null);
+    /** Both trunk and a tag were declared: sends neither, and says so. */
+    private static final SanshainStream NEITHER = new SanshainStream(false, null, MUTUALLY_EXCLUSIVE);
 
     private final boolean trunk;
     private final String tag;
+    private final String warning;
 
-    private SanshainStream(boolean trunk, String tag) {
+    private SanshainStream(boolean trunk, String tag, String warning) {
         this.trunk = trunk;
         this.tag = tag;
+        this.warning = warning;
     }
 
     /**
@@ -54,19 +63,19 @@ public final class SanshainStream {
         if (tag == null || tag.isBlank()) {
             return NONE;
         }
-        return new SanshainStream(false, tag.trim());
+        return new SanshainStream(false, tag.trim(), null);
     }
 
     /**
      * Resolves the stream a build declared, preferring an explicit plugin
-     * parameter over the environment, and refusing a build that claims both.
+     * parameter over the environment. A build that claims both trunk and a tag
+     * resolves to a stream that sends neither and carries a {@link #getWarning() warning}.
      *
      * @param trunkFlag    the {@code sanshain.trunk} parameter, or null if unset
      * @param tagValue     the {@code sanshain.tag} parameter, or null if unset
      * @param envTrunk     the {@code SANSHAIN_TRUNK} environment value, or null
      * @param envTag       the {@code SANSHAIN_TAG} environment value, or null
      * @return the resolved stream
-     * @throws IllegalArgumentException if the build declares both trunk and a tag
      */
     public static SanshainStream resolve(Boolean trunkFlag, String tagValue, String envTrunk, String envTag) {
         boolean isTrunk = trunkFlag != null ? trunkFlag : SanshainMojoDelegate.isSwitchOn(envTrunk);
@@ -74,10 +83,7 @@ public final class SanshainStream {
         boolean hasTag = resolvedTag != null && !resolvedTag.isBlank();
 
         if (isTrunk && hasTag) {
-            throw new IllegalArgumentException(
-                    "this build declares both trunk and tag '" + resolvedTag.trim() + "' — a build belongs to "
-                            + "the trunk stream or to one sanshain-branch, never both. Set only one of "
-                            + "sanshain.trunk / SANSHAIN_TRUNK and sanshain.tag / SANSHAIN_TAG.");
+            return NEITHER;
         }
         if (isTrunk) {
             return trunk();
@@ -102,8 +108,17 @@ public final class SanshainStream {
     }
 
     /**
-     * Whether this build declared any stream at all.
-     * @return true if neither trunk nor a tag was declared
+     * The warning resolving this stream produced: {@link #MUTUALLY_EXCLUSIVE} when the build
+     * declared both trunk and a tag, otherwise null.
+     * @return the warning, or null
+     */
+    public String getWarning() {
+        return warning;
+    }
+
+    /**
+     * Whether this build speaks for no graph.
+     * @return true if neither trunk nor a tag is sent
      */
     public boolean isNone() {
         return !trunk && tag == null;

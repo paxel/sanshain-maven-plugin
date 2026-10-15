@@ -3,6 +3,7 @@ package com.sanshain.maven;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -157,15 +158,137 @@ public class CatalogMojoTest {
         wireMock.verify(putRequestedFor(urlEqualTo("/catalog/orders%20service")));
     }
 
+    /** A 400 can only come from a 2.4.0 pre-release service now; it gets the normal mapping. */
     @Test
-    public void testRejectedFileFailsWithMetadataNameHint() throws Exception {
+    public void testBadRequestUsesNormalMapping() throws Exception {
         wireMock.stubFor(put(urlEqualTo("/catalog/orders-service"))
                 .willReturn(aResponse().withStatus(400)
                         .withBody("{\"error\":\"no Component named orders-service\"}")));
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(YAML)::execute);
-        assertEquals("Sanshain rejected " + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath()
-                + ": no Component named orders-service. "
-                + "The Component's metadata.name must equal serviceName 'orders-service'.", ex.getMessage());
+        assertEquals("Unexpected response 400: {\"error\":\"no Component named orders-service\"}", ex.getMessage());
+    }
+
+    private static final String NOT_RECORDED =
+            "{\"system\":\"orders-service\",\"trunk\":false,\"resources\":[],\"recorded\":false}";
+
+    private static final String NO_COMPONENT = "no Component with metadata.name 'orders-service'";
+
+    private void stubNotRecorded(String... warnings) {
+        com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder response =
+                aResponse().withStatus(200).withBody(NOT_RECORDED);
+        if (warnings.length > 0) {
+            response = response.withHeader("Sanshain-Warning", warnings);
+        }
+        wireMock.stubFor(put(urlEqualTo("/catalog/orders-service")).willReturn(response));
+    }
+
+    @Test
+    public void testNotRecordedPrintsTheWarningAndSucceeds() throws Exception {
+        stubNotRecorded(NO_COMPONENT);
+        createMojo(YAML).execute();
+        Mockito.verify(log).warn(NO_COMPONENT);
+        Mockito.verify(log, Mockito.never()).info(Mockito.startsWith("Catalog recorded"));
+    }
+
+    @Test
+    public void testNotRecordedWithoutHeaderWarnsDidNotRecord() throws Exception {
+        stubNotRecorded();
+        createMojo(YAML).execute();
+        Mockito.verify(log).warn("Sanshain did not record "
+                + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath());
+        Mockito.verify(log, Mockito.never()).info(Mockito.startsWith("Catalog recorded"));
+    }
+
+    @Test
+    public void testNotRecordedUnderStrictFails() throws Exception {
+        stubNotRecorded(NO_COMPONENT);
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "strict", true);
+        MojoFailureException ex = assertThrows(MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: " + NO_COMPONENT, ex.getMessage());
+        Mockito.verify(log).warn(NO_COMPONENT);
+    }
+
+    @Test
+    public void testNotRecordedWithoutHeaderUnderStrictFailsEvenWithBestEffort() throws Exception {
+        stubNotRecorded();
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        MojoFailureException ex = assertThrows(MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: Sanshain did not record "
+                + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath(), ex.getMessage());
+    }
+
+    /** An older 2.4.0 pre-release service sends no {@code recorded}: that means recorded. */
+    @Test
+    public void testMissingRecordedCountsAsRecorded() throws Exception {
+        stubRecorded(false);
+        createMojo(YAML).execute();
+        Mockito.verify(log).info("Catalog recorded for orders-service (dev): 2 resources");
+        Mockito.verify(log, Mockito.never()).warn(Mockito.startsWith("Sanshain did not record"));
+    }
+
+    @Test
+    public void testRecordedTrueWithWarningPrintsBoth() throws Exception {
+        wireMock.stubFor(put(urlEqualTo("/catalog/orders-service")).willReturn(aResponse().withStatus(200)
+                .withHeader("Sanshain-Warning", "first, with a comma", "second")
+                .withBody("{\"system\":\"orders-service\",\"trunk\":false,\"resources\":[],\"recorded\":true}")));
+        createMojo(YAML).execute();
+        InOrder order = Mockito.inOrder(log);
+        order.verify(log).warn("first, with a comma");
+        order.verify(log).warn("second");
+        Mockito.verify(log).info("Catalog recorded for orders-service (dev): 0 resources");
+    }
+
+    /** A failed call that carries a warning under strict: the error is printed, then strict fails. */
+    @Test
+    public void testFailedCallWithWarningUnderStrictPrintsErrorThenFails() throws Exception {
+        wireMock.stubFor(put(urlEqualTo("/catalog/orders-service")).willReturn(aResponse().withStatus(503)
+                .withHeader("Sanshain-Warning", "degraded").withBody("down")));
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "strict", true);
+        MojoFailureException ex = assertThrows(MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: degraded", ex.getMessage());
+        InOrder order = Mockito.inOrder(log);
+        order.verify(log).warn("degraded");
+        order.verify(log).error("Unexpected response 503: down");
+    }
+
+    /** Without strict, the failed call's own error wins and the warning is still printed. */
+    @Test
+    public void testFailedCallWithWarningWithoutStrictKeepsTheError() throws Exception {
+        wireMock.stubFor(put(urlEqualTo("/catalog/orders-service")).willReturn(aResponse().withStatus(503)
+                .withHeader("Sanshain-Warning", "degraded").withBody("down")));
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(YAML)::execute);
+        assertEquals("Unexpected response 503: down", ex.getMessage());
+        Mockito.verify(log).warn("degraded");
+    }
+
+    @Test
+    public void testLocalTrunkAndTagWarnsAndSendsNeither() throws Exception {
+        stubRecorded(false);
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "trunk", true);
+        setField(mojo, "tag", "release-7");
+        mojo.execute();
+        Mockito.verify(log).warn("trunk and tag are mutually exclusive - this build is recorded in neither");
+        assertFalse(sentBody().contains("\"trunk\""), sentBody());
+        assertFalse(sentBody().contains("\"tag\""), sentBody());
+    }
+
+    @Test
+    public void testLocalTrunkAndTagUnderStrictFailsBeforeAnyRequest() throws Exception {
+        stubRecorded(false);
+        CatalogMojo mojo = createMojo(YAML);
+        setField(mojo, "trunk", true);
+        setField(mojo, "tag", "release-7");
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        MojoFailureException ex = assertThrows(MojoFailureException.class, mojo::execute);
+        assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither",
+                ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
     @Test
@@ -220,15 +343,13 @@ public class CatalogMojoTest {
     }
 
     @Test
-    public void testBestEffortTurnsRejectionIntoWarning() throws Exception {
+    public void testBestEffortTurnsFailureIntoWarning() throws Exception {
         wireMock.stubFor(put(urlEqualTo("/catalog/orders-service"))
                 .willReturn(aResponse().withStatus(400).withBody("{\"error\":\"bad\"}")));
         CatalogMojo mojo = createMojo(YAML);
         setField(mojo, "bestEffort", true);
         mojo.execute();
-        Mockito.verify(log).warn("Sanshain goal failed (best effort): Sanshain rejected "
-                + tempDir.resolve("catalog-info.yaml").toFile().getAbsolutePath() + ": bad. "
-                + "The Component's metadata.name must equal serviceName 'orders-service'.");
+        Mockito.verify(log).warn("Sanshain goal failed (best effort): Unexpected response 400: {\"error\":\"bad\"}");
     }
 
     @Test

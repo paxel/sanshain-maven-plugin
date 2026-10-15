@@ -43,7 +43,8 @@ public class RequireMojo extends AbstractMojo {
     private boolean dryRun;
 
     /**
-     * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
+     * Fail on missing configuration, on unknown sanshain.yaml fields, on a build declaring both
+     * trunk and a tag, and on any warning Sanshain sends with a response. Unset, the
      * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
      */
     @Parameter(property = "sanshain.strict")
@@ -78,7 +79,8 @@ public class RequireMojo extends AbstractMojo {
     /**
      * Declares this build as a named sanshain-branch's — a release or hotfix pipeline whose pins
      * update that graph instead of trunk. Also settable via {@code SANSHAIN_TAG}. Mutually
-     * exclusive with {@link #trunk}; the branch must already exist or the server answers 404.
+     * exclusive with {@link #trunk} (both: recorded in neither, with a warning). An unknown branch
+     * is not an error: Sanshain warns and records the build in no release graph.
      */
     @Parameter(property = "sanshain.tag")
     private String tag;
@@ -174,7 +176,7 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved stream: " + stream);
     }
 
-    private void processRequire(SanshainConfig.RequireConfig req, SanshainConfig config, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException {
+    private void processRequire(SanshainConfig.RequireConfig req, SanshainConfig config, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException, MojoFailureException {
         String reqServiceName = req.getServiceName();
         String apiType = req.getApiType();
         String version = req.getVersion();
@@ -189,9 +191,9 @@ public class RequireMojo extends AbstractMojo {
 
         try {
             if (endpoints.size() >= 2) {
-                requireBundle(req, client, cache, url, token, serviceName, version, compression, apiType, outputDirectory);
+                requireBundle(req, client, cache, url, token, serviceName, version, compression, apiType, outputDirectory, delegate);
             } else {
-                requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, version, compression, apiType, outputDirectory);
+                requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, version, compression, apiType, outputDirectory, delegate);
             }
         } catch (Exception e) {
             delegate.handleException(e, bestEffort);
@@ -210,7 +212,7 @@ public class RequireMojo extends AbstractMojo {
         return dir;
     }
 
-    private void requireBundle(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String version, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+    private void requireBundle(SanshainConfig.RequireConfig req, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String version, boolean compression, String apiType, File outputDirectory, SanshainMojoDelegate delegate) throws IOException, MojoExecutionException, MojoFailureException {
         String reqServiceName = req.getServiceName();
         getLog().info("Requiring bundle: " + reqServiceName + "@" + version + " (" + req.getEndpoints().size() + " endpoints)");
 
@@ -218,7 +220,8 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.postRequireBundleWithEtag(url, token, serviceName, reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat());
+        RequireResult result = delegate.checked(client, () -> client.postRequireBundleWithEtag(url, token, serviceName,
+                reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat()));
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
@@ -236,7 +239,7 @@ public class RequireMojo extends AbstractMojo {
         }
     }
 
-    private void requireSingle(SanshainConfig.RequireConfig req, SanshainConfig.EndpointConfig endpoint, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String version, boolean compression, String apiType, File outputDirectory) throws IOException, MojoExecutionException {
+    private void requireSingle(SanshainConfig.RequireConfig req, SanshainConfig.EndpointConfig endpoint, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, String version, boolean compression, String apiType, File outputDirectory, SanshainMojoDelegate delegate) throws IOException, MojoExecutionException, MojoFailureException {
         String reqServiceName = req.getServiceName();
         String method = endpoint.getMethod();
         String path = endpoint.getPath();
@@ -247,7 +250,8 @@ public class RequireMojo extends AbstractMojo {
         SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
         String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
 
-        RequireResult result = client.getRequireWithEtag(url, token, serviceName, reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat());
+        RequireResult result = delegate.checked(client, () -> client.getRequireWithEtag(url, token, serviceName,
+                reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat()));
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");

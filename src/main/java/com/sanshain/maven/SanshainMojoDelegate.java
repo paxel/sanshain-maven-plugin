@@ -6,6 +6,7 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -196,22 +197,94 @@ public class SanshainMojoDelegate {
      * developer's laptop and on the trunk runner, and the trunk pin store is
      * last-writer-wins — guessing would let a local build quietly overwrite CI.
      *
+     * <p>A build declaring both trunk and a tag is recorded in neither graph: this
+     * warns and sends neither, or under strict fails before any request. Best-effort
+     * does not soften that.
+     *
      * @param trunk the {@code sanshain.trunk} Maven property, or null if unset
      * @param tag   the {@code sanshain.tag} Maven property, or null if unset
      * @return the resolved stream
-     * @throws MojoExecutionException if the build declares both trunk and a tag
+     * @throws MojoFailureException under strict, if the build declares both trunk and a tag
      */
-    public SanshainStream resolveStream(Boolean trunk, String tag) throws MojoExecutionException {
-        try {
-            return SanshainStream.resolve(trunk, tag,
-                    environmentVariables.get("SANSHAIN_TRUNK"),
-                    environmentVariables.get("SANSHAIN_TAG"));
-        } catch (IllegalArgumentException e) {
-            throw new MojoExecutionException(e.getMessage(), e);
+    public SanshainStream resolveStream(Boolean trunk, String tag) throws MojoFailureException {
+        SanshainStream stream = SanshainStream.resolve(trunk, tag,
+                environmentVariables.get("SANSHAIN_TRUNK"),
+                environmentVariables.get("SANSHAIN_TAG"));
+        String warning = stream.getWarning();
+        if (warning != null) {
+            log.warn(warning);
+            if (strict) {
+                throw new MojoFailureException("strict: " + warning);
+            }
         }
+        return stream;
     }
 
-    public void handleException(Exception e, boolean bestEffort) throws MojoExecutionException {
+    /**
+     * Applies strict mode to the warnings Sanshain sent with a call (already printed by the
+     * client as they arrived). Without strict, nothing happens. Under strict, any warning fails
+     * the goal with the first one — best-effort does not soften this. A call that also failed
+     * has its error printed first, since the strict failure replaces it.
+     *
+     * @param warnings  the warnings the call carried, in order
+     * @param callError the call's own failure, or null if it succeeded
+     * @throws MojoFailureException under strict, if there is any warning
+     */
+    public void failOnWarnings(List<String> warnings, Exception callError) throws MojoFailureException {
+        if (!strict || warnings.isEmpty()) {
+            return;
+        }
+        if (callError != null) {
+            log.error(callError.getMessage());
+        }
+        throw new MojoFailureException("strict: Sanshain warned: " + warnings.get(0));
+    }
+
+    /**
+     * Runs one call to Sanshain and applies {@link #failOnWarnings(List, Exception)} to the
+     * warnings it carried, whether it succeeded or failed.
+     *
+     * @param client the client making the call
+     * @param call   the call
+     * @param <T>    the call's result type
+     * @return the call's result
+     * @throws MojoExecutionException if the call failed and strict did not take over
+     * @throws MojoFailureException   under strict, if the call carried any warning
+     * @throws IOException            if the call failed reading local files
+     */
+    public <T> T checked(SanshainHttpClient client, SanshainCall<T> call)
+            throws MojoExecutionException, MojoFailureException, IOException {
+        T result;
+        try {
+            result = call.call();
+        } catch (MojoExecutionException | IOException | RuntimeException e) {
+            failOnWarnings(client.takeWarnings(), e);
+            throw e;
+        }
+        failOnWarnings(client.takeWarnings(), null);
+        return result;
+    }
+
+    /**
+     * One call to Sanshain, as {@link #checked(SanshainHttpClient, SanshainCall)} runs it.
+     * @param <T> the call's result type
+     */
+    @FunctionalInterface
+    public interface SanshainCall<T> {
+        /**
+         * Makes the call.
+         * @return the call's result
+         * @throws MojoExecutionException if the call fails
+         * @throws IOException            if reading local files fails
+         */
+        T call() throws MojoExecutionException, IOException;
+    }
+
+    public void handleException(Exception e, boolean bestEffort) throws MojoExecutionException, MojoFailureException {
+        if (e instanceof MojoFailureException) {
+            // A strict failure: best-effort never softens it.
+            throw (MojoFailureException) e;
+        }
         if (bestEffort) {
             log.warn("Sanshain goal failed (best effort): " + e.getMessage());
         } else if (e instanceof MojoExecutionException) {

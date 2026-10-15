@@ -2,6 +2,9 @@ package com.sanshain.maven;
 
 import org.apache.maven.monitor.logging.DefaultLog;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
+import org.mockito.Mockito;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 import org.codehaus.plexus.logging.console.ConsoleLogger;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -84,7 +88,7 @@ public class SanshainMojoDelegateTest {
     }
 
     @Test
-    public void testTrunkEnvSwitchValues() throws MojoExecutionException {
+    public void testTrunkEnvSwitchValues() throws MojoFailureException {
         assertTrue(delegate(null, env("SANSHAIN_TRUNK", "1")).resolveStream(null, null).isTrunk());
         assertTrue(delegate(null, env("SANSHAIN_TRUNK", "TRUE")).resolveStream(null, null).isTrunk());
         assertTrue(delegate(null, env("SANSHAIN_TRUNK", " true ")).resolveStream(null, null).isTrunk());
@@ -92,7 +96,7 @@ public class SanshainMojoDelegateTest {
     }
 
     @Test
-    public void testExplicitTrunkPropertyOverridesEnv() throws MojoExecutionException {
+    public void testExplicitTrunkPropertyOverridesEnv() throws MojoFailureException {
         assertFalse(delegate(null, env("SANSHAIN_TRUNK", "1")).resolveStream(false, null).isTrunk());
     }
 
@@ -285,5 +289,66 @@ public class SanshainMojoDelegateTest {
         SanshainMojoDelegate on = new SanshainMojoDelegate(new DefaultLog(new ConsoleLogger()), null, null, true);
         on.resolveStrict(yamlOff);
         assertTrue(on.isStrict());
+    }
+
+    private static final String BOTH = "trunk and tag are mutually exclusive - this build is recorded in neither";
+
+    @Test
+    public void testTrunkAndTagWarnsAndResolvesToNeither() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, false);
+        d.setEnvironmentVariables(env("SANSHAIN_TAG", "R"));
+        SanshainStream stream = d.resolveStream(true, null);
+        assertTrue(stream.isNone());
+        assertEquals("", stream.toQueryParams());
+        Mockito.verify(log).warn(BOTH);
+    }
+
+    @Test
+    public void testTrunkAndTagUnderStrictFails() {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, true);
+        d.setEnvironmentVariables(Collections.emptyMap());
+        MojoFailureException e = assertThrows(MojoFailureException.class, () -> d.resolveStream(true, "R"));
+        assertEquals("strict: " + BOTH, e.getMessage());
+        Mockito.verify(log).warn(BOTH);
+    }
+
+    @Test
+    public void testWarningsWithoutStrictDoNothing() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        new SanshainMojoDelegate(log, null, null, false)
+                .failOnWarnings(Arrays.asList("a", "b"), new MojoExecutionException("boom"));
+        Mockito.verifyNoInteractions(log);
+    }
+
+    @Test
+    public void testStrictFailsWithTheFirstWarning() {
+        SanshainMojoDelegate d = new SanshainMojoDelegate(Mockito.mock(Log.class), null, null, true);
+        MojoFailureException e = assertThrows(MojoFailureException.class,
+                () -> d.failOnWarnings(Arrays.asList("first", "second"), null));
+        assertEquals("strict: Sanshain warned: first", e.getMessage());
+    }
+
+    @Test
+    public void testStrictWithoutWarningsPasses() throws Exception {
+        new SanshainMojoDelegate(Mockito.mock(Log.class), null, null, true)
+                .failOnWarnings(Collections.emptyList(), null);
+    }
+
+    @Test
+    public void testStrictPrintsTheCallErrorBeforeFailing() {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, true);
+        assertThrows(MojoFailureException.class,
+                () -> d.failOnWarnings(Collections.singletonList("w"), new MojoExecutionException("boom")));
+        Mockito.verify(log).error("boom");
+    }
+
+    @Test
+    public void testHandleExceptionNeverSoftensAStrictFailure() {
+        SanshainMojoDelegate d = new SanshainMojoDelegate(Mockito.mock(Log.class), null, null, true);
+        MojoFailureException strict = new MojoFailureException("strict: Sanshain warned: w");
+        assertSame(strict, assertThrows(MojoFailureException.class, () -> d.handleException(strict, true)));
     }
 }

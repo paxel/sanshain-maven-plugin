@@ -813,4 +813,117 @@ public class ProvideMojoTest {
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
         assertTrue(ex.getMessage().contains("No specification files found"), ex.getMessage());
     }
+
+    private static final String UNKNOWN_TAG =
+            "no sanshain-branch 'release-9' - this build was not recorded in a release graph";
+
+    private static final String PROVIDE_YAML = "serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n";
+
+    private static final String SPEC = "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 1.0.0";
+
+    @Test
+    public void testWarningHeaderIsPrintedAndProvideSucceeds() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(log);
+        setField(mojo, "tag", "release-9");
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(UNKNOWN_TAG);
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.tag", equalTo("release-9"))));
+    }
+
+    @Test
+    public void testSeveralWarningHeadersArePrintedOnePerLine() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)
+                .withHeader("Sanshain-Warning", "trunk and tag are mutually exclusive - this build was recorded in neither",
+                        "a, b")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(log);
+        mojo.execute();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(log);
+        order.verify(log).warn("trunk and tag are mutually exclusive - this build was recorded in neither");
+        order.verify(log).warn("a, b");
+    }
+
+    @Test
+    public void testWarningUnderStrictFailsAfterTheCall() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG)));
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "strict", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: " + UNKNOWN_TAG, ex.getMessage());
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+    }
+
+    @Test
+    public void testWarningUnderStrictFailsEvenWithBestEffort() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG)));
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: " + UNKNOWN_TAG, ex.getMessage());
+    }
+
+    @Test
+    public void testRetireWarningIsPrintedAndFailsUnderStrict() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)
+                .withHeader("Sanshain-Warning", "retire noted").withBody("{}")));
+        String yaml = "serviceName: my-service\nprovides:\n  - apiType: openapi\n    retired: true\n";
+
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo plain = createMojo(yaml, SPEC);
+        plain.setLog(log);
+        plain.execute();
+        org.mockito.Mockito.verify(log).warn("retire noted");
+
+        ProvideMojo strictMojo = createMojo(yaml, SPEC);
+        strictMojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(strictMojo, "strict", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, strictMojo::execute);
+        assertEquals("strict: Sanshain warned: retire noted", ex.getMessage());
+    }
+
+    @Test
+    public void testLocalTrunkAndTagWarnsAndSendsNeither() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(log);
+        setField(mojo, "trunk", true);
+        setField(mojo, "tag", "release-9");
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("trunk and tag are mutually exclusive - this build is recorded in neither");
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.trunk", absent()))
+                .withRequestBody(matchingJsonPath("$.tag", absent())));
+    }
+
+    @Test
+    public void testLocalTrunkAndTagUnderStrictFailsBeforeAnyRequest() throws Exception {
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "trunk", true);
+        setField(mojo, "tag", "release-9");
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
 }

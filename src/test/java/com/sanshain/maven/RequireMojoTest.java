@@ -830,4 +830,138 @@ public class RequireMojoTest {
                 + "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)");
         assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
     }
+
+    private static final String UNKNOWN_TAG =
+            "no sanshain-branch 'release-9' - this build was not recorded in a release graph";
+
+    private RequireMojo createMojo(String yaml, org.apache.maven.plugin.logging.Log log) throws Exception {
+        RequireMojo mojo = createMojo(yaml);
+        mojo.setLog(log);
+        return mojo;
+    }
+
+    @Test
+    public void testWarningHeaderIsPrintedAndRequireSucceeds() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(200)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG).withBody("openapi: 3.0.0")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo mojo = createMojo(ONE_ENDPOINT, log);
+        setField(mojo, "tag", "release-9");
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(UNKNOWN_TAG);
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require")).withQueryParam("tag", equalTo("release-9")));
+        assertTrue(Files.exists(tempDir.resolve("output/user-service_api_v1_users_GET.yaml")));
+    }
+
+    /** Each header line is one warning; a comma inside a value does not split it. */
+    @Test
+    public void testSeveralWarningHeadersArePrintedOnePerLine() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).willReturn(aResponse().withStatus(200)
+                .withHeader("Sanshain-Warning", "first, with a comma", UNKNOWN_TAG).withBody("openapi: 3.0.0")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        createMojo(TWO_ENDPOINTS, log).execute();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(log);
+        order.verify(log).warn("first, with a comma");
+        order.verify(log).warn(UNKNOWN_TAG);
+        org.mockito.Mockito.verify(log, org.mockito.Mockito.never()).warn("first");
+    }
+
+    @Test
+    public void testWarningOnNotModifiedIsPrinted() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(304)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        createMojo(ONE_ENDPOINT, log).execute();
+        org.mockito.Mockito.verify(log).warn(UNKNOWN_TAG);
+    }
+
+    @Test
+    public void testWarningUnderStrictFailsAfterTheCall() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(200)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG).withBody("openapi: 3.0.0")));
+        RequireMojo mojo = createMojo(ONE_ENDPOINT, org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "strict", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: " + UNKNOWN_TAG, ex.getMessage());
+        wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")));
+    }
+
+    @Test
+    public void testBundleWarningUnderStrictFailsEvenWithBestEffort() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).willReturn(aResponse().withStatus(200)
+                .withHeader("Sanshain-Warning", "first", "second").withBody("openapi: 3.0.0")));
+        RequireMojo mojo = createMojo(TWO_ENDPOINTS, org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: first", ex.getMessage());
+    }
+
+    @Test
+    public void testFailedCallWithWarningUnderStrictPrintsErrorThenFails() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(500)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG).withBody("down")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo mojo = createMojo(ONE_ENDPOINT, log);
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: Sanshain warned: " + UNKNOWN_TAG, ex.getMessage());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(log);
+        order.verify(log).warn(UNKNOWN_TAG);
+        order.verify(log).error("Unexpected response 500 from /require: down");
+    }
+
+    @Test
+    public void testWarningOnFailedCallWithBestEffortIsPrintedAndSoftened() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(500)
+                .withHeader("Sanshain-Warning", UNKNOWN_TAG).withBody("down")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo mojo = createMojo(ONE_ENDPOINT, log);
+        setField(mojo, "bestEffort", true);
+        mojo.execute();
+        org.mockito.Mockito.verify(log).warn(UNKNOWN_TAG);
+        org.mockito.Mockito.verify(log).warn("Sanshain goal failed (best effort): Unexpected response 500 from /require: down");
+    }
+
+    @Test
+    public void testLocalTrunkAndTagWarnsAndSendsNeither() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo single = createMojo(ONE_ENDPOINT, log);
+        setField(single, "trunk", true);
+        setField(single, "tag", "release-9");
+        single.execute();
+        RequireMojo bundle = createMojo(TWO_ENDPOINTS, log);
+        setField(bundle, "trunk", true);
+        setField(bundle, "tag", "release-9");
+        bundle.execute();
+
+        org.mockito.Mockito.verify(log, org.mockito.Mockito.times(2))
+                .warn("trunk and tag are mutually exclusive - this build is recorded in neither");
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
+                .withQueryParam("trunk", absent()).withQueryParam("tag", absent()));
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.trunk", absent()))
+                .withRequestBody(matchingJsonPath("$.tag", absent())));
+    }
+
+    @Test
+    public void testLocalTrunkAndTagUnderStrictFailsBeforeAnyRequest() throws Exception {
+        RequireMojo mojo = createMojo(ONE_ENDPOINT, org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "trunk", true);
+        setField(mojo, "tag", "release-9");
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
 }

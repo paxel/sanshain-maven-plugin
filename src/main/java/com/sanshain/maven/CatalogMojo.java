@@ -11,6 +11,7 @@ import org.apache.maven.settings.Settings;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 
 /**
  * Goal which pushes this system's Backstage {@code catalog-info.yaml} (the {@code catalogInfo}
@@ -43,7 +44,8 @@ public class CatalogMojo extends AbstractMojo {
     private boolean dryRun;
 
     /**
-     * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
+     * Fail on missing configuration, on unknown sanshain.yaml fields, on a build declaring both
+     * trunk and a tag, and on any warning Sanshain sends with a response. Unset, the
      * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
      */
     @Parameter(property = "sanshain.strict")
@@ -73,7 +75,8 @@ public class CatalogMojo extends AbstractMojo {
 
     /**
      * A sanshain-branch build. The catalog call takes no tag, so a tagged build pushes to the dev
-     * graph only; declared here so trunk and tag together still fail as on the other goals.
+     * graph only; declared here so trunk and tag together behave as on the other goals (recorded
+     * in neither, with a warning; strict fails).
      */
     @Parameter(property = "sanshain.tag")
     private String tag;
@@ -164,8 +167,26 @@ public class CatalogMojo extends AbstractMojo {
 
             getLog().info("Pushing catalog for " + resolvedServiceName + ": " + catalogFile.getAbsolutePath());
             SanshainHttpClient client = new SanshainHttpClient(getLog(), resolvedInsecure);
-            CatalogResponse response = client.putCatalog(resolvedUrl, resolvedToken, resolvedServiceName, content,
-                    catalogFile.getAbsolutePath(), resolvedCompression, stream.isTrunk());
+            CatalogResponse response;
+            try {
+                response = client.putCatalog(resolvedUrl, resolvedToken, resolvedServiceName, content,
+                        resolvedCompression, stream.isTrunk());
+            } catch (MojoExecutionException e) {
+                delegate.failOnWarnings(client.takeWarnings(), e);
+                throw e;
+            }
+
+            List<String> warnings = client.takeWarnings();
+            // The header names the reason; a service sending none still warns.
+            if (!response.isRecorded() && warnings.isEmpty()) {
+                String warning = "Sanshain did not record " + catalogFile.getAbsolutePath();
+                getLog().warn(warning);
+                warnings.add(warning);
+            }
+            delegate.failOnWarnings(warnings, null);
+            if (!response.isRecorded()) {
+                return;
+            }
 
             getLog().info(response.toSummary());
             for (String resource : response.getResources()) {

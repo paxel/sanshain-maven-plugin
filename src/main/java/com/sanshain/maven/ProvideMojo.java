@@ -42,7 +42,8 @@ public class ProvideMojo extends AbstractMojo {
     private boolean dryRun;
 
     /**
-     * Fail on missing configuration and on unknown sanshain.yaml fields. Unset, the
+     * Fail on missing configuration, on unknown sanshain.yaml fields, on a build declaring both
+     * trunk and a tag, and on any warning Sanshain sends with a response. Unset, the
      * {@code strict} field of sanshain.yaml decides; set (true or false), it wins.
      */
     @Parameter(property = "sanshain.strict")
@@ -89,7 +90,8 @@ public class ProvideMojo extends AbstractMojo {
     /**
      * Declares this build as a named sanshain-branch's — a release or hotfix pipeline updating
      * that graph instead of trunk. Also settable via {@code SANSHAIN_TAG}. Mutually exclusive
-     * with {@link #trunk}; the branch must already exist or the server answers 404.
+     * with {@link #trunk} (both: recorded in neither, with a warning). An unknown branch is not
+     * an error: Sanshain warns and records the build in no release graph.
      */
     @Parameter(property = "sanshain.tag")
     private String tag;
@@ -189,7 +191,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved stream: " + stream);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException, MojoFailureException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
@@ -230,7 +232,7 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine) throws IOException, MojoExecutionException {
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine) throws IOException, MojoExecutionException, MojoFailureException {
         if (p.getFile() != null) {
             provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun);
         }
@@ -245,7 +247,7 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, File file, String apiType, boolean compression, boolean combine, boolean dryRun) throws IOException, MojoExecutionException {
+    private void provideFile(SanshainHttpClient client, String url, String token, String serviceName, File file, String apiType, boolean compression, boolean combine, boolean dryRun) throws IOException, MojoExecutionException, MojoFailureException {
         if (!file.exists()) {
             throw new MojoExecutionException("Specification file does not exist: " + file.getAbsolutePath());
         }
@@ -272,7 +274,8 @@ public class ProvideMojo extends AbstractMojo {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
         }
 
-        ProvideResponse response = client.postProvide(url, token, serviceName, content, stability, compression, dryRun, type, file.getName(), stream);
+        ProvideResponse response = delegate.checked(client, () -> client.postProvide(url, token, serviceName,
+                content, stability, compression, dryRun, type, file.getName(), stream));
 
         if (response != null) {
             reportHarvestedSubscriptions(response);
@@ -308,7 +311,8 @@ public class ProvideMojo extends AbstractMojo {
      * {@code sanshain.yaml} entry says {@code retired: true}.
      */
     private void retireFamily(SanshainHttpClient client, String url, String token, String serviceName,
-                              String apiType, boolean compression) throws MojoExecutionException {
+                              String apiType, boolean compression)
+            throws IOException, MojoExecutionException, MojoFailureException {
         String type = apiType == null ? "openapi" : apiType.toLowerCase(java.util.Locale.ROOT);
         if (!type.equals("openapi") && !type.equals("asyncapi") && !type.equals("proto") && !type.equals("grpc")) {
             throw new MojoExecutionException("Unsupported apiType: " + apiType);
@@ -316,7 +320,8 @@ public class ProvideMojo extends AbstractMojo {
 
         getLog().info("Retiring " + type + " for " + serviceName
                 + (dryRun ? " (dry run — checking permission only)" : ""));
-        RetiredProtocol result = client.postRetire(url, token, serviceName, compression, dryRun, type);
+        RetiredProtocol result = delegate.checked(client,
+                () -> client.postRetire(url, token, serviceName, compression, dryRun, type));
         if (dryRun) {
             getLog().info("✓ Retire would be permitted. Nothing was retired.");
         } else if (result != null) {

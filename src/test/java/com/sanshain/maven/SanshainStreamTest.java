@@ -56,24 +56,30 @@ public class SanshainStreamTest {
         assertEquals("R", SanshainStream.resolve(null, null, null, "R").getTag());
     }
 
-    /**
-     * The server answers 400 for a request carrying both. Catching it locally
-     * means the pipeline is told what it misconfigured rather than which status
-     * code came back.
-     */
+    /** A build declaring both is recorded in neither graph, with a warning. */
     @Test
-    public void testResolveRefusesTrunkAndTagTogether() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> SanshainStream.resolve(true, "R", null, null));
-        assertTrue(e.getMessage().contains("never both"), e.getMessage());
-        assertTrue(e.getMessage().contains("R"), "the message names the tag, got: " + e.getMessage());
+    public void testResolveTrunkAndTagTogetherSendsNeither() {
+        SanshainStream stream = SanshainStream.resolve(true, "R", null, null);
+        assertTrue(stream.isNone());
+        assertFalse(stream.isTrunk());
+        assertNull(stream.getTag());
+        assertEquals("", stream.toQueryParams());
+        assertEquals("trunk and tag are mutually exclusive - this build is recorded in neither", stream.getWarning());
     }
 
     /** A property-set trunk and an environment tag collide the same way. */
     @Test
-    public void testResolveRefusesTrunkPropertyWithTagEnvironment() {
-        assertThrows(IllegalArgumentException.class,
-                () -> SanshainStream.resolve(true, null, null, "R"));
+    public void testResolveTrunkPropertyWithTagEnvironmentSendsNeither() {
+        SanshainStream stream = SanshainStream.resolve(true, null, null, "R");
+        assertTrue(stream.isNone());
+        assertEquals(SanshainStream.MUTUALLY_EXCLUSIVE, stream.getWarning());
+    }
+
+    @Test
+    public void testOrdinaryStreamsCarryNoWarning() {
+        assertNull(SanshainStream.resolve(null, null, null, null).getWarning());
+        assertNull(SanshainStream.resolve(true, null, null, null).getWarning());
+        assertNull(SanshainStream.resolve(null, "R", null, null).getWarning());
     }
 
     /**

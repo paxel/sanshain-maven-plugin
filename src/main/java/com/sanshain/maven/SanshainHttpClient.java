@@ -19,6 +19,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -47,6 +48,9 @@ public class SanshainHttpClient {
     private final HttpClient httpClient;
     private final Log log;
     private final ObjectMapper objectMapper;
+
+    /** Sanshain-Warning values received since the last {@link #takeWarnings()}, in order. */
+    private final List<String> warnings = new ArrayList<>();
 
     /** Memoized result of the lazy GET /version probe (at most one per client); null if unknown. */
     private boolean serverVersionChecked;
@@ -204,14 +208,14 @@ public class SanshainHttpClient {
      * @param token       the authentication token (optional)
      * @param systemName  the system the file describes (the serviceName)
      * @param content     the catalog-info.yaml content
-     * @param fileLabel   the resolved catalogInfo path, named in a 400 rejection
      * @param compression true if GZIP compression should be used
      * @param trunk       true if this build speaks for the trunk stream
-     * @return the recorded periphery
+     * @return the recorded periphery; {@link CatalogResponse#isRecorded()} is false if Sanshain could
+     *         not read the file and recorded nothing (its reason arrives as a warning)
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public CatalogResponse putCatalog(String baseUrl, String token, String systemName, String content,
-                                      String fileLabel, boolean compression, boolean trunk)
+                                      boolean compression, boolean trunk)
             throws MojoExecutionException {
         java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("catalog_info_yaml", content);
@@ -247,6 +251,7 @@ public class SanshainHttpClient {
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            collectWarnings(response);
             int status = response.statusCode();
             String responseBody = extractResponseBody(response);
             log.debug("Response status: " + status);
@@ -269,13 +274,7 @@ public class SanshainHttpClient {
 
             failOnPre2Server(baseUrl, token);
 
-            if (status == 400) {
-                ErrorBody error = parseErrorBody(responseBody);
-                logAngryCat();
-                throw new MojoExecutionException("Sanshain rejected " + fileLabel + ": "
-                        + sanitize(error.message(responseBody)) + ". The Component's metadata.name must equal "
-                        + "serviceName '" + systemName + "'.");
-            } else if (status == 422) {
+            if (status == 422) {
                 logAngryCat();
                 log.error("Catalog failed (422 Unprocessable Entity): " + sanitize(responseBody));
                 throw new MojoExecutionException("Request shape rejected (422) — the server rejects unknown "
@@ -419,6 +418,7 @@ public class SanshainHttpClient {
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            collectWarnings(response);
             int status = response.statusCode();
             String responseBody = extractResponseBody(response);
             log.debug("Response status: " + status);
@@ -537,6 +537,7 @@ public class SanshainHttpClient {
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            collectWarnings(response);
             int status = response.statusCode();
             String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
@@ -640,6 +641,7 @@ public class SanshainHttpClient {
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            collectWarnings(response);
             int status = response.statusCode();
             String contentEncoding = response.headers().firstValue("Content-Encoding").orElse("");
             log.debug("Response status: " + status + ", Content-Encoding: " + contentEncoding);
@@ -876,6 +878,30 @@ public class SanshainHttpClient {
         return new String(body, StandardCharsets.UTF_8);
     }
 
+    /**
+     * Prints every {@code Sanshain-Warning} header line of a response as a warning, as received
+     * and one per line, and keeps them for {@link #takeWarnings()}. A value is never split on
+     * commas: each header line is one warning.
+     */
+    private void collectWarnings(HttpResponse<?> response) {
+        for (String warning : response.headers().allValues("Sanshain-Warning")) {
+            log.warn(warning);
+            warnings.add(warning);
+        }
+    }
+
+    /**
+     * Hands over the warnings Sanshain sent ({@code Sanshain-Warning} headers) since the last
+     * call, from any call, successful or not. They have already been printed.
+     *
+     * @return the warnings, in the order received; a fresh mutable list
+     */
+    public List<String> takeWarnings() {
+        List<String> taken = new ArrayList<>(warnings);
+        warnings.clear();
+        return taken;
+    }
+
     private void logResponseHeaders(HttpResponse<?> response) {
         response.headers().map().forEach((name, values) ->
             values.forEach(value -> log.debug("Response header: " + name + ": " + value))
@@ -1010,6 +1036,7 @@ public class SanshainHttpClient {
         try {
             HttpResponse<byte[]> response = httpClient.send(requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray());
+            collectWarnings(response);
             int status = response.statusCode();
             String responseBody = extractResponseBody(response);
             log.debug("Response status: " + status);

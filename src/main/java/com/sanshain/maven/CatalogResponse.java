@@ -7,7 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The periphery Sanshain recorded for a system — the 200 body of {@code PUT /catalog/<system>}.
+ * The periphery Sanshain recorded for a system — the 200 body of {@code PUT /catalog/<system>},
+ * which may also say that nothing was recorded.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CatalogResponse {
@@ -20,6 +21,9 @@ public class CatalogResponse {
 
     @JsonProperty("resources")
     private List<String> resources = new ArrayList<>();
+
+    @JsonProperty("recorded")
+    private Boolean recorded;
 
     /** Creates a new default instance. */
     public CatalogResponse() {}
@@ -41,6 +45,14 @@ public class CatalogResponse {
      * @return the recorded resources
      */
     public List<String> getResources() { return resources == null ? new ArrayList<>() : resources; }
+
+    /**
+     * Whether Sanshain recorded the periphery. False when it could not read the file (the previous
+     * periphery stays; the reason arrives as a {@code Sanshain-Warning}). A response without the
+     * field (an older 2.4.0 pre-release service) counts as recorded.
+     * @return true unless the service said {@code recorded: false}
+     */
+    public boolean isRecorded() { return recorded == null || recorded; }
 
     /**
      * Returns the summary line: system, the graphs updated, and the resource count.

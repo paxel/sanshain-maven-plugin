@@ -80,9 +80,12 @@ let a local build overwrite CI. Nothing is inferred from the git branch.
   of ageing out.
 - **Release and hotfix pipelines** set `-Dsanshain.tag=<branch>` or `SANSHAIN_TAG=<branch>`. The
   calls update that release's graph instead of trunk. The branch must already exist — a releaser
-  creates it at cut time — and an unknown one fails the build with a `404`.
+  creates it at cut time. For an unknown one Sanshain still serves the call, records the build in no
+  release graph and sends a warning, which the goal prints (strict mode fails on it).
 
-Declaring both fails the build before any request is made. Streams never change what is served or
+Declaring both records the build in neither graph: the goal warns
+`trunk and tag are mutually exclusive - this build is recorded in neither` and sends neither; under
+strict mode it fails before any request is made. Streams never change what is served or
 any version rule; they only decide which graph records the call.
 
 ## Retiring a protocol
@@ -151,7 +154,7 @@ environment.
 | `skipProvide` | `sanshain.provide.skip` | `false`                                   | Skip execution of the provide goal only.                                           |
 | `dryRun`      | `sanshain.dry.run`      | `false`                                   | Validate without storing.                                                          |
 | `combine`     | `sanshain.combine`      | `true`                                    | Enable recursive local combining/bundling of multi-file specifications.            |
-| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config instead of warning.                                         |
+| `strict`      | `sanshain.strict`       | `false`                                   | Fail on missing config or on a Sanshain warning, instead of warning.               |
 
 ## Goal: `catalog`
 
@@ -185,7 +188,7 @@ to get both formats list the entry twice with different `outputDirectory`s. See 
 | `skip`        | `sanshain.skip`         | `false`                 | Skip execution of all sanshain goals.                                        |
 | `skipRequire` | `sanshain.require.skip` | `false`                 | Skip execution of the require goal only.                                     |
 | `dryRun`      | `sanshain.dry.run`      | `false`                 | Validate without recording dependencies.                                     |
-| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config instead of warning.                                   |
+| `strict`      | `sanshain.strict`       | `false`                 | Fail on missing config or on a Sanshain warning, instead of warning.         |
 
 ## Advanced Modes
 
@@ -195,7 +198,9 @@ By default, the plugin warns and skips when configuration is incomplete. Enable 
 mvn verify -Dsanshain.strict=true
 ```
 or set `strict: true` in `sanshain.yaml`. An explicitly set `sanshain.strict` property (`true` or
-`false`) wins over the yaml value. Strict mode also fails the build on unknown `sanshain.yaml` fields.
+`false`) wins over the yaml value. Strict mode also fails the build on unknown `sanshain.yaml` fields, on any warning Sanshain sends
+(`strict: Sanshain warned: <text>`, after the call) and on a build declaring both trunk and a tag;
+best-effort does not soften these.
 
 ### Best-Effort Mode
 Designed for non-critical builds or parent POMs. When enabled, server errors or timeouts are logged as warnings instead of failing the build.
