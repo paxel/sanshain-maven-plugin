@@ -61,6 +61,15 @@
             <artifactId>maven-project</artifactId>
             <version>2.2.1</version>
             <scope>provided</scope>
+            <exclusions>
+                <!-- plexus-container-default drags in junit 3.8.1; with it on the test
+                     classpath, surefire 3.6+ starts the JUnit Vintage engine, which refuses
+                     junit 3 and aborts the whole test run. -->
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
