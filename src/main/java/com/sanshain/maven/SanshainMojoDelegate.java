@@ -221,6 +221,21 @@ public class SanshainMojoDelegate {
     }
 
     /**
+     * Resolves the origin of this build (what the pipeline knows about why it runs), on the
+     * same terms as stability and stream: Maven properties first, then {@code SANSHAIN_*}
+     * variables, then — for the build and change URL only — the runner's own variables.
+     *
+     * @param buildUrl  the {@code sanshain.buildUrl} property, or null
+     * @param changeUrl the {@code sanshain.changeUrl} property, or null
+     * @param tickets   the {@code sanshain.tickets} property, or null
+     * @param note      the {@code sanshain.note} property, or null
+     * @return the resolved origin
+     */
+    public SanshainOrigin resolveOrigin(String buildUrl, String changeUrl, String tickets, String note) {
+        return SanshainOrigin.resolve(buildUrl, changeUrl, tickets, note, environmentVariables);
+    }
+
+    /**
      * Applies strict mode to the warnings Sanshain sent with a call (already printed by the
      * client as they arrived). Without strict, nothing happens. Under strict, any warning fails
      * the goal with the first one — best-effort does not soften this. A call that also failed

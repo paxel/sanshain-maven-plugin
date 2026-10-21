@@ -181,6 +181,10 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Service name                | `serviceName`   | `-Dsanshain.service.name` | `$SANSHAIN_SERVICE_NAME` | — (required) |
 | Dry-run                     | —               | `-Dsanshain.dry.run`      | —                        | `false` |
 | Combine                     | `combine`       | `-Dsanshain.combine`      | `$SANSHAIN_COMBINE`      | `true` (see [Specification Combining/Bundling](#specification-combiningbundling)) |
+| Build URL (provide only)    | —               | `-Dsanshain.buildUrl`     | `$SANSHAIN_BUILD_URL`    | the runner's own variable (see [Origin](#origin-why-this-build-provides)) |
+| Change URL (provide only)   | —               | `-Dsanshain.changeUrl`    | `$SANSHAIN_CHANGE_URL`   | the runner's own variable (see [Origin](#origin-why-this-build-provides)) |
+| Tickets (provide only)      | —               | `-Dsanshain.tickets`      | `$SANSHAIN_TICKETS`      | — (comma-separated ids) |
+| Note (provide only)         | —               | `-Dsanshain.note`         | `$SANSHAIN_NOTE`         | — (one line, at most 200 characters) |
 
 Boolean environment switches (`$SANSHAIN_GA`, `$SANSHAIN_TRUNK`, `$SANSHAIN_BEST_EFFORT`,
 `$SANSHAIN_COMPRESSION`, `$SANSHAIN_INSECURE`, `$SANSHAIN_COMBINE`) are on when the value, trimmed and
@@ -268,6 +272,26 @@ A pipeline declares which graph its calls belong to, the same way it declares st
 Declaring both records the build in neither graph: the goal warns
 `trunk and tag are mutually exclusive - this build is recorded in neither` and sends neither. Under
 [strict mode](#strict-mode) it fails before any request is sent.
+
+### Origin: why this build provides
+
+A provide may carry what the pipeline knows about *why* it runs (Sanshain Service 2.9.0 and later).
+Sanshain stores it with the version as its origin, shows it on the version row, in the diff and the
+blame, and answers it to assistants over MCP:
+
+- **Build URL** and **change URL** (the pull or merge request) are taken from the runner's own
+  variables when present — GitHub Actions (`GITHUB_SERVER_URL`, `GITHUB_REPOSITORY`,
+  `GITHUB_RUN_ID`, a pull request's `GITHUB_REF`), GitLab CI (`CI_JOB_URL`,
+  `CI_MERGE_REQUEST_PROJECT_URL`, `CI_MERGE_REQUEST_IID`) and Jenkins (`BUILD_URL`, `CHANGE_URL`) —
+  so every pipeline carries them without editing a job. `-Dsanshain.buildUrl` /
+  `SANSHAIN_BUILD_URL` and `-Dsanshain.changeUrl` / `SANSHAIN_CHANGE_URL` override them.
+- **Tickets** (`-Dsanshain.tickets` / `SANSHAIN_TICKETS`, comma-separated ids) and the **note**
+  (`-Dsanshain.note` / `SANSHAIN_NOTE`, one line) are human intent and come only from the pipeline
+  that knows them. Sanshain links ticket ids through the ticket URL template an administrator set.
+
+The latest provide that carries any of it wins; a byte-identical re-provide only fills an empty
+origin, so CI rebuilding what a developer provided from a laptop adds the references without erasing
+them. Nothing is read from git.
 
 ### Retiring a protocol
 

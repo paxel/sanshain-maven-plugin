@@ -96,6 +96,29 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.tag")
     private String tag;
 
+    /**
+     * The origin of this build, stored with the version and shown as "why": where the build ran.
+     * Defaults to the runner's own variable on GitHub Actions, GitLab CI and Jenkins; also
+     * settable via {@code SANSHAIN_BUILD_URL}.
+     */
+    @Parameter(property = "sanshain.buildUrl")
+    private String buildUrl;
+
+    /**
+     * The pull or merge request behind this build. Defaults to the runner's own variable; also
+     * settable via {@code SANSHAIN_CHANGE_URL}.
+     */
+    @Parameter(property = "sanshain.changeUrl")
+    private String changeUrl;
+
+    /** The ticket ids this build closes, comma-separated. Also settable via {@code SANSHAIN_TICKETS}. */
+    @Parameter(property = "sanshain.tickets")
+    private String tickets;
+
+    /** One line of intent, at most 200 characters. Also settable via {@code SANSHAIN_NOTE}. */
+    @Parameter(property = "sanshain.note")
+    private String note;
+
     /** Set in {@link #execute()}; read by the provide helpers, like {@code baseDir}. */
     private SanshainMojoDelegate delegate;
 
@@ -104,6 +127,9 @@ public class ProvideMojo extends AbstractMojo {
 
     /** Resolved once in {@link #execute()}; the graph every call of this run speaks for. */
     private SanshainStream stream;
+
+    /** Resolved once in {@link #execute()}; what this build says about why. */
+    private SanshainOrigin origin;
 
     private void initDefaults() {
         if (baseDir == null) {
@@ -154,6 +180,7 @@ public class ProvideMojo extends AbstractMojo {
         boolean resolvedCombine = delegate.resolveCombine(combine, config);
         stability = delegate.resolveStability(ga);
         stream = delegate.resolveStream(trunk, tag);
+        origin = delegate.resolveOrigin(buildUrl, changeUrl, tickets, note);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -189,6 +216,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved combine: " + comb);
         getLog().debug("Resolved stability: " + stability);
         getLog().debug("Resolved stream: " + stream);
+        getLog().debug("Resolved " + origin);
     }
 
     private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException, MojoFailureException {
@@ -275,7 +303,7 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         ProvideResponse response = delegate.checked(client, () -> client.postProvide(url, token, serviceName,
-                content, stability, compression, dryRun, type, file.getName(), stream));
+                content, stability, compression, dryRun, type, file.getName(), stream, origin));
 
         if (response != null) {
             reportHarvestedSubscriptions(response);

@@ -48,7 +48,7 @@ public class SanshainHttpClientTest {
 
     private ProvideResponse provide(String apiType) throws MojoExecutionException {
         return client.postProvide(baseUrl, "token123", "my-service", "openapi: 3.0.0",
-                "snapshot", false, false, apiType, "openapi.yaml", SanshainStream.none());
+                "snapshot", false, false, apiType, "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
     }
 
     // --- postProvide tests ---
@@ -75,7 +75,7 @@ public class SanshainHttpClientTest {
                         .withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "openapi: 3.0.0\ninfo:",
-                "ga", false, true, "openapi", "openapi.yaml", SanshainStream.none());
+                "ga", false, true, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.producername", equalTo("my-service")))
@@ -97,7 +97,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202).withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "asyncapi: 2.6.0",
-                "snapshot", false, false, "asyncapi", "asyncapi.yaml", SanshainStream.none());
+                "snapshot", false, false, "asyncapi", "asyncapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide/asyncapi"))
                 .withRequestBody(matchingJsonPath("$.asyncapi_yaml", containing("asyncapi: 2.6.0")))
@@ -110,7 +110,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202).withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "syntax = \"proto3\";",
-                "snapshot", false, false, "proto", "service.proto", SanshainStream.none());
+                "snapshot", false, false, "proto", "service.proto", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide/grpc"))
                 .withRequestBody(matchingJsonPath("$.proto_content", containing("proto3")))
@@ -123,7 +123,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202).withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "openapi: 3.0.0",
-                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none());
+                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withoutHeader("Authorization"));
@@ -135,7 +135,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202).withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, "", "my-service", "openapi: 3.0.0",
-                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none());
+                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withoutHeader("Authorization"));
@@ -147,7 +147,7 @@ public class SanshainHttpClientTest {
                 .willReturn(aResponse().withStatus(202).withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "openapi: 3.0.0",
-                "snapshot", true, false, "openapi", "openapi.yaml", SanshainStream.none());
+                "snapshot", true, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withHeader("Content-Encoding", equalTo("gzip")));
@@ -221,7 +221,7 @@ public class SanshainHttpClientTest {
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postProvide(baseUrl, null, "my-service", "syntax = \"proto3\";",
-                        "ga", false, false, "proto", "service.proto", SanshainStream.none()));
+                        "ga", false, false, "proto", "service.proto", SanshainStream.none(), SanshainOrigin.none()));
         assertTrue(ex.getMessage().contains("Publish as 2.0.0"), ex.getMessage());
         assertTrue(ex.getMessage().contains("// sanshain-version:"), ex.getMessage());
         assertTrue(ex.getMessage().contains("service.proto"), ex.getMessage());
@@ -250,7 +250,7 @@ public class SanshainHttpClientTest {
 
         assertThrows(MojoExecutionException.class, () ->
                 localClient.postProvide(baseUrl, null, "my-service", "yaml",
-                        "ga", false, false, "openapi", "openapi.yaml", SanshainStream.none()));
+                        "ga", false, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none()));
 
         verify(log, atLeastOnce()).error(contains("HISSSSSSSS!"));
         verify(log, atLeastOnce()).error(contains("Sanshain is NOT happy with this!"));
@@ -270,7 +270,7 @@ public class SanshainHttpClientTest {
     public void testPostProvideConnectionFailure() {
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 client.postProvide("http://localhost:1", null, "my-service", "yaml",
-                        "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none()));
+                        "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none()));
         assertTrue(ex.getMessage().contains("Failed to connect"));
     }
 
@@ -771,7 +771,7 @@ public class SanshainHttpClientTest {
                         .withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, "token123", "my-service", "openapi: 3.0.0",
-                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.trunk());
+                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.trunk(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.trunk", equalTo("true"))));
@@ -785,7 +785,7 @@ public class SanshainHttpClientTest {
                         .withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, "token123", "my-service", "openapi: 3.0.0",
-                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.tag("R"));
+                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.tag("R"), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.tag", equalTo("R"))));
@@ -816,7 +816,7 @@ public class SanshainHttpClientTest {
                         .withBody(PROVIDE_202_BODY)));
 
         client.postProvide(baseUrl, null, "my-service", "openapi: 3.0.0\r\ninfo:\r\n  title: T\r",
-                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none());
+                "snapshot", false, false, "openapi", "openapi.yaml", SanshainStream.none(), SanshainOrigin.none());
 
         wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
                 .withRequestBody(matchingJsonPath("$.openapi_yaml",

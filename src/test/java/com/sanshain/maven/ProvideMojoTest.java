@@ -898,6 +898,24 @@ public class ProvideMojoTest {
     }
 
     @Test
+    public void testOriginPropertiesTravelOnTheProvide() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        setField(mojo, "buildUrl", "https://ci.acme.corp/job/orders/42");
+        setField(mojo, "changeUrl", "https://github.com/acme/orders/pull/7");
+        setField(mojo, "tickets", "ORD-7, ORD-9");
+        setField(mojo, "note", "Adds the users endpoint");
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.build_url", equalTo("https://ci.acme.corp/job/orders/42")))
+                .withRequestBody(matchingJsonPath("$.change_url", equalTo("https://github.com/acme/orders/pull/7")))
+                .withRequestBody(matchingJsonPath("$.tickets[0]", equalTo("ORD-7")))
+                .withRequestBody(matchingJsonPath("$.tickets[1]", equalTo("ORD-9")))
+                .withRequestBody(matchingJsonPath("$.note", equalTo("Adds the users endpoint"))));
+    }
+
+    @Test
     public void testLocalTrunkAndTagWarnsAndSendsNeither() throws Exception {
         wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);

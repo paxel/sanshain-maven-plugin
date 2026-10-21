@@ -129,6 +129,10 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Service name                | `serviceName`   | `-Dsanshain.service.name`| `$SANSHAIN_SERVICE_NAME`| — (required)                                       |
 | Dry-run                     | —               | `-Dsanshain.dry.run`     | —                       | `false`                                            |
 | Combine                     | `combine`       | `-Dsanshain.combine`     | `$SANSHAIN_COMBINE`     | `true`                                             |
+| Build URL (provide only)    | —               | `-Dsanshain.buildUrl`    | `$SANSHAIN_BUILD_URL`   | the runner's variable (GitHub, GitLab, Jenkins)    |
+| Change URL (provide only)   | —               | `-Dsanshain.changeUrl`   | `$SANSHAIN_CHANGE_URL`  | the runner's variable (GitHub, GitLab, Jenkins)    |
+| Tickets (provide only)      | —               | `-Dsanshain.tickets`     | `$SANSHAIN_TICKETS`     | — (comma-separated ids)                            |
+| Note (provide only)         | —               | `-Dsanshain.note`        | `$SANSHAIN_NOTE`        | — (one line, at most 200 characters)               |
 
 Boolean environment switches (`$SANSHAIN_GA`, `$SANSHAIN_TRUNK`, `$SANSHAIN_BEST_EFFORT`,
 `$SANSHAIN_COMPRESSION`, `$SANSHAIN_INSECURE`, `$SANSHAIN_COMBINE`) are on when the value, trimmed and

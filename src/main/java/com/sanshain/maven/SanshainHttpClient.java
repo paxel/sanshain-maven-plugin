@@ -137,18 +137,20 @@ public class SanshainHttpClient {
      * @param apiType      the type of API (openapi, asyncapi, proto)
      * @param specFile     the spec file the content came from, named in 409 remediation hints
      * @param stream       the graph this build speaks for (trunk, a sanshain-branch, or neither)
+     * @param origin       what this build says about why (build URL, change URL, tickets, note)
      * @return the parsed provide response, or null if the 202 body could not be parsed
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public ProvideResponse postProvide(String baseUrl, String token, String producerName, String content,
                             String stability, boolean compression, boolean dryRun, String apiType,
-                            String specFile, SanshainStream stream) throws MojoExecutionException {
+                            String specFile, SanshainStream stream, SanshainOrigin origin)
+            throws MojoExecutionException {
         String path = providePath(apiType);
         String contentField = contentField(apiType);
         String versionHint = versionHint(apiType);
 
         ProvidePayload payload = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
-                dryRun, contentField, stream);
+                dryRun, contentField, stream, origin);
 
         try {
             String json = objectMapper.writeValueAsString(payload);
@@ -346,15 +348,18 @@ public class SanshainHttpClient {
         public final String contentField;
         @com.fasterxml.jackson.annotation.JsonIgnore
         public final SanshainStream stream;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public final SanshainOrigin origin;
 
         public ProvidePayload(String producername, String content, String stability, boolean dryRun,
-                              String contentField, SanshainStream stream) {
+                              String contentField, SanshainStream stream, SanshainOrigin origin) {
             this.producername = producername;
             this.content = content;
             this.stability = stability;
             this.dryRun = dryRun;
             this.contentField = contentField;
             this.stream = stream == null ? SanshainStream.none() : stream;
+            this.origin = origin == null ? SanshainOrigin.none() : origin;
         }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter
@@ -370,6 +375,7 @@ public class SanshainHttpClient {
             } else if (stream.getTag() != null) {
                 any.put("tag", stream.getTag());
             }
+            origin.addTo(any);
             return any;
         }
     }
