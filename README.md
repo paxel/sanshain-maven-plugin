@@ -16,7 +16,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 ## The 2.0 model in one minute
 
 - **The version lives in the spec file.** For OpenAPI and AsyncAPI it is read from `info.version`; for proto from a mandatory `// sanshain-version:` comment. Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v` — omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. No `-SNAPSHOT` or other suffixes. The plugin never sends a version on provide; the server reads it from the document.
-- **Stability is declared on every provide**: `snapshot` (overwritable work-in-progress, expires when unused) or `ga` (immutable; the number is permanently claimed). The default is always `snapshot`; GA is an explicit switch (`-Dsanshain.ga=true` or `SANSHAIN_GA=true`) that CI sets on release pipelines.
+- **Stability is declared on every provide**: `snapshot` (work-in-progress, overwritable by the user who last provided it, expires when unused) or `ga` (immutable; the number is permanently claimed). The default is always `snapshot`; GA is an explicit switch (`-Dsanshain.ga=true` or `SANSHAIN_GA=true`) that CI sets on release pipelines.
 - **Consumers pin exact versions.** Every `requires` entry carries a `version`. Resolution prefers GA, falls back only to the same-numbered snapshot, and otherwise fails immediately — no fallback to other versions, no waiting.
 - **Branches are gone.** There is no branch detection, no branch parameter, no long-polling, no force mode, and no `baseVersion` optimistic concurrency. GA immutability is the concurrency control.
 
@@ -290,7 +290,7 @@ a release pipeline already holds — or a maintainer grant on this Producer.
 The server enforces the version rules at the door, and every rejection is self-service:
 
 - **Idempotency**: re-providing byte-identical content is a no-op (`changes` all zero) — CI re-runs of the same commit never fight.
-- **Snapshots** are overwritable in place; **GA is immutable**. A provide against an existing GA version with different content is rejected `409` — the response carries `proposed_version`, the next free number bumped by what actually changed (breaking → major, additive → minor, shape-identical → patch).
+- **Snapshots** are overwritable in place by the user who last provided them (Sanshain Service 2.9.0 and later). Identical bytes from anyone, such as CI rebuilding a commit the developer already provided, are a no-op; different content from another user is rejected `409` (`snapshot_owned`) naming that user, with `proposed_version` the next free minor, so two developers who picked the same number cannot break each other's Consumer builds. An administrator deletes the snapshot to free the number. **GA is immutable**. A provide against an existing GA version with different content is rejected `409` — the response carries `proposed_version`, the next free number bumped by what actually changed (breaking → major, additive → minor, shape-identical → patch).
 - **Semver honesty**: a GA provide whose changes against the highest GA below it are breaking without a major bump is rejected `409` with the correct `proposed_version`.
 
 On a `409` the plugin prints the server's message and the remedy prominently, e.g.:
