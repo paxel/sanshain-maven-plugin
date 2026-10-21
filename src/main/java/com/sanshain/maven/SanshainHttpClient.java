@@ -154,10 +154,41 @@ public class SanshainHttpClient {
 
         try {
             String json = objectMapper.writeValueAsString(payload);
-            return postProvideInternal(baseUrl, path, token, json, compression, versionHint, specFile);
+            try {
+                return postProvideInternal(baseUrl, path, token, json, compression, versionHint, specFile,
+                        origin != null && !origin.isNone());
+            } catch (OriginNotSupported e) {
+                // A service before 2.9.0 refuses the origin fields by name: the
+                // provide itself must not fail for a fact it cannot store.
+                log.warn("Sanshain Service before 2.9.0 does not take the build's origin; providing without it");
+                ProvidePayload plain = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
+                        dryRun, contentField, stream, SanshainOrigin.none());
+                return postProvideInternal(baseUrl, path, token, objectMapper.writeValueAsString(plain),
+                        compression, versionHint, specFile, false);
+            }
         } catch (JsonProcessingException e) {
             throw new MojoExecutionException("Failed to build JSON for " + path, e);
         }
+    }
+
+    /** A 422 naming an origin field: the service predates the origin (before 2.9.0). */
+    static final class OriginNotSupported extends MojoExecutionException {
+        OriginNotSupported(String message) {
+            super(message);
+        }
+    }
+
+    /** Whether a 422 body names one of the origin fields as unknown. */
+    static boolean namesOriginField(String body) {
+        if (body == null) {
+            return false;
+        }
+        for (String field : new String[] {"build_url", "change_url", "tickets", "note"}) {
+            if (body.contains("unknown field `" + field + "`")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -398,7 +429,8 @@ public class SanshainHttpClient {
     }
 
     private ProvideResponse postProvideInternal(String baseUrl, String path, String token, String json,
-                            boolean compression, String versionHint, String specFile) throws MojoExecutionException {
+                            boolean compression, String versionHint, String specFile, boolean originSent)
+            throws MojoExecutionException {
         String url = baseUrl + path;
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -461,6 +493,8 @@ public class SanshainHttpClient {
                 log.error("Provide failed (400 Bad Request): " + sanitize(responseBody));
                 throw new MojoExecutionException("Invalid specification (400) — most commonly a missing or "
                         + "non-semver version (" + versionHint + "): " + sanitize(responseBody));
+            } else if (status == 422 && originSent && namesOriginField(responseBody)) {
+                throw new OriginNotSupported(sanitize(responseBody));
             } else if (status == 422) {
                 logAngryCat();
                 log.error("Provide failed (422 Unprocessable Entity): " + sanitize(responseBody));

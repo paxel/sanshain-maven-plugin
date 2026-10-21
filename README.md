@@ -291,7 +291,8 @@ blame, and answers it to assistants over MCP:
 
 The latest provide that carries any of it wins; a byte-identical re-provide only fills an empty
 origin, so CI rebuilding what a developer provided from a laptop adds the references without erasing
-them. Nothing is read from git.
+them. Nothing is read from git. A service before 2.9.0 refuses the origin fields; the plugin then
+warns and repeats the provide without them, so upgrading the plugin first never fails a build.
 
 ### Retiring a protocol
 

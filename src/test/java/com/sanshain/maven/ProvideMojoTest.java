@@ -916,6 +916,26 @@ public class ProvideMojoTest {
     }
 
     @Test
+    public void testAnOldServerRefusingTheOriginGetsTheProvideWithoutIt() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.note"))
+                .willReturn(aResponse().withStatus(422)
+                        .withBody("Failed to deserialize the JSON body into the target type: unknown field `note`")));
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.note", absent()))
+                .willReturn(aResponse().withStatus(202)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(PROVIDE_YAML, SPEC);
+        mojo.setLog(log);
+        setField(mojo, "note", "Adds users");
+        mojo.execute();
+
+        wireMock.verify(2, postRequestedFor(urlEqualTo("/provide")));
+        org.mockito.Mockito.verify(log).warn(
+                "Sanshain Service before 2.9.0 does not take the build's origin; providing without it");
+    }
+
+    @Test
     public void testLocalTrunkAndTagWarnsAndSendsNeither() throws Exception {
         wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
