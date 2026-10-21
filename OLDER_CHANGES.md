@@ -3,6 +3,11 @@
 This file contains historical changelog entries for the Sanshain Maven Plugin.
 For recent changes, see [CHANGELOG.md](CHANGELOG.md).
 
+## [2.3.0] - 2026-10-19
+
+### Security
+- Jackson updated to 2.18.12 and the Maven plugin API to 3.9.16, closing the advisories the weekly scan reported for `jackson-databind`, `jackson-core`, `commons-lang3` and `plexus-utils`; the unused `maven-project` 2.2.1 dependency is gone.
+
 ## [2.2.0] - 2026-10-16
 
 ### Added

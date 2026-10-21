@@ -80,7 +80,7 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>2.3.0</version>
+            <version>2.4.0</version>
             <executions>
                 <execution>
                     <phase>validate</phase>
