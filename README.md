@@ -294,6 +294,13 @@ origin, so CI rebuilding what a developer provided from a laptop adds the refere
 them. Nothing is read from git. A service before 2.9.0 refuses the origin fields; the plugin then
 warns and repeats the provide without them, so upgrading the plugin first never fails a build.
 
+A `-Dsanshain.*` property wins over its `SANSHAIN_*` variable, which wins over the runner's
+variable. A blank value counts as unset, so an empty property or variable does not switch the
+runner's URL off; only unsetting the runner variable does. Other CI systems (Azure Pipelines,
+Bitbucket Pipelines, CircleCI, Buildkite, TeamCity, …) fill nothing: set `SANSHAIN_BUILD_URL` and
+`SANSHAIN_CHANGE_URL` from their variables. The service accepts http(s) URLs, at most 20 ticket ids
+made of letters, digits, `-`, `_` and `.`, and a note of at most 200 characters.
+
 ### Retiring a protocol
 
 Removing a `provides` entry does not tell Sanshain anything — it cannot distinguish a dropped
