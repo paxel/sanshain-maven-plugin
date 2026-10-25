@@ -1,5 +1,12 @@
 # Sanshain Maven Plugin
 
+[![CI](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml)
+[![Security](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.paxel.sanshain/sanshain-maven-plugin)](https://central.sonatype.com/artifact/io.github.paxel.sanshain/sanshain-maven-plugin)
+[![Java 11+](https://img.shields.io/badge/java-11%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
+[![Maven 3.6.3+](https://img.shields.io/badge/maven-3.6.3%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/LICENSE)
+
 The Sanshain Maven Plugin allows microservices to interact with the Sanshain service to manage and distribute API specifications (OpenAPI, AsyncAPI, gRPC/Proto) during the build process. A **Producer** provides its complete specification under a producer-declared **version**; a **Consumer** pins an exact version and requires only the endpoint snippets it uses.
 
 ## Goals
