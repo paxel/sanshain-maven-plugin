@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-## [2.4.0]
-
-### Added
-- A provide carries the origin of its build: the build URL and the pull or merge request URL from the runner's own variables on GitHub Actions, GitLab CI and Jenkins (overridden by `-Dsanshain.buildUrl` / `SANSHAIN_BUILD_URL` and `-Dsanshain.changeUrl` / `SANSHAIN_CHANGE_URL`), plus `-Dsanshain.tickets` / `SANSHAIN_TICKETS` (comma-separated ids) and `-Dsanshain.note` / `SANSHAIN_NOTE`. Sanshain Service 2.9.0 and later stores it with the version and shows it as "why".
+## [2.4.1]
 
 ### Changed
-- Snapshots are overwritable by the user who last provided them (Sanshain Service 2.9.0 and later); another user's different content is rejected `409` with the next free minor proposed, which the plugin prints like every other version-rule rejection.
+- Jackson updated to 2.22.
+
+### Fixed
+- The plugin runs on Maven 3.6.3 and later again; 2.3.0 and 2.4.0 refused every Maven older than 3.9.16.
 
 ---
 

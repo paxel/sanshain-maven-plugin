@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-PLUGIN="io.github.paxel.sanshain:sanshain-maven-plugin:2.4.0"
+PLUGIN="io.github.paxel.sanshain:sanshain-maven-plugin:2.4.1"
 SETTINGS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/settings-example.xml"
 DEMO_DIR="demo-project"
 
