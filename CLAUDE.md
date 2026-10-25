@@ -19,7 +19,7 @@ mvn verify -B           # what CI runs (.github/workflows/ci.yml)
 ```
 
 - Java 11 target (`pom.xml` `maven.compiler.source/target`), built with Temurin 11 in CI. Ignore any references to Java 17 elsewhere (stale).
-- Tests use JUnit 5, Mockito, and WireMock (`wiremock-jre8-standalone`) to stub the Sanshain HTTP service — see `ProvideMojoTest`/`RequireMojoTest` for the pattern (spin up `WireMockServer` on a dynamic port).
+- Tests use JUnit 5, Mockito, and WireMock (`wiremock-standalone`) to stub the Sanshain HTTP service — see `ProvideMojoTest`/`RequireMojoTest` for the pattern (spin up `WireMockServer` on a dynamic port).
 - Releases are tag-triggered (`v*`) via `.github/workflows/release.yml`, publishing to Maven Central through the `release` Maven profile (GPG signing + `central-publishing-maven-plugin`).
 
 ## Architecture
