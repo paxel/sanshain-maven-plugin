@@ -52,8 +52,8 @@ Stability is declared per build: feature pipelines publish overwritable `snapsho
   env:
     SANSHAIN_URL: ${{ secrets.SANSHAIN_URL }}
     SANSHAIN_TOKEN: ${{ secrets.SANSHAIN_TOKEN }}
-    # GA only on the release branch pipeline
-    SANSHAIN_GA: ${{ github.ref == 'refs/heads/main' }}
+    # GA only on main; empty elsewhere, since SANSHAIN_GA=false would override autoGa
+    SANSHAIN_GA: ${{ github.ref == 'refs/heads/main' && 'true' || '' }}
 ```
 
 ### Dry-Run for Pull Requests
