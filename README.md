@@ -35,7 +35,7 @@ Add the plugin to your `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>2.4.1</version>
+    <version>2.5.0</version>
     <executions>
         <execution>
             <phase>initialize</phase>
@@ -444,7 +444,7 @@ A consumer pom that requires the OpenAPI form in `initialize` and generates Spri
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>2.4.1</version>
+            <version>2.5.0</version>
             <executions>
                 <execution>
                     <phase>initialize</phase>
@@ -597,7 +597,7 @@ With a minimal `pom.xml` configuration:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>2.4.1</version>
+    <version>2.5.0</version>
     <executions>
         <execution>
             <phase>initialize</phase>
@@ -748,7 +748,7 @@ Combined with `bestEffort` mode, this is completely safe even for projects that 
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>2.4.1</version>
+            <version>2.5.0</version>
             <executions>
                 <execution>
                     <phase>initialize</phase>
@@ -792,7 +792,7 @@ Alternatively, if you only want to configure the default settings without forcin
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>2.4.1</version>
+            <version>2.5.0</version>
             <configuration>
                 <bestEffort>true</bestEffort>
             </configuration>
