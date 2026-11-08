@@ -91,4 +91,15 @@ public class SanshainStreamTest {
     public void testExplicitFalsePropertyBeatsEnvironment() {
         assertTrue(SanshainStream.resolve(false, null, "true", null).isNone());
     }
+
+    @Test
+    public void testDeclaredWhenTrunkTagOrBoth() {
+        assertFalse(SanshainStream.none().isDeclared());
+        assertFalse(SanshainStream.tag(" ").isDeclared());
+        assertTrue(SanshainStream.trunk().isDeclared());
+        assertTrue(SanshainStream.tag("release-1").isDeclared());
+        SanshainStream both = SanshainStream.resolve(true, "release-1", null, null);
+        assertTrue(both.isNone());
+        assertTrue(both.isDeclared());
+    }
 }

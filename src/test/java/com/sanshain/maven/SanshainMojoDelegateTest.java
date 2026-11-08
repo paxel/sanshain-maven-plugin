@@ -81,10 +81,77 @@ public class SanshainMojoDelegateTest {
 
     @Test
     public void testGaEnvSwitchValues() {
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "1")).resolveStability(false));
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "TRUE")).resolveStability(false));
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " true ")).resolveStability(false));
-        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "yes")).resolveStability(false));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "1")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "TRUE")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " true ")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "yes")).resolveStability(null, SanshainStream.none(), null));
+    }
+
+    // --- autoGa: the ga flag, then SANSHAIN_GA, then autoGa with a declared stream, then snapshot ---
+
+    private static SanshainConfig autoGa(Boolean autoGa) {
+        SanshainConfig config = new SanshainConfig();
+        config.setAutoGa(autoGa);
+        return config;
+    }
+
+    private static final Map<String, String> NO_ENV = Collections.emptyMap();
+
+    @Test
+    public void testAutoGaOnTrunkIsGa() {
+        assertEquals("ga", delegate(null, NO_ENV).resolveStability(null, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTagIsGa() {
+        assertEquals("ga", delegate(null, NO_ENV).resolveStability(null, SanshainStream.tag("release-1"), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaWithoutStreamIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(null, SanshainStream.none(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTrunkWithEnvGaFalseIsSnapshot() {
+        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "false"))
+                .resolveStability(null, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTrunkWithGaFlagFalseIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(false, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaFalseOnTrunkIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(null, SanshainStream.trunk(), autoGa(false)));
+    }
+
+    @Test
+    public void testAutoGaAbsentWithEnvGaTrueIsGa() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "true"))
+                .resolveStability(null, SanshainStream.none(), autoGa(null)));
+    }
+
+    @Test
+    public void testGaFlagTrueWinsOverEnvGaFalseWithAutoGa() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "false"))
+                .resolveStability(true, SanshainStream.none(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaWithTrunkAndTagIsGa() throws MojoFailureException {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_TAG", "release-1"));
+        SanshainStream both = d.resolveStream(true, null);
+        assertTrue(both.isNone());
+        assertEquals("ga", d.resolveStability(null, both, autoGa(true)));
+    }
+
+    @Test
+    public void testBlankEnvGaIsUnsetSoAutoGaDecides() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " "))
+                .resolveStability(null, SanshainStream.trunk(), autoGa(true)));
     }
 
     @Test

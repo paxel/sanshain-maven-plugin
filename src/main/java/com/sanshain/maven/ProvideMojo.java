@@ -74,11 +74,12 @@ public class ProvideMojo extends AbstractMojo {
     private Boolean bestEffort;
 
     /**
-     * The explicit GA switch: when true, this build provides as {@code ga} instead of the default
-     * {@code snapshot}. Also settable via {@code SANSHAIN_GA=true}.
+     * The explicit GA switch: true provides as {@code ga}, false as {@code snapshot}, whatever
+     * {@code SANSHAIN_GA} or {@code autoGa} say. Unset, {@code SANSHAIN_GA} decides, then
+     * {@code autoGa} with a declared stream, then {@code snapshot}.
      */
-    @Parameter(property = "sanshain.ga", defaultValue = "false")
-    private boolean ga;
+    @Parameter(property = "sanshain.ga")
+    private Boolean ga;
 
     /**
      * Declares this build as the trunk stream's: its versions and pins maintain the main graph.
@@ -178,8 +179,9 @@ public class ProvideMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         boolean resolvedCombine = delegate.resolveCombine(combine, config);
-        stability = delegate.resolveStability(ga);
+        // The stream first: autoGa makes a provide GA on a build that declares one.
         stream = delegate.resolveStream(trunk, tag);
+        stability = delegate.resolveStability(ga, stream, config);
         origin = delegate.resolveOrigin(buildUrl, changeUrl, tickets, note);
 
         if (resolvedToken == null) {

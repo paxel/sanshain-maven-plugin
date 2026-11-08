@@ -149,13 +149,13 @@ public class ProvideMojoTest {
     @Test
     public void testResolveStabilityDefaultIsSnapshot() {
         SanshainMojoDelegate delegate = createDelegate();
-        assertEquals("snapshot", delegate.resolveStability(false));
+        assertEquals("snapshot", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
     public void testResolveStabilityGaProperty() {
         SanshainMojoDelegate delegate = createDelegate();
-        assertEquals("ga", delegate.resolveStability(true));
+        assertEquals("ga", delegate.resolveStability(true, SanshainStream.none(), null));
     }
 
     @Test
@@ -164,7 +164,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "true");
         delegate.setEnvironmentVariables(env);
-        assertEquals("ga", delegate.resolveStability(false));
+        assertEquals("ga", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
@@ -173,7 +173,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "false");
         delegate.setEnvironmentVariables(env);
-        assertEquals("snapshot", delegate.resolveStability(false));
+        assertEquals("snapshot", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
@@ -182,7 +182,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "false");
         delegate.setEnvironmentVariables(env);
-        assertEquals("ga", delegate.resolveStability(true));
+        assertEquals("ga", delegate.resolveStability(true, SanshainStream.none(), null));
     }
 
     // --- Config validation happens before any network call ---
@@ -963,5 +963,66 @@ public class ProvideMojoTest {
                 assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
         assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    // --- autoGa (the env rows of the table are covered on the delegate) ---
+
+    private static final String AUTO_GA_YAML = PROVIDE_YAML + "autoGa: true\n";
+
+    private String provideWith(String yaml, Boolean trunk, String tag, Boolean ga) throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "trunk", trunk);
+        setField(mojo, "tag", tag);
+        setField(mojo, "ga", ga);
+        mojo.execute();
+        return wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+    }
+
+    @Test
+    public void testAutoGaOnTrunkProvidesGa() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, true, null, null);
+        assertTrue(body.contains("\"stability\":\"ga\""), body);
+        assertTrue(body.contains("\"trunk\":true"), body);
+    }
+
+    @Test
+    public void testAutoGaOnTagProvidesGa() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, null, "release-1", null);
+        assertTrue(body.contains("\"stability\":\"ga\""), body);
+        assertTrue(body.contains("\"tag\":\"release-1\""), body);
+    }
+
+    @Test
+    public void testAutoGaWithoutStreamProvidesSnapshot() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, null, null, null);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testGaFalseBeatsAutoGaOnTrunk() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, true, null, false);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testAutoGaFalseOnTrunkProvidesSnapshot() throws Exception {
+        String body = provideWith(PROVIDE_YAML + "autoGa: false\n", true, null, null);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testRetireWithAutoGaOnTrunkSendsNoStability() throws Exception {
+        // A retire answers a body; the empty 202 of provideWith's stub is not one.
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202).withBody("{}")));
+        String yaml = "serviceName: my-service\nautoGa: true\nprovides:\n  - apiType: openapi\n    retired: true\n";
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "trunk", true);
+        mojo.execute();
+        String body = wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+        assertTrue(body.contains("\"retired\":true"), body);
+        assertFalse(body.contains("stability"), body);
+        assertFalse(body.contains("trunk"), body);
+        assertFalse(body.contains("\"tag\""), body);
     }
 }

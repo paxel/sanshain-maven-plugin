@@ -42,6 +42,7 @@ public class SanshainConfig {
     private Boolean insecure;
     private Boolean bestEffort;
     private Boolean strict;
+    private Boolean autoGa;
     private Boolean combine;
     private String catalogInfo;
     private ProvideConfig provide;
@@ -66,7 +67,7 @@ public class SanshainConfig {
     // this plugin is accepted silently; the legacy names are rejected by name instead.
     private static final Set<String> KNOWN_TOP = new HashSet<>(Arrays.asList(
             "sanshainUrl", "serviceName", "clientName", "compression", "bestEffort", "strict", "force",
-            "insecure", "combine", "catalogInfo", "provide", "provides", "requires",
+            "insecure", "combine", "catalogInfo", "autoGa", "provide", "provides", "requires",
             "timeout", "releaseBranches"));
     private static final Set<String> KNOWN_PROVIDE = new HashSet<>(Arrays.asList(
             "file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine",
@@ -458,6 +459,19 @@ public class SanshainConfig {
      * @param strict true to fail on missing configuration and unknown fields
      */
     public void setStrict(Boolean strict) { this.strict = strict; }
+
+    /**
+     * Gets the yaml autoGa switch: provide as {@code ga} whenever the build declares a stream
+     * (trunk or a tag), unless the explicit GA switch says otherwise.
+     * @return the yaml autoGa value, or null if not set
+     */
+    public Boolean getAutoGa() { return autoGa; }
+
+    /**
+     * Sets the yaml autoGa switch.
+     * @param autoGa true to provide as {@code ga} on every build that declares a stream
+     */
+    public void setAutoGa(Boolean autoGa) { this.autoGa = autoGa; }
 
     /**
      * Gets whether to recursively resolve and inline relative references/imports.

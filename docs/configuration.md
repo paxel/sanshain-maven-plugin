@@ -66,6 +66,7 @@ clients know but this plugin does not use (for example `force`) are accepted sil
 - The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.
 - Every `requires` entry pins an **exact version** (`version: MAJOR.MINOR.PATCH`). No ranges, no `latest`. A pin that does not exist on the server fails the require immediately (`404`).
 - **Stability** is declared per build: the default is `snapshot`; `-Dsanshain.ga=true` or `SANSHAIN_GA=true` provides as `ga`. There is no stability field in `sanshain.yaml`.
+- **`autoGa: true`** in `sanshain.yaml` provides as `ga` whenever the build declares a stream: trunk (`-Dsanshain.trunk` / `SANSHAIN_TRUNK`) or a tag (`-Dsanshain.tag` / `SANSHAIN_TAG`), or both. Without a stream it stays `snapshot`. The first that is set decides: `-Dsanshain.ga` (true or false), then `SANSHAIN_GA` (an explicit `false` counts), then `autoGa` with a stream, then `snapshot`. There is no branch detection: CI declares trunk and tag on its protected pipelines only. The CI token's user needs the `releaser` role, and a trunk build that changes the spec without a version bump fails with `409 immutable_ga` and the proposed version. A retire never carries a stability.
 
 ## Streams: trunk and release branches
 
@@ -119,7 +120,8 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
 | Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
-| GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | `false` (provide as `snapshot`)                    |
+| GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | unset (provide as `snapshot`)                      |
+| Auto GA (provide only)      | `autoGa`        | —                        | —                       | `false` (GA on every trunk or tag build)           |
 | Trunk stream                | —               | `-Dsanshain.trunk`       | `$SANSHAIN_TRUNK`       | `false`                                            |
 | Branch stream               | —               | `-Dsanshain.tag`         | `$SANSHAIN_TAG`         | — (no branch)                                      |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
@@ -147,7 +149,7 @@ environment.
 | `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                                             |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                                       |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable).                      |
-| `ga`          | `sanshain.ga`           | `false`                                   | Provide as `ga` instead of `snapshot`. Also settable via `$SANSHAIN_GA`.           |
+| `ga`          | `sanshain.ga`           | unset                                     | `true`: `ga`, `false`: `snapshot`, over `$SANSHAIN_GA` and `autoGa`.               |
 | `trunk`       | `sanshain.trunk`        | `false`                                   | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`.                        |
 | `tag`         | `sanshain.tag`          | —                                         | This build is a sanshain-branch's. Also settable via `$SANSHAIN_TAG`.              |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                                            |

@@ -171,19 +171,29 @@ public class SanshainMojoDelegate {
     }
 
     /**
-     * Resolves the stability declared on every Provide. Always {@code snapshot} unless the
-     * explicit GA switch is set: the {@code -Dsanshain.ga=true} Maven property or the
-     * {@code SANSHAIN_GA=true} environment variable. There is no git magic and no stability
-     * field in sanshain.yaml — CI sets the switch on release pipelines, and that is the whole
-     * mechanism.
+     * Resolves the stability declared on every Provide; the first rule that is set decides:
+     * <ol>
+     *   <li>the {@code -Dsanshain.ga} Maven property, true or false;</li>
+     *   <li>the {@code SANSHAIN_GA} environment variable, unless absent or blank (an explicit
+     *       {@code false} counts as set);</li>
+     *   <li>{@code autoGa: true} in sanshain.yaml on a build that declares a stream (trunk, a
+     *       tag, or both);</li>
+     *   <li>otherwise {@code snapshot}.</li>
+     * </ol>
+     * There is no git magic and no stability field in sanshain.yaml: CI sets the switch, or
+     * declares the stream, on its protected pipelines, and that is the whole mechanism.
      *
-     * @param ga the value of the {@code sanshain.ga} Maven property
-     * @return {@code "ga"} if the switch is set, otherwise {@code "snapshot"}
+     * @param ga     the {@code sanshain.ga} Maven property, or null if unset
+     * @param stream the stream this build declared (resolve it first)
+     * @param config the loaded configuration, for {@code autoGa}
+     * @return {@code "ga"} or {@code "snapshot"}
      */
-    public String resolveStability(boolean ga) {
-        if (ga) return "ga";
+    public String resolveStability(Boolean ga, SanshainStream stream, SanshainConfig config) {
+        if (ga != null) return ga ? "ga" : "snapshot";
         String envGa = environmentVariables.get("SANSHAIN_GA");
-        if (isSwitchOn(envGa)) return "ga";
+        if (envGa != null && !envGa.isBlank()) return isSwitchOn(envGa) ? "ga" : "snapshot";
+        boolean autoGa = config != null && Boolean.TRUE.equals(config.getAutoGa());
+        if (autoGa && stream != null && stream.isDeclared()) return "ga";
         return "snapshot";
     }
 

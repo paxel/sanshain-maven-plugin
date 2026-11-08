@@ -442,4 +442,12 @@ public class SanshainConfigTest {
         assertTrue(ex.getMessage().contains("requires[0] (events): format 'json-schema' is not supported"), ex.getMessage());
         assertTrue(ex.getMessage().contains("apiType: asyncapi with format: openapi"), ex.getMessage());
     }
+
+    @Test
+    public void testAutoGaIsKnownAndRead() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\nautoGa: true\n");
+        assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
+        assertEquals(Boolean.TRUE, config.getAutoGa());
+        assertNull(load("serviceName: x\n").getAutoGa());
+    }
 }

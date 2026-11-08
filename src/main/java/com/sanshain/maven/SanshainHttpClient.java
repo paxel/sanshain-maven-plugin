@@ -1043,7 +1043,8 @@ public class SanshainHttpClient {
         return "Refused (403): " + sanitize(responseBody)
                 + " — publishing a GA version requires the 'releaser' role. Grant it to the user or "
                 + "token this build authenticates as (administrators and root always hold it), or "
-                + "publish as a snapshot by leaving sanshain.ga / SANSHAIN_GA unset.";
+                + "publish as a snapshot by leaving sanshain.ga / SANSHAIN_GA unset and autoGa off "
+                + "(or setting SANSHAIN_GA=false).";
     }
 
     /**

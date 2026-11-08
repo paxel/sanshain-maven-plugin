@@ -23,7 +23,7 @@ The Sanshain Maven Plugin allows microservices to interact with the Sanshain ser
 ## The 2.0 model in one minute
 
 - **The version lives in the spec file.** For OpenAPI and AsyncAPI it is read from `info.version`; for proto from a mandatory `// sanshain-version:` comment. Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v` — omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. No `-SNAPSHOT` or other suffixes. The plugin never sends a version on provide; the server reads it from the document.
-- **Stability is declared on every provide**: `snapshot` (work-in-progress, overwritable by the user who last provided it, expires when unused) or `ga` (immutable; the number is permanently claimed). The default is always `snapshot`; GA is an explicit switch (`-Dsanshain.ga=true` or `SANSHAIN_GA=true`) that CI sets on release pipelines.
+- **Stability is declared on every provide**: `snapshot` (work-in-progress, overwritable by the user who last provided it, expires when unused) or `ga` (immutable; the number is permanently claimed). The default is always `snapshot`; GA is an explicit switch (`-Dsanshain.ga=true` or `SANSHAIN_GA=true`) that CI sets on release pipelines, or `autoGa: true` in `sanshain.yaml`, which makes every trunk or tag build GA.
 - **Consumers pin exact versions.** Every `requires` entry carries a `version`. Resolution prefers GA, falls back only to the same-numbered snapshot, and otherwise fails immediately — no fallback to other versions, no waiting.
 - **Branches are gone.** There is no branch detection, no branch parameter, no long-polling, no force mode, and no `baseVersion` optimistic concurrency. GA immutability is the concurrency control.
 
@@ -180,7 +180,8 @@ All global settings can be specified in `sanshain.yaml`, overridden via Maven pr
 | Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`          | `$SANSHAIN_URL`          | `http://localhost:8080` |
 | Sanshain URL (settings.xml) | —               | —                         | —                        | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`        | `$SANSHAIN_TOKEN`        | — (optional) |
-| GA switch (provide only)    | —               | `-Dsanshain.ga`           | `$SANSHAIN_GA`           | `false` (provide as `snapshot`; see [Stability](#stability-the-ga-switch)) |
+| GA switch (provide only)    | —               | `-Dsanshain.ga`           | `$SANSHAIN_GA`           | unset (provide as `snapshot`; see [Stability](#stability-the-ga-switch)) |
+| Auto GA (provide only)      | `autoGa`        | —                         | —                        | `false` (GA on every trunk or tag build; see [Stability](#stability-the-ga-switch)) |
 | Compression                 | `compression`   | `-Dsanshain.compression`  | `$SANSHAIN_COMPRESSION`  | `true` |
 | Insecure                    | `insecure`      | `-Dsanshain.insecure`     | `$SANSHAIN_INSECURE`     | `false` |
 | Best Effort                 | `bestEffort`    | `-Dsanshain.bestEffort`   | `$SANSHAIN_BEST_EFFORT`  | `false` (see [Best-Effort Mode](#best-effort-mode)) |
@@ -200,10 +201,10 @@ environment.
 
 ## Stability: the GA switch
 
-Every provide declares a stability, and the plugin decides it with exactly one rule:
+Every provide declares a stability, and the plugin decides it with one rule:
 
 - **Default: `snapshot`.** Overwritable work-in-progress; re-providing the same version replaces it (last writer wins). Snapshots expire when unused.
-- **`ga` only via an explicit switch:** the Maven property `-Dsanshain.ga=true` or the environment variable `SANSHAIN_GA=true`. GA versions are immutable forever and permanently claim their number.
+- **`ga` only by an explicit act:** the Maven property `-Dsanshain.ga=true`, the environment variable `SANSHAIN_GA=true`, or `autoGa: true` in `sanshain.yaml` on a build that declares a stream. GA versions are immutable forever and permanently claim their number.
 
 There is no git magic and no branch matching — CI simply sets the switch on release/protected-branch pipelines:
 
@@ -218,6 +219,29 @@ export SANSHAIN_GA=true
 mvn verify
 ```
 
+### `autoGa`: GA on every trunk or tag build
+
+```yaml
+autoGa: true
+```
+
+With `autoGa: true` a provide is GA whenever the build declares a [stream](#streams-trunk-and-release-branches):
+trunk (`-Dsanshain.trunk=true` / `SANSHAIN_TRUNK`) or a tag (`-Dsanshain.tag=<branch>` / `SANSHAIN_TAG`), and
+also when it declares both. Without a stream the provide stays a snapshot, so a developer's laptop build
+never releases. The first of these that is set decides:
+
+1. `-Dsanshain.ga` (`true` or `false`);
+2. `SANSHAIN_GA` (an explicit `false` counts; empty or absent does not);
+3. `autoGa: true` with trunk or a tag;
+4. `snapshot`.
+
+So `SANSHAIN_GA=false` or `-Dsanshain.ga=false` keeps one build a snapshot despite `autoGa`. There is
+still no branch detection: CI declares trunk and tag on its protected pipelines only, and that is what
+makes them GA. The CI token's user needs the `releaser` role, and a trunk build that changes the spec
+without a version bump fails with `409 immutable_ga` and the proposed version: bump the version in
+the spec file and build again. A [retire](#retiring-a-protocol) never carries a stability, `autoGa`
+or not.
+
 ## Goal: `provide`
 
 Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to the Sanshain service. The server reads the version from the document and answers `202 Accepted` with what it stored.
@@ -230,7 +254,7 @@ Uploads the service's API specifications (OpenAPI, AsyncAPI, and/or Proto) to th
 | `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file. |
 | `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service. |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable). |
-| `ga`          | `sanshain.ga`           | `false`                                   | Provide as `ga` instead of `snapshot` (see [Stability](#stability-the-ga-switch)). Also settable via `$SANSHAIN_GA`. |
+| `ga`          | `sanshain.ga`           | unset                                     | `true` provides as `ga`, `false` as `snapshot`, whatever `$SANSHAIN_GA` or `autoGa` say (see [Stability](#stability-the-ga-switch)). Also settable via `$SANSHAIN_GA`. |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload. |
 | `insecure`    | `sanshain.insecure`     | `false`                                   | Ignore SSL certificate errors. |
 | `bestEffort`  | `sanshain.bestEffort`   | `false`                                   | Don't fail the build on server errors (see [Best-Effort Mode](#best-effort-mode)). |
