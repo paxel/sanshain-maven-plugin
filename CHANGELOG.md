@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A `403` on provide or retire names the releaser role only when the service refused for want of it; any other `403`, such as a read-only token's, shows the service's message alone.
 - The require ETag cache is kept per output directory: the same endpoint required into two directories is written to both instead of the second getting a `304` and staying empty, and a deleted output file is fetched again instead of being skipped.
 - The GitHub Actions example in `docs/corporate-usage.md` sets `SANSHAIN_GA` on main only and leaves it empty elsewhere; the `false` it set off main kept `autoGa` from making a build GA.
+- `docs/lifecycle.md` names `initialize` as provide's default phase, as the plugin binds it; it said `validate`.
 
 ---
 
