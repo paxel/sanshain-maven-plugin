@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - A retire the service accepts with an empty or unreadable `202` body now succeeds instead of failing with "Failed to build JSON for /provide".
+- A require with `apiType: grpc` is saved as `.proto` (it was `.yaml`), and its bundle sends `api_type: proto`, the spelling the service's contract names.
 
 ---
 

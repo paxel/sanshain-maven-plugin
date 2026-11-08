@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 
 /**
@@ -191,7 +192,7 @@ public class RequireMojo extends AbstractMojo {
 
     private void processRequire(SanshainConfig.RequireConfig req, SanshainConfig config, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException, MojoFailureException {
         String reqServiceName = req.getServiceName();
-        String apiType = req.getApiType();
+        String apiType = canonicalApiType(req.getApiType());
         String version = req.getVersion();
 
         File outputDirectory = resolveOutputDirectory(req, config);
@@ -211,6 +212,19 @@ public class RequireMojo extends AbstractMojo {
         } catch (Exception e) {
             delegate.handleException(e, bestEffort);
         }
+    }
+
+    /**
+     * The require's apiType as the service's contract spells it: lower case, and {@code grpc},
+     * which a provide accepts too, as {@code proto}. The wire and the output file's extension
+     * only know {@code proto}.
+     */
+    private static String canonicalApiType(String apiType) {
+        if (apiType == null) {
+            return null;
+        }
+        String type = apiType.toLowerCase(Locale.ROOT);
+        return type.equals("grpc") ? "proto" : type;
     }
 
     private File resolveOutputDirectory(SanshainConfig.RequireConfig req, SanshainConfig config) {

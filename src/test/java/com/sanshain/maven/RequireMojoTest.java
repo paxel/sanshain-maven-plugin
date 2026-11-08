@@ -164,6 +164,46 @@ public class RequireMojoTest {
         assertEquals("merged yaml", Files.readString(outputFile));
     }
 
+    @Test
+    public void testGrpcRequireIsProtoOnTheWireAndOnDisk() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: greeter\n" +
+                "    apiType: grpc\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: single\n" +
+                "    endpoints:\n" +
+                "      - method: SayHello\n" +
+                "        path: helloworld.Greeter\n" +
+                "  - serviceName: greeter\n" +
+                "    apiType: GRPC\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: bundle\n" +
+                "    endpoints:\n" +
+                "      - method: SayHello\n" +
+                "        path: helloworld.Greeter\n" +
+                "      - method: SayBye\n" +
+                "        path: helloworld.Greeter\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require/grpc"))
+                .willReturn(aResponse().withStatus(200).withBody("syntax = \"proto3\";")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody("syntax = \"proto3\"; // bundle")));
+
+        createMojo(yaml).execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require/grpc"))
+                .withQueryParam("producername", equalTo("greeter"))
+                .withQueryParam("method", equalTo("SayHello")));
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.api_type", equalTo("proto"))));
+        assertEquals("syntax = \"proto3\";",
+                Files.readString(tempDir.resolve("single/greeter_helloworld.Greeter_SayHello.proto")));
+        assertEquals("syntax = \"proto3\"; // bundle",
+                Files.readString(tempDir.resolve("bundle/greeter_bundle.proto")));
+    }
+
     // --- Config validation: parse-time named errors, before any network call ---
 
     @Test
