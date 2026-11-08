@@ -229,6 +229,28 @@ public class RequireMojoTest {
     }
 
     @Test
+    public void testUnknownApiTypeIsAConfigErrorAlsoWithBestEffort() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "bestEffort: true\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    apiType: raml\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+
+        assertTrue(ex.getMessage().contains("requires[0] (user-service): Unsupported apiType: raml"), ex.getMessage());
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/require-bundle")));
+    }
+
+    @Test
     public void testBranchEraFieldIsAHardErrorByName() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
                 "serviceName: test-client\n" +

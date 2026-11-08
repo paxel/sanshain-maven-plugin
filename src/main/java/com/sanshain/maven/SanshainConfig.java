@@ -84,8 +84,8 @@ public class SanshainConfig {
             "method", "path"));
     private static final Set<String> KNOWN_ANNOTATION = new HashSet<>(Arrays.asList(
             "scope", "name", "value"));
-    /** The apiType spellings a provide takes, in lower case; {@code grpc} means proto. */
-    private static final Set<String> PROVIDE_API_TYPES = new HashSet<>(Arrays.asList(
+    /** The apiType spellings a provide and a require take, in lower case; {@code grpc} means proto. */
+    private static final Set<String> API_TYPES = new HashSet<>(Arrays.asList(
             "openapi", "asyncapi", "proto", "grpc"));
 
     /** The environment the overrides are read from; replaceable in tests. */
@@ -303,6 +303,9 @@ public class SanshainConfig {
                     errors.add(label + ": missing 'version' — Sanshain 2.0 pins exact versions; "
                             + "add version: 1.2.0 (list available: GET /producers/" + producer + "/versions)");
                 }
+                if (req.getApiType() != null && !API_TYPES.contains(req.getApiType().toLowerCase(java.util.Locale.ROOT))) {
+                    errors.add(label + ": Unsupported apiType: " + req.getApiType() + " — use openapi, asyncapi or proto (grpc means proto)");
+                }
                 if (req.getFormat() != null) {
                     if (!"openapi".equals(req.getFormat())) {
                         errors.add(label + ": format '" + req.getFormat() + "' is not supported — the only "
@@ -387,7 +390,7 @@ public class SanshainConfig {
             legacy(legacyErrors, errors, label + ": 'stability' is not configured in sanshain.yaml — declare it per build via "
                     + "-Dsanshain.ga=true / SANSHAIN_GA=true (default: snapshot)");
         }
-        if (p.getApiType() != null && !PROVIDE_API_TYPES.contains(p.getApiType().toLowerCase(java.util.Locale.ROOT))) {
+        if (p.getApiType() != null && !API_TYPES.contains(p.getApiType().toLowerCase(java.util.Locale.ROOT))) {
             errors.add(label + ": Unsupported apiType: " + p.getApiType() + " — use openapi, asyncapi or proto (grpc means proto)");
         }
     }
