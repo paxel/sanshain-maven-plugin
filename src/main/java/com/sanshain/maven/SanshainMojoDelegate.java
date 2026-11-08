@@ -9,6 +9,7 @@ import org.apache.maven.settings.Settings;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +26,7 @@ public class SanshainMojoDelegate {
     /** The resolved strict mode: the property if set, else sanshain.yaml's {@code strict}, else off. */
     private boolean strict;
     private Map<String, String> environmentVariables = System.getenv();
+    private Properties systemProperties = System.getProperties();
 
     public SanshainMojoDelegate(Log log, Settings settings, String serverId, Boolean strict) {
         this.log = log;
@@ -246,6 +248,34 @@ public class SanshainMojoDelegate {
     }
 
     /**
+     * Fills the {@code annotations} of sanshain.yaml, on the same terms as the other build facts:
+     * a placeholder {@code {{NAME}}} takes the Maven property {@code NAME} ({@code -DNAME=value}:
+     * the user property, else the system property of that name), else the environment variable
+     * {@code SANSHAIN_SET_NAME}. Every entry left out for an unfilled placeholder is warned
+     * about; under strict the first such warning fails the goal before any request. Best-effort
+     * does not soften that.
+     *
+     * @param config         the loaded configuration
+     * @param userProperties the Maven user properties ({@code -D}), or null
+     * @return the filled annotations
+     * @throws MojoFailureException under strict, if an entry was left out
+     */
+    public SanshainAnnotations resolveAnnotations(SanshainConfig config, Properties userProperties)
+            throws MojoFailureException {
+        SanshainAnnotations annotations = SanshainAnnotations.resolve(config.getAnnotations(), name -> {
+            String value = userProperties != null ? userProperties.getProperty(name) : null;
+            return value != null ? value : systemProperties.getProperty(name);
+        }, environmentVariables);
+        for (String warning : annotations.getWarnings()) {
+            log.warn(warning);
+        }
+        if (strict && !annotations.getWarnings().isEmpty()) {
+            throw new MojoFailureException("strict: " + annotations.getWarnings().get(0));
+        }
+        return annotations;
+    }
+
+    /**
      * Applies strict mode to the warnings Sanshain sent with a call (already printed by the
      * client as they arrived). Without strict, nothing happens. Under strict, any warning fails
      * the goal with the first one — best-effort does not soften this. A call that also failed
@@ -321,6 +351,10 @@ public class SanshainMojoDelegate {
 
     void setEnvironmentVariables(Map<String, String> environmentVariables) {
         this.environmentVariables = environmentVariables;
+    }
+
+    void setSystemProperties(Properties systemProperties) {
+        this.systemProperties = systemProperties;
     }
 
     public String resolveServiceName(String serviceName, SanshainConfig config) {

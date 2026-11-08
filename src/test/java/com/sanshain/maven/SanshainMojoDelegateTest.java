@@ -418,4 +418,73 @@ public class SanshainMojoDelegateTest {
         MojoFailureException strict = new MojoFailureException("strict: Sanshain warned: w");
         assertSame(strict, assertThrows(MojoFailureException.class, () -> d.handleException(strict, true)));
     }
+
+    // --- annotations: -DNAME (user property, then system property), then SANSHAIN_SET_NAME ---
+
+    private static SanshainConfig annotated(String value) {
+        return annotatedConfig(new SanshainConfig.AnnotationConfig("version", "requirements", value));
+    }
+
+    private static SanshainConfig annotatedConfig(SanshainConfig.AnnotationConfig... entries) {
+        SanshainConfig config = Mockito.spy(new SanshainConfig());
+        Mockito.doReturn(Arrays.asList(entries)).when(config).getAnnotations();
+        return config;
+    }
+
+    private static java.util.Properties props(String name, String value) {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty(name, value);
+        return props;
+    }
+
+    private static final String LEFT_OUT = "annotation 'requirements' left out: {{ID}} is not set (-DID=… or SANSHAIN_SET_ID)";
+
+    @Test
+    public void testUserPropertyWinsOverSystemPropertyAndEnv() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(props("ID", "system"));
+        SanshainAnnotations a = d.resolveAnnotations(annotated("r-{{ID}}"), props("ID", "user"));
+        assertEquals("r-user", a.forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testSystemPropertyWinsOverEnv() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(props("ID", "system"));
+        assertEquals("r-system", d.resolveAnnotations(annotated("r-{{ID}}"), null).forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testEnvFillsWhenNoPropertyIsSet() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(new java.util.Properties());
+        assertEquals("r-env", d.resolveAnnotations(annotated("r-{{ID}}"), new java.util.Properties())
+                .forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testUnfilledAnnotationWarnsAndKeepsTheOthers() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, false);
+        d.setEnvironmentVariables(NO_ENV);
+        d.setSystemProperties(new java.util.Properties());
+        SanshainAnnotations a = d.resolveAnnotations(annotatedConfig(
+                new SanshainConfig.AnnotationConfig("version", "requirements", "r-{{ID}}"),
+                new SanshainConfig.AnnotationConfig("system", "jenkins", "https://jenkins.corp/job/payments")), null);
+        Mockito.verify(log).warn(LEFT_OUT);
+        assertEquals(1, a.forProvide().size());
+        assertEquals("jenkins", a.forProvide().get(0).get("name"));
+    }
+
+    @Test
+    public void testUnfilledAnnotationUnderStrictFails() {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, true);
+        d.setEnvironmentVariables(NO_ENV);
+        d.setSystemProperties(new java.util.Properties());
+        MojoFailureException e = assertThrows(MojoFailureException.class,
+                () -> d.resolveAnnotations(annotated("r-{{ID}}"), null));
+        assertEquals("strict: " + LEFT_OUT, e.getMessage());
+        Mockito.verify(log).warn(LEFT_OUT);
+    }
 }

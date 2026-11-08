@@ -1025,4 +1025,98 @@ public class ProvideMojoTest {
         assertFalse(body.contains("trunk"), body);
         assertFalse(body.contains("\"tag\""), body);
     }
+
+    // --- annotations ---
+
+    private static final String ANNOTATED_YAML = PROVIDE_YAML + "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+
+    private static java.util.Properties userProperties(String... nameValue) {
+        java.util.Properties props = new java.util.Properties();
+        for (int i = 0; i < nameValue.length; i += 2) {
+            props.setProperty(nameValue[i], nameValue[i + 1]);
+        }
+        return props;
+    }
+
+    @Test
+    public void testProvideSendsFilledAnnotationsOfBothScopes() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.annotations[0].scope", equalTo("version")))
+                .withRequestBody(matchingJsonPath("$.annotations[0].value", equalTo("http://solar.system/id-pay/requirements/42")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].scope", equalTo("system")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testDryRunProvideSendsAnnotations() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        setField(mojo, "dryRun", true);
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.dry_run", equalTo("true")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testUnfilledAnnotationIsLeftOutWithAWarning() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        mojo.setLog(log);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay"));
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("annotation 'requirements' left out: {{PLUGIN_TEST_ID}} is not set "
+                + "(-DPLUGIN_TEST_ID=… or SANSHAIN_SET_PLUGIN_TEST_ID)");
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.annotations.length()", equalTo("1")))
+                .withRequestBody(matchingJsonPath("$.annotations[0].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testUnfilledAnnotationUnderStrictFailsBeforeAnyRequest() throws Exception {
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        mojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay"));
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: annotation 'requirements' left out: {{PLUGIN_TEST_ID}} is not set "
+                + "(-DPLUGIN_TEST_ID=… or SANSHAIN_SET_PLUGIN_TEST_ID)", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testRetireSendsNoAnnotations() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202).withBody("{}")));
+        String yaml = "serviceName: my-service\nprovides:\n  - apiType: openapi\n    retired: true\n" + "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        mojo.execute();
+
+        String body = wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+        assertTrue(body.contains("\"retired\":true"), body);
+        assertFalse(body.contains("annotations"), body);
+    }
 }

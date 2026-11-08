@@ -11,6 +11,7 @@ import org.apache.maven.settings.Settings;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Properties;
 
 /**
  * Goal which provides an API specification to the Sanshain service under its declared stability.
@@ -120,6 +121,13 @@ public class ProvideMojo extends AbstractMojo {
     @Parameter(property = "sanshain.note")
     private String note;
 
+    /**
+     * The Maven user properties ({@code -DNAME=value}): the values of the {@code {{NAME}}}
+     * placeholders in the annotations of sanshain.yaml, before {@code SANSHAIN_SET_NAME}.
+     */
+    @Parameter(defaultValue = "${session.userProperties}", readonly = true)
+    private Properties userProperties;
+
     /** Set in {@link #execute()}; read by the provide helpers, like {@code baseDir}. */
     private SanshainMojoDelegate delegate;
 
@@ -131,6 +139,9 @@ public class ProvideMojo extends AbstractMojo {
 
     /** Resolved once in {@link #execute()}; what this build says about why. */
     private SanshainOrigin origin;
+
+    /** Resolved once in {@link #execute()}; the filled annotations every provide of this run sends. */
+    private SanshainAnnotations annotations;
 
     private void initDefaults() {
         if (baseDir == null) {
@@ -183,6 +194,7 @@ public class ProvideMojo extends AbstractMojo {
         stream = delegate.resolveStream(trunk, tag);
         stability = delegate.resolveStability(ga, stream, config);
         origin = delegate.resolveOrigin(buildUrl, changeUrl, tickets, note);
+        annotations = delegate.resolveAnnotations(config, userProperties);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -219,6 +231,7 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved stability: " + stability);
         getLog().debug("Resolved stream: " + stream);
         getLog().debug("Resolved " + origin);
+        getLog().debug("Resolved " + annotations);
     }
 
     private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException, MojoFailureException {
@@ -305,7 +318,7 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         ProvideResponse response = delegate.checked(client, () -> client.postProvide(url, token, serviceName,
-                content, stability, compression, dryRun, type, file.getName(), stream, origin));
+                content, stability, compression, dryRun, type, file.getName(), stream, origin, annotations));
 
         if (response != null) {
             reportHarvestedSubscriptions(response);

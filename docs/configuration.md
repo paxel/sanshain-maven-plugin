@@ -61,6 +61,40 @@ does not soften this, because it is a configuration error, not a failed call. Fi
 clients know but this plugin does not use (for example `force`) are accepted silently. The removed
 1.x fields still fail by name first.
 
+## Annotations
+
+Annotations are entries the project declares and the build fills in: a link to the requirements of
+this release, the job that builds the system. Sanshain shows them; it never invents or interprets
+them. They need Sanshain Service 2.13.0 or later.
+
+```yaml
+annotations:
+  - scope: version
+    name: requirements
+    value: "http://solar.system/id-{{AREA}}/requirements/{{ID}}"
+  - scope: system
+    name: jenkins
+    value: "https://jenkins.corp/job/payments"
+```
+
+- Every entry has exactly `scope` (`version` or `system`), `name` and `value`, all strings; anything
+  else fails the goal with an error naming the entry, before any request. The service checks the
+  limits (at most 20 per scope, a name of at most 40 letters, digits, `-` and `_`, a value of at most
+  2048 characters) and answers `400` naming the entry.
+- A placeholder `{{NAME}}` (letters, digits and `_` only, no spaces inside the braces) takes its value
+  from the Maven property `-DNAME=value`, else the environment variable `SANSHAIN_SET_NAME`; the
+  property wins and an empty value does not count. Anything else between double braces stays as
+  written. `mvn verify -DAREA=payments -DID=4711` fills the example above.
+- An entry with a placeholder nobody filled is left out with a warning, for example
+  `annotation 'requirements' left out: {{ID}} is not set (-DID=… or SANSHAIN_SET_ID)`; the other
+  entries are still sent. In strict mode the warning fails the goal before any request.
+- `scope: version` entries travel on every provide and are stored with that version. `scope: system`
+  entries travel on every call naming the system (provide, require, require bundle, catalog push) and
+  are stored once per system, the latest call winning per name. A retire sends none; a dry run sends
+  them as a real call would (the service stores nothing).
+- A Sanshain Service before 2.13.0 refuses them; the plugin then repeats the call without them and
+  warns once: `Sanshain Service before 2.13.0 does not take annotations; sending without them`.
+
 ## Versions and stability
 
 - The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.
@@ -135,6 +169,7 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Change URL (provide only)   | —               | `-Dsanshain.changeUrl`   | `$SANSHAIN_CHANGE_URL`  | the runner's variable (GitHub, GitLab, Jenkins)    |
 | Tickets (provide only)      | —               | `-Dsanshain.tickets`     | `$SANSHAIN_TICKETS`     | — (comma-separated ids)                            |
 | Note (provide only)         | —               | `-Dsanshain.note`        | `$SANSHAIN_NOTE`        | — (one line, at most 200 characters)               |
+| Annotation placeholder      | `annotations`   | `-DNAME`                 | `$SANSHAIN_SET_NAME`    | — (entry left out with a warning)                  |
 
 Boolean environment switches (`$SANSHAIN_GA`, `$SANSHAIN_TRUNK`, `$SANSHAIN_BEST_EFFORT`,
 `$SANSHAIN_COMPRESSION`, `$SANSHAIN_INSECURE`, `$SANSHAIN_COMBINE`) are on when the value, trimmed and

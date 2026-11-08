@@ -21,6 +21,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -51,6 +52,13 @@ public class SanshainHttpClient {
 
     /** Sanshain-Warning values received since the last {@link #takeWarnings()}, in order. */
     private final List<String> warnings = new ArrayList<>();
+
+    /** The warning for a service that refuses annotations, printed once per client. */
+    static final String ANNOTATIONS_REFUSED =
+            "Sanshain Service before 2.13.0 does not take annotations; sending without them";
+
+    /** Set once the service refused annotations: later calls of this client send none. */
+    private boolean annotationsRefused;
 
     /** Memoized result of the lazy GET /version probe (at most one per client); null if unknown. */
     private boolean serverVersionChecked;
@@ -138,37 +146,78 @@ public class SanshainHttpClient {
      * @param specFile     the spec file the content came from, named in 409 remediation hints
      * @param stream       the graph this build speaks for (trunk, a sanshain-branch, or neither)
      * @param origin       what this build says about why (build URL, change URL, tickets, note)
+     * @param annotations  the build's annotations; a provide sends both scopes
      * @return the parsed provide response, or null if the 202 body could not be parsed
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public ProvideResponse postProvide(String baseUrl, String token, String producerName, String content,
                             String stability, boolean compression, boolean dryRun, String apiType,
-                            String specFile, SanshainStream stream, SanshainOrigin origin)
+                            String specFile, SanshainStream stream, SanshainOrigin origin,
+                            SanshainAnnotations annotations)
             throws MojoExecutionException {
         String path = providePath(apiType);
         String contentField = contentField(apiType);
         String versionHint = versionHint(apiType);
 
-        ProvidePayload payload = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
-                dryRun, contentField, stream, origin);
-
-        try {
-            String json = objectMapper.writeValueAsString(payload);
+        // An older service refuses a field it does not know by name, one field per answer. Each
+        // refusal drops that field and repeats the provide: the provide itself must not fail for a
+        // fact the service cannot store. A 2.8 service refuses both, in either order.
+        boolean sendOrigin = origin != null && !origin.isNone();
+        List<Map<String, String>> sentAnnotations = annotationsToSend(annotations == null ? null : annotations.forProvide());
+        while (true) {
+            ProvidePayload payload = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
+                    dryRun, contentField, stream, sendOrigin ? origin : SanshainOrigin.none(), sentAnnotations);
+            String json;
+            try {
+                json = objectMapper.writeValueAsString(payload);
+            } catch (JsonProcessingException e) {
+                throw new MojoExecutionException("Failed to build JSON for " + path, e);
+            }
             try {
                 return postProvideInternal(baseUrl, path, token, json, compression, versionHint, specFile,
-                        origin != null && !origin.isNone());
+                        sendOrigin, sentAnnotations != null);
+            } catch (AnnotationsNotSupported e) {
+                refuseAnnotations();
+                sentAnnotations = null;
             } catch (OriginNotSupported e) {
-                // A service before 2.9.0 refuses the origin fields by name: the
-                // provide itself must not fail for a fact it cannot store.
                 log.warn("Sanshain Service before 2.9.0 does not take the build's origin; providing without it");
-                ProvidePayload plain = new ProvidePayload(producerName, normalizeLineEndings(content), stability,
-                        dryRun, contentField, stream, SanshainOrigin.none());
-                return postProvideInternal(baseUrl, path, token, objectMapper.writeValueAsString(plain),
-                        compression, versionHint, specFile, false);
+                sendOrigin = false;
             }
-        } catch (JsonProcessingException e) {
-            throw new MojoExecutionException("Failed to build JSON for " + path, e);
         }
+    }
+
+    /**
+     * The annotations a call sends: none once the service refused them, and none when there are
+     * none, so the field is omitted.
+     */
+    private List<Map<String, String>> annotationsToSend(List<Map<String, String>> entries) {
+        return annotationsRefused || entries == null || entries.isEmpty() ? null : entries;
+    }
+
+    private void refuseAnnotations() {
+        if (!annotationsRefused) {
+            log.warn(ANNOTATIONS_REFUSED);
+        }
+        annotationsRefused = true;
+    }
+
+    /**
+     * A refusal naming the {@code annotations} field: the service predates annotations (before
+     * 2.13.0) — a 422 for a body field, a 400 for the require query parameter.
+     */
+    static final class AnnotationsNotSupported extends MojoExecutionException {
+        AnnotationsNotSupported(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Whether a refusal names {@code annotations} as the unknown field. Matched exactly: the 422 of
+     * a 2.13.0 service's predecessors lists every known field after "expected one of", so the
+     * bare word is not enough.
+     */
+    static boolean namesAnnotationsField(String body) {
+        return body != null && body.contains("unknown field `annotations`");
     }
 
     /** A 422 naming an origin field: the service predates the origin (before 2.9.0). */
@@ -243,17 +292,33 @@ public class SanshainHttpClient {
      * @param content     the catalog-info.yaml content
      * @param compression true if GZIP compression should be used
      * @param trunk       true if this build speaks for the trunk stream
+     * @param annotations the build's annotations; a catalog push sends the system ones
      * @return the recorded periphery; {@link CatalogResponse#isRecorded()} is false if Sanshain could
      *         not read the file and recorded nothing (its reason arrives as a warning)
      * @throws MojoExecutionException if the request fails or is rejected
      */
     public CatalogResponse putCatalog(String baseUrl, String token, String systemName, String content,
-                                      boolean compression, boolean trunk)
+                                      boolean compression, boolean trunk, SanshainAnnotations annotations)
+            throws MojoExecutionException {
+        List<Map<String, String>> sent = annotationsToSend(annotations == null ? null : annotations.forSystem());
+        try {
+            return putCatalogOnce(baseUrl, token, systemName, content, compression, trunk, sent);
+        } catch (AnnotationsNotSupported e) {
+            refuseAnnotations();
+            return putCatalogOnce(baseUrl, token, systemName, content, compression, trunk, null);
+        }
+    }
+
+    private CatalogResponse putCatalogOnce(String baseUrl, String token, String systemName, String content,
+                                           boolean compression, boolean trunk, List<Map<String, String>> annotations)
             throws MojoExecutionException {
         java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("catalog_info_yaml", content);
         if (trunk) {
             payload.put("trunk", true);
+        }
+        if (annotations != null) {
+            payload.put("annotations", annotations);
         }
         String json;
         try {
@@ -303,6 +368,10 @@ public class SanshainHttpClient {
                 logAngryCat();
                 throw new MojoExecutionException("sanshain catalog needs Sanshain Service 2.4.0 or later ("
                         + (version != null ? "server is " + version : "server version unknown") + ")");
+            }
+
+            if (status == 422 && annotations != null && namesAnnotationsField(responseBody)) {
+                throw new AnnotationsNotSupported(sanitize(responseBody));
             }
 
             failOnPre2Server(baseUrl, token);
@@ -381,9 +450,12 @@ public class SanshainHttpClient {
         public final SanshainStream stream;
         @com.fasterxml.jackson.annotation.JsonIgnore
         public final SanshainOrigin origin;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public final List<Map<String, String>> annotations;
 
         public ProvidePayload(String producername, String content, String stability, boolean dryRun,
-                              String contentField, SanshainStream stream, SanshainOrigin origin) {
+                              String contentField, SanshainStream stream, SanshainOrigin origin,
+                              List<Map<String, String>> annotations) {
             this.producername = producername;
             this.content = content;
             this.stability = stability;
@@ -391,6 +463,7 @@ public class SanshainHttpClient {
             this.contentField = contentField;
             this.stream = stream == null ? SanshainStream.none() : stream;
             this.origin = origin == null ? SanshainOrigin.none() : origin;
+            this.annotations = annotations;
         }
 
         @com.fasterxml.jackson.annotation.JsonAnyGetter
@@ -407,6 +480,9 @@ public class SanshainHttpClient {
                 any.put("tag", stream.getTag());
             }
             origin.addTo(any);
+            if (annotations != null) {
+                any.put("annotations", annotations);
+            }
             return any;
         }
     }
@@ -429,7 +505,8 @@ public class SanshainHttpClient {
     }
 
     private ProvideResponse postProvideInternal(String baseUrl, String path, String token, String json,
-                            boolean compression, String versionHint, String specFile, boolean originSent)
+                            boolean compression, String versionHint, String specFile, boolean originSent,
+                            boolean annotationsSent)
             throws MojoExecutionException {
         String url = baseUrl + path;
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -493,6 +570,8 @@ public class SanshainHttpClient {
                 log.error("Provide failed (400 Bad Request): " + sanitize(responseBody));
                 throw new MojoExecutionException("Invalid specification (400) — most commonly a missing or "
                         + "non-semver version (" + versionHint + "): " + sanitize(responseBody));
+            } else if (status == 422 && annotationsSent && namesAnnotationsField(responseBody)) {
+                throw new AnnotationsNotSupported(sanitize(responseBody));
             } else if (status == 422 && originSent && namesOriginField(responseBody)) {
                 throw new OriginNotSupported(sanitize(responseBody));
             } else if (status == 422) {
@@ -533,13 +612,39 @@ public class SanshainHttpClient {
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
      * @param stream       the graph this pin belongs to (trunk, a sanshain-branch, or neither)
      * @param format       the requested format ({@code openapi} for an AsyncAPI require), or null
+     * @param annotations  the build's annotations; a require sends the system ones as a query parameter
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoint is unknown
      */
     public RequireResult getRequireWithEtag(String baseUrl, String token, String consumerName, String producerName,
                              String version, String path, String method,
                              boolean compression, boolean dryRun, String apiType, String etag,
-                             SanshainStream stream, String format) throws MojoExecutionException {
+                             SanshainStream stream, String format, SanshainAnnotations annotations)
+            throws MojoExecutionException {
+        List<Map<String, String>> sent = annotationsToSend(annotations == null ? null : annotations.forSystem());
+        try {
+            return getRequireOnce(baseUrl, token, consumerName, producerName, version, path, method,
+                    compression, dryRun, apiType, etag, stream, format, sent);
+        } catch (AnnotationsNotSupported e) {
+            refuseAnnotations();
+            return getRequireOnce(baseUrl, token, consumerName, producerName, version, path, method,
+                    compression, dryRun, apiType, etag, stream, format, null);
+        }
+    }
+
+    private RequireResult getRequireOnce(String baseUrl, String token, String consumerName, String producerName,
+                             String version, String path, String method,
+                             boolean compression, boolean dryRun, String apiType, String etag,
+                             SanshainStream stream, String format, List<Map<String, String>> annotations)
+            throws MojoExecutionException {
+        String annotationsQuery = "";
+        if (annotations != null) {
+            try {
+                annotationsQuery = "&annotations=" + urlEncode(objectMapper.writeValueAsString(annotations));
+            } catch (JsonProcessingException e) {
+                throw new MojoExecutionException("Failed to build JSON for the annotations", e);
+            }
+        }
         String endpoint = "/require";
         if ("asyncapi".equalsIgnoreCase(apiType)) {
             endpoint = "/require/asyncapi";
@@ -555,7 +660,8 @@ public class SanshainHttpClient {
                 "&method=" + urlEncode(method) +
                 "&dry_run=" + dryRun
                 + (stream == null ? "" : stream.toQueryParams())
-                + formatQuery(format, "&");
+                + formatQuery(format, "&")
+                + annotationsQuery;
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -594,6 +700,10 @@ public class SanshainHttpClient {
             }
 
             String errorBody = sanitize(extractResponseBody(response));
+            // Before the format check: the refusal lists `format` among the fields it expects.
+            if (status == 400 && annotations != null && namesAnnotationsField(errorBody)) {
+                throw new AnnotationsNotSupported(errorBody);
+            }
             failOnFormatUnsupported(format, status, errorBody, baseUrl, token);
             failOnPre2Server(baseUrl, token);
 
@@ -640,17 +750,36 @@ public class SanshainHttpClient {
      * @param etag         the ETag from a previous response (optional, for If-None-Match)
      * @param stream       the graph these pins belong to (trunk, a sanshain-branch, or neither)
      * @param format       the requested format ({@code openapi} for an AsyncAPI require), or null
+     * @param annotations  the build's annotations; a bundle sends the system ones in its body
      * @return the require result with content, ETag, and served stability
      * @throws MojoExecutionException if the request fails or the version/endpoints are unknown
      */
     public RequireResult postRequireBundleWithEtag(String baseUrl, String token, String consumerName, String producerName,
                                     String version, List<SanshainConfig.EndpointConfig> endpoints,
                                     boolean compression, boolean dryRun, String apiType, String etag,
-                                    SanshainStream stream, String format) throws MojoExecutionException {
+                                    SanshainStream stream, String format, SanshainAnnotations annotations)
+            throws MojoExecutionException {
+        List<Map<String, String>> sent = annotationsToSend(annotations == null ? null : annotations.forSystem());
+        try {
+            return postRequireBundleOnce(baseUrl, token, consumerName, producerName, version, endpoints,
+                    compression, dryRun, apiType, etag, stream, format, sent);
+        } catch (AnnotationsNotSupported e) {
+            refuseAnnotations();
+            return postRequireBundleOnce(baseUrl, token, consumerName, producerName, version, endpoints,
+                    compression, dryRun, apiType, etag, stream, format, null);
+        }
+    }
+
+    private RequireResult postRequireBundleOnce(String baseUrl, String token, String consumerName, String producerName,
+                                    String version, List<SanshainConfig.EndpointConfig> endpoints,
+                                    boolean compression, boolean dryRun, String apiType, String etag,
+                                    SanshainStream stream, String format, List<Map<String, String>> annotations)
+            throws MojoExecutionException {
         // The bundle endpoint reads the stream from the body — its handler has no
         // query extractor, so query parameters would be silently dropped and a
         // trunk build would record no trunk pins.
-        String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType, stream);
+        String json = buildRequireBundleJson(consumerName, producerName, version, endpoints, dryRun, apiType, stream,
+                annotations);
         String bundleUrl = baseUrl + "/require-bundle" + formatQuery(format, "?");
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -698,6 +827,9 @@ public class SanshainHttpClient {
             }
 
             String errorBody = sanitize(extractResponseBody(response));
+            if (status == 422 && annotations != null && namesAnnotationsField(errorBody)) {
+                throw new AnnotationsNotSupported(errorBody);
+            }
             failOnFormatUnsupported(format, status, errorBody, baseUrl, token);
             failOnPre2Server(baseUrl, token);
 
@@ -978,7 +1110,8 @@ public class SanshainHttpClient {
     private String buildRequireBundleJson(String consumerName, String producerName, String version,
                                           List<SanshainConfig.EndpointConfig> endpoints,
                                           boolean dryRun, String apiType,
-                                          SanshainStream stream) throws MojoExecutionException {
+                                          SanshainStream stream, List<Map<String, String>> annotations)
+            throws MojoExecutionException {
         RequireBundlePayload payload = new RequireBundlePayload();
         payload.consumername = consumerName;
         payload.producername = producerName;
@@ -998,6 +1131,7 @@ public class SanshainHttpClient {
                     return e;
                 })
                 .collect(java.util.stream.Collectors.toList());
+        payload.annotations = annotations;
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
@@ -1019,6 +1153,9 @@ public class SanshainHttpClient {
         public Boolean trunk;
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         public String tag;
+        // Null when the build has none, so older services never see the field.
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public List<Map<String, String>> annotations;
     }
 
     static class RequireBundleEndpoint {

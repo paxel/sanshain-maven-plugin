@@ -964,4 +964,36 @@ public class RequireMojoTest {
         assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
+
+    @Test
+    public void testRequireSendsOnlySystemAnnotations() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.2.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n" +
+                "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("PLUGIN_TEST_AREA", "pay");
+        props.setProperty("PLUGIN_TEST_ID", "42");
+        setField(mojo, "userProperties", props);
+        mojo.execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
+                .withQueryParam("annotations", equalToJson(
+                        "[{\"scope\":\"system\",\"name\":\"jenkins\",\"value\":\"https://jenkins.corp/job/payments\"}]")));
+    }
 }

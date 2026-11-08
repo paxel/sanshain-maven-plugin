@@ -442,4 +442,25 @@ public class CatalogMojoTest {
         assertEquals("strict: sanshain.yaml has no catalogInfo", ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
+
+    @Test
+    public void testCatalogSendsOnlySystemAnnotations() throws Exception {
+        stubRecorded(false);
+        CatalogMojo mojo = createMojo(YAML + "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n");
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("PLUGIN_TEST_AREA", "pay");
+        props.setProperty("PLUGIN_TEST_ID", "42");
+        setField(mojo, "userProperties", props);
+        mojo.execute();
+
+        wireMock.verify(putRequestedFor(urlEqualTo("/catalog/orders-service"))
+                .withRequestBody(matchingJsonPath("$.annotations", equalToJson(
+                        "[{\"scope\":\"system\",\"name\":\"jenkins\",\"value\":\"https://jenkins.corp/job/payments\"}]"))));
+    }
 }
