@@ -353,6 +353,15 @@ public class CatalogMojoTest {
     }
 
     @Test
+    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
+        CatalogMojo mojo = createMojo("serviceName: orders-service\ncatalogInfo: catalog-info.yaml\nprovide:\n  branch: main\n");
+        setField(mojo, "bestEffort", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml for Sanshain 2.0:"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
     public void testMissingFileFailsNamingResolvedPath() throws Exception {
         Path configPath = tempDir.resolve("conf/sanshain.yaml");
         CatalogMojo mojo = createMojo(configPath, YAML);

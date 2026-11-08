@@ -244,7 +244,11 @@ or set `strict: true` in `sanshain.yaml`. An explicitly set `sanshain.strict` pr
 best-effort does not soften these.
 
 ### Best-Effort Mode
-Designed for non-critical builds or parent POMs. When enabled, server errors or timeouts are logged as warnings instead of failing the build.
+Designed for non-critical builds or parent POMs. When enabled, a failed call (server error, refusal,
+timeout, network error) is logged as a warning and the goal goes on with the next `provides` or
+`requires` entry. Configuration errors still fail the build: an unreadable or invalid
+`sanshain.yaml` (removed 1.x fields included), an unsupported `apiType`, and missing configuration
+under strict mode.
 ```bash
 mvn verify -Dsanshain.bestEffort=true
 ```

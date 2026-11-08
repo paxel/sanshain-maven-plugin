@@ -84,6 +84,9 @@ public class SanshainConfig {
             "method", "path"));
     private static final Set<String> KNOWN_ANNOTATION = new HashSet<>(Arrays.asList(
             "scope", "name", "value"));
+    /** The apiType spellings a provide takes, in lower case; {@code grpc} means proto. */
+    private static final Set<String> PROVIDE_API_TYPES = new HashSet<>(Arrays.asList(
+            "openapi", "asyncapi", "proto", "grpc"));
 
     /** The environment the overrides are read from; replaceable in tests. */
     @JsonIgnore
@@ -383,6 +386,9 @@ public class SanshainConfig {
         if (p.stability != null) {
             legacy(legacyErrors, errors, label + ": 'stability' is not configured in sanshain.yaml — declare it per build via "
                     + "-Dsanshain.ga=true / SANSHAIN_GA=true (default: snapshot)");
+        }
+        if (p.getApiType() != null && !PROVIDE_API_TYPES.contains(p.getApiType().toLowerCase(java.util.Locale.ROOT))) {
+            errors.add(label + ": Unsupported apiType: " + p.getApiType() + " — use openapi, asyncapi or proto (grpc means proto)");
         }
     }
 

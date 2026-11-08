@@ -121,21 +121,9 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // Early resolution of bestEffort to handle config loading errors
-        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
-
-        SanshainConfig config;
-        try {
-            config = new SanshainConfig().loadConfig(configFile, delegate);
-            // Re-resolve to incorporate potential YAML overrides
-            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
-        } catch (MojoFailureException e) {
-            // Unknown fields under strict: a configuration error best-effort does not soften.
-            throw e;
-        } catch (Exception e) {
-            delegate.handleException(e, resolvedBestEffort);
-            config = new SanshainConfig();
-        }
+        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+        SanshainConfig config = new SanshainConfig().loadConfig(configFile, delegate);
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = resolveServiceName(config);

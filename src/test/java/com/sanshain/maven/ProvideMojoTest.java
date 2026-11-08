@@ -563,7 +563,7 @@ public class ProvideMojoTest {
     }
 
     @Test
-    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
+    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
         // Create an invalid YAML file
         Path configPath = tempDir.resolve("sanshain.yaml");
         Files.writeString(configPath, "invalid: yaml: : content");
@@ -575,8 +575,50 @@ public class ProvideMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // Should not throw even with invalid YAML because bestEffort=true (Maven property)
-        assertDoesNotThrow(mojo::execute);
+        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortDoesNotSoftenAnUnsupportedApiType() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "    apiType: raml\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "bestEffort", true);
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("provides[0]: Unsupported apiType: raml"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBestEffortGoesOnWithTheNextProvideAfterAFailedOne() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(500).withBody("Internal Server Error")));
+        wireMock.stubFor(post(urlEqualTo("/provide/asyncapi"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"version\":\"1.0.0\",\"stability\":\"snapshot\"}")));
+        Files.writeString(tempDir.resolve("events.yaml"), "asyncapi: 2.6.0\ninfo:\n  version: 1.0.0\n");
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "  - file: events.yaml\n" +
+                "    apiType: asyncapi\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "combine", false);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide/asyncapi")));
+        org.mockito.Mockito.verify(log).warn("Sanshain goal failed (best effort): Unexpected response 500: Internal Server Error");
     }
 
     @Test
@@ -607,8 +649,9 @@ public class ProvideMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // With strict=true and bestEffort=true, it should NOT throw
-        assertDoesNotThrow(mojo::execute);
+        // Missing configuration under strict is an error best effort does not soften.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
     }
 
     @Test

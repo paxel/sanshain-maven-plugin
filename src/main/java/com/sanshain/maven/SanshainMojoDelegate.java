@@ -92,13 +92,21 @@ public class SanshainMojoDelegate {
         }
     }
 
+    /**
+     * Stops the goal on missing configuration. Under strict that is an error, also with best
+     * effort, which covers failed calls only; otherwise the goal warns and skips.
+     *
+     * @param message    what is missing
+     * @param bestEffort whether best effort is on (it only changes the warning)
+     * @throws MojoExecutionException under strict
+     */
     public void abort(String message, boolean bestEffort) throws MojoExecutionException {
+        if (strict) {
+            throw new MojoExecutionException(message);
+        }
         if (bestEffort) {
             log.warn("Sanshain goal skipped (best effort): " + message);
             return;
-        }
-        if (strict) {
-            throw new MojoExecutionException(message);
         }
         log.warn(message + " Skipping. Set sanshain.strict=true to fail in this case.");
     }

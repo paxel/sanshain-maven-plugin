@@ -433,7 +433,7 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
+    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
         // Create an invalid YAML file
         Path configPath = tempDir.resolve("sanshain.yaml");
         Files.writeString(configPath, "invalid: yaml: : content");
@@ -445,8 +445,27 @@ public class RequireMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // Should not throw even with invalid YAML because bestEffort=true
-        assertDoesNotThrow(mojo::execute);
+        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortDoesNotSoftenARemovedField() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.0.0\n" +
+                "    branch: main\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
     @Test
@@ -485,8 +504,9 @@ public class RequireMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // With strict=true and bestEffort=true, it should NOT throw
-        assertDoesNotThrow(mojo::execute);
+        // Missing configuration under strict is an error best effort does not soften.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
     }
 
     @Test
@@ -585,11 +605,10 @@ public class RequireMojoTest {
         setField(mojo, "bestEffort", true);
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         mojo.setLog(log);
-        mojo.execute();
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
 
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(log);
-        inOrder.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
-        inOrder.verify(log).warn(org.mockito.ArgumentMatchers.startsWith("Sanshain goal failed (best effort): Invalid sanshain.yaml"));
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
+        assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml"), ex.getMessage());
         wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
     }
 
@@ -806,14 +825,12 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testFormatConfigErrorUnderBestEffortWarnsAndCallsNothing() throws Exception {
+    public void testFormatConfigErrorUnderBestEffortFailsAndCallsNothing() throws Exception {
         RequireMojo mojo = createMojo(asyncYaml("avro", null));
         setField(mojo, "bestEffort", true);
-        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
-        mojo.setLog(log);
-        mojo.execute();
 
-        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("format 'avro' is not supported"));
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("format 'avro' is not supported"), ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 

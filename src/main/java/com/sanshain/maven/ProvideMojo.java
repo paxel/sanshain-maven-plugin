@@ -168,21 +168,9 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // Early resolution of bestEffort to handle config loading errors
-        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
-
-        SanshainConfig config;
-        try {
-            config = new SanshainConfig().loadConfig(configFile, delegate);
-            // Re-resolve to incorporate potential YAML overrides
-            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
-        } catch (MojoFailureException e) {
-            // Unknown fields under strict: a configuration error best-effort does not soften.
-            throw e;
-        } catch (Exception e) {
-            delegate.handleException(e, resolvedBestEffort);
-            config = new SanshainConfig();
-        }
+        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+        SanshainConfig config = new SanshainConfig().loadConfig(configFile, delegate);
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
@@ -213,10 +201,24 @@ public class ProvideMojo extends AbstractMojo {
             getLog().info("Dry-run mode enabled — spec will be validated but not stored.");
         }
 
+        processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedCombine, resolvedBestEffort);
+    }
+
+    /** One provide or retire of this run; best effort applies to each on its own. */
+    @FunctionalInterface
+    private interface ProvideStep {
+        void run() throws Exception;
+    }
+
+    /**
+     * Runs one entry. Under best effort its failure is a warning and the next entry still runs,
+     * as require does per entry; without best effort the first failure stops the goal.
+     */
+    private void each(boolean bestEffort, ProvideStep step) throws MojoExecutionException, MojoFailureException {
         try {
-            processProvides(config, client, resolvedUrl, resolvedToken, resolvedServiceName, resolvedCompression, resolvedCombine, resolvedBestEffort);
+            step.run();
         } catch (Exception e) {
-            delegate.handleException(e, resolvedBestEffort);
+            delegate.handleException(e, bestEffort);
         }
     }
 
@@ -234,18 +236,18 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Resolved " + annotations);
     }
 
-    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws IOException, MojoExecutionException, MojoFailureException {
+    private void processProvides(SanshainConfig config, SanshainHttpClient client, String url, String token, String serviceName, boolean compression, boolean defaultCombine, boolean bestEffort) throws MojoExecutionException, MojoFailureException {
         boolean providedAnything = false;
 
         // Handle 'provides' list
         if (config.getProvides() != null && !config.getProvides().isEmpty()) {
             for (SanshainConfig.ProvideConfig p : config.getProvides()) {
                 if (p.isRetired()) {
-                    retireFamily(client, url, token, serviceName, p.getApiType(), compression);
+                    each(bestEffort, () -> retireFamily(client, url, token, serviceName, p.getApiType(), compression));
                     providedAnything = true;
                 } else if (p.getFile() != null) {
                     boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                    provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, itemCombine, dryRun);
+                    each(bestEffort, () -> provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, itemCombine, dryRun));
                     providedAnything = true;
                 }
             }
@@ -255,18 +257,18 @@ public class ProvideMojo extends AbstractMojo {
         if (config.getProvide() != null) {
             SanshainConfig.ProvideConfig p = config.getProvide();
             if (p.isRetired()) {
-                retireFamily(client, url, token, serviceName, p.getApiType(), compression);
+                each(bestEffort, () -> retireFamily(client, url, token, serviceName, p.getApiType(), compression));
                 providedAnything = true;
             } else if (p.getFile() != null || p.getOpenApiFile() != null || p.getAsyncApiFile() != null || p.getProtoFile() != null) {
                 boolean itemCombine = delegate.resolveCombine(p.getCombine(), defaultCombine, config);
-                provideSingleConfig(client, url, token, serviceName, config, p, compression, itemCombine);
+                provideSingleConfig(client, url, token, serviceName, config, p, compression, itemCombine, bestEffort);
                 providedAnything = true;
             }
         }
 
         // Fallback to default openApiFile
         if (!providedAnything && openApiFile != null && openApiFile.exists()) {
-            provideFile(client, url, token, serviceName, openApiFile, "openapi", compression, defaultCombine, dryRun);
+            each(bestEffort, () -> provideFile(client, url, token, serviceName, openApiFile, "openapi", compression, defaultCombine, dryRun));
             providedAnything = true;
         }
 
@@ -275,18 +277,18 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
-    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine) throws IOException, MojoExecutionException, MojoFailureException {
+    private void provideSingleConfig(SanshainHttpClient client, String url, String token, String serviceName, SanshainConfig config, SanshainConfig.ProvideConfig p, boolean compression, boolean combine, boolean bestEffort) throws MojoExecutionException, MojoFailureException {
         if (p.getFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun);
+            each(bestEffort, () -> provideFile(client, url, token, serviceName, config.resolvePath(p.getFile()), p.getApiType(), compression, combine, dryRun));
         }
         if (p.getOpenApiFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getOpenApiFile()), "openapi", compression, combine, dryRun);
+            each(bestEffort, () -> provideFile(client, url, token, serviceName, config.resolvePath(p.getOpenApiFile()), "openapi", compression, combine, dryRun));
         }
         if (p.getAsyncApiFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun);
+            each(bestEffort, () -> provideFile(client, url, token, serviceName, config.resolvePath(p.getAsyncApiFile()), "asyncapi", compression, combine, dryRun));
         }
         if (p.getProtoFile() != null) {
-            provideFile(client, url, token, serviceName, config.resolvePath(p.getProtoFile()), "proto", compression, combine, dryRun);
+            each(bestEffort, () -> provideFile(client, url, token, serviceName, config.resolvePath(p.getProtoFile()), "proto", compression, combine, dryRun));
         }
     }
 
