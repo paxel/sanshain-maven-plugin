@@ -885,6 +885,26 @@ public class SanshainHttpClientTest {
     }
 
     @Test
+    public void testRetireWithAnEmptyBodySucceeds() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(202)));
+
+        assertNull(client.postRetire(baseUrl, null, "my-service", false, false, "openapi"));
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.retired", equalTo("true"))));
+    }
+
+    @Test
+    public void testRetireWithAnUnparseableBodySucceeds() throws MojoExecutionException {
+        wireMock.stubFor(post(urlEqualTo("/provide/grpc"))
+                .willReturn(aResponse().withStatus(202)
+                        .withHeader("Content-Type", "text/plain")
+                        .withBody("Accepted")));
+
+        assertNull(client.postRetire(baseUrl, null, "my-service", false, false, "proto"));
+    }
+
+    @Test
     public void testRetireForbiddenNamesBothWaysIn() {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(403)

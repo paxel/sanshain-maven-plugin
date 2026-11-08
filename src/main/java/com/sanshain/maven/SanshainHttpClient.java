@@ -263,15 +263,20 @@ public class SanshainHttpClient {
         String path = providePath(apiType);
         RetirePayload payload = new RetirePayload(producerName, dryRun);
 
+        String json;
         try {
-            String json = objectMapper.writeValueAsString(payload);
-            String body = postRetireInternal(baseUrl, path, token, json, compression);
-            if (body == null) {
-                return null;
-            }
-            return objectMapper.readValue(body, RetiredProtocol.class);
+            json = objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
             throw new MojoExecutionException("Failed to build JSON for " + path, e);
+        }
+        String body = postRetireInternal(baseUrl, path, token, json, compression);
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        // The 202 already says the family is retired; a body that does not
+        // parse only costs the summary.
+        try {
+            return objectMapper.readValue(body, RetiredProtocol.class);
         } catch (IOException e) {
             log.debug("Could not parse retire response body: " + e.getMessage());
             return null;

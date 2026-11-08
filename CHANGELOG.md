@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - An explicit `-Dsanshain.ga=false` now keeps a build a snapshot even when `SANSHAIN_GA=true` is set.
 
+### Fixed
+- A retire the service accepts with an empty or unreadable `202` body now succeeds instead of failing with "Failed to build JSON for /provide".
+
 ---
 
 Historical changes have been moved to [OLDER_CHANGES.md](OLDER_CHANGES.md).
