@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Maven plugin (`io.github.paxel.sanshain:sanshain-maven-plugin`) that lets microservices push and pull OpenAPI/AsyncAPI/Protobuf contracts to/from a companion "Sanshain" service during the build. Two goals: `sanshain:provide` (upload this service's spec) and `sanshain:require` (download endpoint snippets from other services' specs). Both default to the `initialize` lifecycle phase.
+A Maven plugin (`io.github.paxel.sanshain:sanshain-maven-plugin`) that lets microservices push and pull OpenAPI/AsyncAPI/Protobuf contracts to/from a companion "Sanshain" service during the build. Three goals: `sanshain:provide` (upload this service's spec), `sanshain:require` (download endpoint snippets from other services' specs) and `sanshain:catalog` (push the Backstage `catalog-info.yaml`). All default to the `initialize` lifecycle phase.
 
 Plugin 2.x speaks the Sanshain Service 2.x contract only: provides carry a declared `stability` (`snapshot`/`ga`) and the version is read from the spec file (`info.version` / `// sanshain-version:`); requires pin an exact `version`. Branches, long-polling/timeouts, `force`, and `base_version` optimistic concurrency were removed as a clean break — do not reintroduce them.
 
@@ -37,7 +37,7 @@ All plugin code lives in `src/main/java/com/sanshain/maven/` (no sub-packages):
 ### Key behaviors to know before changing resolution logic
 
 - Config precedence generally goes: explicit Maven property (`-Dsanshain.*`) > `settings.xml` (URL/token only) > env var > `sanshain.yaml` > hardcoded default. `SanshainMojoDelegate` is the single source of truth for this — don't re-derive precedence inline in a Mojo.
-- Three failure-handling modes interact: `strict` (fail on missing config), `bestEffort` (catch execution-time errors as warnings, doesn't cover Mojo-startup/parameter errors), and the default (warn + skip on missing config, but fail on real execution errors). See README's Strict Mode / Best-Effort Mode sections for the full matrix.
+- Three failure-handling modes interact: `strict` (fail on missing config), `bestEffort` (a failed call becomes a warning and the goal goes on with the next provide/require entry; configuration errors — an invalid `sanshain.yaml`, an unsupported `apiType`, missing config under strict — still fail), and the default (warn + skip on missing config, but fail on real execution errors). The full matrix is in the site page's "Strict mode and best effort" section.
 - On the wire only the canonical `producername`/`consumername` spellings exist; the server rejects unknown (1.x) fields with 422 rather than ignoring them.
 
 ## Repo conventions (`.project-standards.md`)
