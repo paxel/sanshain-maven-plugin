@@ -205,7 +205,7 @@ goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails
 takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecure`, `bestEffort`,
 `trunk`, `skip`, `dryRun` and `strict` like the other goals (under `-Dsanshain.dry.run=true` it reads
 and checks the file locally and pushes nothing); see the
-[README](../README.md#goal-catalog) for output and failure modes.
+[Maven client page](https://paxel.github.io/sanshain-service/developer/clients/maven.html#failure-modes) for output and failure modes.
 
 ## `requires`: `format: openapi`
 
@@ -213,7 +213,7 @@ A `requires` entry with `apiType: asyncapi` may set `format: openapi` to receive
 OpenAPI document instead of AsyncAPI (needs Sanshain Service 2.4.0 or later). It is the only allowed
 combination; any other `apiType` or value fails before any call. The output file name is unchanged, so
 to get both formats list the entry twice with different `outputDirectory`s. See the
-[README](../README.md#asyncapi-as-openapi-format-openapi) for the consumer pom example.
+[Maven client page](https://paxel.github.io/sanshain-service/developer/clients/maven.html#openapi-generator) for the consumer pom example.
 
 ## Goal: `require` Parameters
 
