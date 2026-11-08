@@ -1173,15 +1173,28 @@ public class SanshainHttpClient {
     }
 
     /**
+     * Whether a 403 is the service's refusal for a caller without the releaser
+     * role. Its body carries no code, only the sentence ("… requires the
+     * 'releaser' role …"); every other 403, a read-only token's among them,
+     * is shown as the service wrote it.
+     */
+    private static boolean namesReleaserRole(String responseBody) {
+        return responseBody != null && responseBody.contains("requires the 'releaser' role");
+    }
+
+    /**
      * Publishing GA is a permission, not merely an authenticated act. The build
      * fails either way; what the message has to supply is the remedy, because
      * the fix is an administrator granting a role and nothing the Producer can
-     * change in its own repository.
+     * change in its own repository. Only the releaser refusal gets that remedy.
      *
      * @param responseBody the server's refusal
      * @return the message to fail the build with
      */
     private String gaForbiddenMessage(String responseBody) {
+        if (!namesReleaserRole(responseBody)) {
+            return "Refused (403): " + sanitize(responseBody);
+        }
         return "Refused (403): " + sanitize(responseBody)
                 + " — publishing a GA version requires the 'releaser' role. Grant it to the user or "
                 + "token this build authenticates as (administrators and root always hold it), or "
@@ -1231,6 +1244,9 @@ public class SanshainHttpClient {
             if (status == 403) {
                 logAngryCat();
                 log.error("Retire refused (403 Forbidden): " + sanitize(responseBody));
+                if (!namesReleaserRole(responseBody)) {
+                    throw new MojoExecutionException("Refused (403): " + sanitize(responseBody));
+                }
                 throw new MojoExecutionException("Refused (403): " + sanitize(responseBody)
                         + " — retiring an API family requires the 'releaser' role or a maintainer grant "
                         + "on this Producer. Grant either to the user or token this build authenticates "

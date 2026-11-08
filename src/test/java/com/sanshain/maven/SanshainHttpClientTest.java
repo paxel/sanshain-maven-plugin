@@ -847,6 +847,28 @@ public class SanshainHttpClientTest {
                 "the message offers the fallback, got: " + e.getMessage());
     }
 
+    @Test
+    public void testProvideForbiddenForAReadOnlyTokenShowsTheServiceMessageOnly() {
+        String body = "{\"error\":\"this API token has scope 'read_only' and may not change the catalog; "
+                + "create a token with scope 'full' for provide, require and catalog pushes\"}";
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(403).withBody(body)));
+
+        MojoExecutionException e = assertThrows(MojoExecutionException.class, () -> provide("openapi"));
+        assertEquals("Refused (403): " + body, e.getMessage());
+        assertTrue(e.getMessage().contains("scope 'full'"), e.getMessage());
+        assertFalse(e.getMessage().contains("releaser"), e.getMessage());
+    }
+
+    @Test
+    public void testProvideForbiddenWithoutTheReleaserReasonGetsNoGaHint() {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(403).withBody("{\"error\":\"Forbidden\"}")));
+
+        MojoExecutionException e = assertThrows(MojoExecutionException.class, () -> provide("openapi"));
+        assertEquals("Refused (403): {\"error\":\"Forbidden\"}", e.getMessage());
+    }
+
     // --- retire ---
 
     @Test
@@ -914,6 +936,18 @@ public class SanshainHttpClientTest {
                 () -> client.postRetire(baseUrl, null, "my-service", false, false, "openapi"));
         assertTrue(e.getMessage().contains("releaser"), e.getMessage());
         assertTrue(e.getMessage().contains("maintainer"), e.getMessage());
+    }
+
+    @Test
+    public void testRetireForbiddenForAReadOnlyTokenShowsTheServiceMessageOnly() {
+        String body = "{\"error\":\"this API token has scope 'read_only' and may not change the catalog; "
+                + "create a token with scope 'full' for provide, require and catalog pushes\"}";
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(403).withBody(body)));
+
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> client.postRetire(baseUrl, null, "my-service", false, false, "openapi"));
+        assertEquals("Refused (403): " + body, e.getMessage());
     }
 
     @Test

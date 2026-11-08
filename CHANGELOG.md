@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A retire the service accepts with an empty or unreadable `202` body now succeeds instead of failing with "Failed to build JSON for /provide".
 - A require with `apiType: grpc` is saved as `.proto` (it was `.yaml`), and its bundle sends `api_type: proto`, the spelling the service's contract names.
 - Best effort softens failed calls only, the same in provide, require and catalog: an invalid `sanshain.yaml`, an unsupported provide `apiType` and missing configuration under strict now fail the build also with best effort, and a failed provide no longer stops the next `provides` entry.
+- A `403` on provide or retire names the releaser role only when the service refused for want of it; any other `403`, such as a read-only token's, shows the service's message alone.
 
 ---
 
