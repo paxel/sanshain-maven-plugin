@@ -30,8 +30,8 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/paxel/sanshain-maven-plugin.git</connection>
-        <developerConnection>scm:git:ssh://github.com:paxel/sanshain-maven-plugin.git</developerConnection>
+        <connection>scm:git:https://github.com/paxel/sanshain-maven-plugin.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/paxel/sanshain-maven-plugin.git</developerConnection>
         <url>https://github.com/paxel/sanshain-maven-plugin</url>
     </scm>
 
