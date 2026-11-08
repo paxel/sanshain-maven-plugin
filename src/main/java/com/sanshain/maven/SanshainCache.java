@@ -58,7 +58,7 @@ public class SanshainCache {
 
     /**
      * Gets the cached require entry for a require key.
-     * @param key the require identifier (e.g. "user-service|1.2.0|GET|/api/v1/users")
+     * @param key the require identifier (e.g. "user-service|1.2.0|GET|/api/v1/users|out=target/generated-sources/sanshain")
      * @return the cached entry, or null if not found
      */
     public RequireEntry getRequireEntry(String key) {
@@ -84,10 +84,13 @@ public class SanshainCache {
      * @param method      the HTTP method
      * @param path        the API path
      * @param format      the requested format, or null for the native one
-     * @return the cache key; a requested format is part of it, so formats never share an ETag
+     * @param output      the output directory, as {@link RequireMojo} names it
+     * @return the cache key; the format and the output directory are part of it, so neither two
+     *         formats nor two directories share an ETag
      */
-    public static String requireKey(String serviceName, String version, String method, String path, String format) {
-        return serviceName + "|" + version + "|" + method + "|" + path + formatSuffix(format);
+    public static String requireKey(String serviceName, String version, String method, String path, String format,
+                                    String output) {
+        return serviceName + "|" + version + "|" + method + "|" + path + formatSuffix(format) + outputSuffix(output);
     }
 
     /**
@@ -95,14 +98,20 @@ public class SanshainCache {
      * @param serviceName the service name
      * @param version     the pinned version
      * @param format      the requested format, or null for the native one
-     * @return the cache key; a requested format is part of it, so formats never share an ETag
+     * @param output      the output directory, as {@link RequireMojo} names it
+     * @return the cache key; the format and the output directory are part of it, so neither two
+     *         formats nor two directories share an ETag
      */
-    public static String requireBundleKey(String serviceName, String version, String format) {
-        return serviceName + "|" + version + "|bundle" + formatSuffix(format);
+    public static String requireBundleKey(String serviceName, String version, String format, String output) {
+        return serviceName + "|" + version + "|bundle" + formatSuffix(format) + outputSuffix(output);
     }
 
     private static String formatSuffix(String format) {
         return format == null ? "" : "|format=" + format;
+    }
+
+    private static String outputSuffix(String output) {
+        return "|out=" + output;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -671,8 +671,8 @@ public class RequireMojoTest {
         bundle.execute();
 
         SanshainCache cache = new SanshainCache(tempDir.resolve("target").toFile());
-        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null)));
-        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0", null)));
+        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null, "output")));
+        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0", null, "output")));
 
         // The next real run therefore asks without If-None-Match.
         createMojo(ONE_ENDPOINT).execute();
@@ -688,6 +688,48 @@ public class RequireMojoTest {
         createMojo(ONE_ENDPOINT).execute();
 
         wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
+
+    @Test
+    public void testSameEndpointInTwoOutputDirectoriesIsWrittenToBoth() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"e1\"")));
+        String yaml = ONE_ENDPOINT + ONE_ENDPOINT.substring(ONE_ENDPOINT.indexOf("  - serviceName"))
+                .replace("outputDirectory: output", "outputDirectory: other");
+
+        createMojo(yaml).execute();
+
+        assertEquals("openapi: 3.0.0", Files.readString(tempDir.resolve("output/user-service_api_v1_users_GET.yaml")));
+        assertEquals("openapi: 3.0.0", Files.readString(tempDir.resolve("other/user-service_api_v1_users_GET.yaml")));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
+
+    @Test
+    public void testDeletedOutputFileIsFetchedAgainWithoutIfNoneMatch() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"e1\"")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"b1\"").withBody("bundle: 1")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).withHeader("If-None-Match", equalTo("\"b1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"b1\"")));
+        Path single = tempDir.resolve("output/user-service_api_v1_users_GET.yaml");
+        Path bundle = tempDir.resolve("output/user-service_bundle.yaml");
+
+        createMojo(ONE_ENDPOINT).execute();
+        createMojo(TWO_ENDPOINTS).execute();
+        Files.delete(single);
+        Files.delete(bundle);
+        createMojo(ONE_ENDPOINT).execute();
+        createMojo(TWO_ENDPOINTS).execute();
+
+        assertEquals("openapi: 3.0.0", Files.readString(single));
+        assertEquals("bundle: 1", Files.readString(bundle));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/require-bundle")).withHeader("If-None-Match", equalTo("\"b1\"")));
     }
 
     private static String asyncYaml(String format, String extraEndpoint) {
@@ -802,7 +844,7 @@ public class RequireMojoTest {
                 + "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)");
         assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
         assertNull(new SanshainCache(tempDir.resolve("target").toFile())
-                .getRequireEntry(SanshainCache.requireKey("events", "1.0.0", "SUB", "orders", "openapi")));
+                .getRequireEntry(SanshainCache.requireKey("events", "1.0.0", "SUB", "orders", "openapi", "out")));
     }
 
     @Test

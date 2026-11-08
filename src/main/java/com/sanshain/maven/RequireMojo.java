@@ -231,9 +231,10 @@ public class RequireMojo extends AbstractMojo {
         String reqServiceName = req.getServiceName();
         getLog().info("Requiring bundle: " + reqServiceName + "@" + version + " (" + req.getEndpoints().size() + " endpoints)");
 
-        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version, req.getFormat());
-        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+        String fileName = reqServiceName + "_bundle." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+        Path outputFile = outputDirectory.toPath().resolve(fileName);
+        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version, req.getFormat(), outputKey(outputDirectory));
+        String cachedEtag = cachedEtag(cache, cacheKey, outputFile);
 
         RequireResult result = delegate.checked(client, () -> client.postRequireBundleWithEtag(url, token, serviceName,
                 reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat(),
@@ -242,8 +243,6 @@ public class RequireMojo extends AbstractMojo {
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
-            String fileName = reqServiceName + "_bundle." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
-            Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved bundle: " + outputFile + servedAs(result));
 
@@ -262,9 +261,10 @@ public class RequireMojo extends AbstractMojo {
 
         getLog().info("Requiring: " + reqServiceName + "@" + version + " " + method + " " + path);
 
-        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path, req.getFormat());
-        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+        String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+        Path outputFile = outputDirectory.toPath().resolve(fileName);
+        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path, req.getFormat(), outputKey(outputDirectory));
+        String cachedEtag = cachedEtag(cache, cacheKey, outputFile);
 
         RequireResult result = delegate.checked(client, () -> client.getRequireWithEtag(url, token, serviceName,
                 reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat(),
@@ -273,8 +273,6 @@ public class RequireMojo extends AbstractMojo {
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
-            String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
-            Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved: " + outputFile + servedAs(result));
 
@@ -284,6 +282,33 @@ public class RequireMojo extends AbstractMojo {
                 cache.save();
             }
         }
+    }
+
+    /**
+     * The output directory as the cache key names it: relative to the project directory, with
+     * forward slashes, so two entries writing to different directories never share an ETag.
+     */
+    private String outputKey(File outputDirectory) {
+        Path project = baseDir.toPath().toAbsolutePath().normalize();
+        Path output = outputDirectory.toPath().toAbsolutePath().normalize();
+        try {
+            return project.relativize(output).toString().replace(File.separatorChar, '/');
+        } catch (IllegalArgumentException e) {
+            // Another root (a different drive): there is no relative path.
+            return output.toString().replace(File.separatorChar, '/');
+        }
+    }
+
+    /**
+     * The ETag to send as If-None-Match: none when the output file is gone, so the answer is a
+     * 200 that writes it again instead of a 304 that would leave the directory empty.
+     */
+    private static String cachedEtag(SanshainCache cache, String cacheKey, Path outputFile) {
+        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+        if (cachedEntry == null || !Files.exists(outputFile)) {
+            return null;
+        }
+        return cachedEntry.etag;
     }
 
     private String servedAs(RequireResult result) {

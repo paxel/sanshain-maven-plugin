@@ -263,6 +263,8 @@ mvn verify -Dsanshain.dry.run=true
 
 The plugin uses a local cache at `target/.sanshain-cache.json` for:
 - **ETag Caching**: Avoiding file rewrites if the downloaded snippet is unchanged (`304 Not Modified`). A dry run writes no ETag.
+  The ETag is kept per output directory, so the same endpoint required into two directories is
+  written to both, and a deleted output file is fetched again without `If-None-Match`.
 
 Provides are never cached: every `provide` uploads, and the server treats a byte-identical
 re-provide as a no-op.

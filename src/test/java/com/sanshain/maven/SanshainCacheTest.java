@@ -17,7 +17,7 @@ public class SanshainCacheTest {
     @Test
     public void testRequireEntryRoundTrip() throws IOException {
         SanshainCache cache = new SanshainCache(tempDir);
-        String key = SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null);
+        String key = SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null, "output");
         assertNull(cache.getRequireEntry(key));
 
         cache.updateRequireEntry(key, "\"sha256:def456\"");
@@ -32,8 +32,8 @@ public class SanshainCacheTest {
 
     @Test
     public void testRequireKeyFormats() {
-        assertEquals("svc|1.2.0|GET|/api", SanshainCache.requireKey("svc", "1.2.0", "GET", "/api", null));
-        assertEquals("svc|1.2.0|bundle", SanshainCache.requireBundleKey("svc", "1.2.0", null));
+        assertEquals("svc|1.2.0|GET|/api|out=output", SanshainCache.requireKey("svc", "1.2.0", "GET", "/api", null, "output"));
+        assertEquals("svc|1.2.0|bundle|out=output", SanshainCache.requireBundleKey("svc", "1.2.0", null, "output"));
     }
 
     @Test
@@ -68,9 +68,17 @@ public class SanshainCacheTest {
 
     @Test
     public void testFormatIsPartOfTheKey() {
-        assertEquals("svc|1.2.0|SUB|orders|format=openapi", SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", "openapi"));
-        assertEquals("svc|1.2.0|bundle|format=openapi", SanshainCache.requireBundleKey("svc", "1.2.0", "openapi"));
-        assertNotEquals(SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", null),
-                SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", "openapi"));
+        assertEquals("svc|1.2.0|SUB|orders|format=openapi|out=out", SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", "openapi", "out"));
+        assertEquals("svc|1.2.0|bundle|format=openapi|out=out", SanshainCache.requireBundleKey("svc", "1.2.0", "openapi", "out"));
+        assertNotEquals(SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", null, "out"),
+                SanshainCache.requireKey("svc", "1.2.0", "SUB", "orders", "openapi", "out"));
+    }
+
+    @Test
+    public void testOutputDirectoryIsPartOfTheKey() {
+        assertNotEquals(SanshainCache.requireKey("svc", "1.2.0", "GET", "/api", null, "a"),
+                SanshainCache.requireKey("svc", "1.2.0", "GET", "/api", null, "b"));
+        assertNotEquals(SanshainCache.requireBundleKey("svc", "1.2.0", null, "a"),
+                SanshainCache.requireBundleKey("svc", "1.2.0", null, "b"));
     }
 }
