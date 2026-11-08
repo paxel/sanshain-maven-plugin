@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The GitHub Actions example in `docs/corporate-usage.md` sets `SANSHAIN_GA` on main only and leaves it empty elsewhere; the `false` it set off main kept `autoGa` from making a build GA.
 - `docs/lifecycle.md` names `initialize` as provide's default phase, as the plugin binds it; it said `validate`.
 - Without a configured URL the plugin calls `http://localhost:3000`, the port Sanshain listens on; it called `http://localhost:8080`.
+- The POM's project and SCM URLs name the repository `github.com/paxel/sanshain-maven-plugin`; they named `github.com/sanshain/…`.
 
 ---
 
