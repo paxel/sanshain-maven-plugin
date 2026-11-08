@@ -54,7 +54,7 @@ These are explicit "never again" rules from this project's history — treat as 
 
 ## Docs
 
-`docs/` has deeper guides: `configuration.md` (full `sanshain.yaml`/property/env reference), `lifecycle.md` (Maven phase integration), `code-generation.md` (OpenAPI Generator integration), `corporate-usage.md` (parent-POM/CI patterns). The root `README.md` is the canonical, up-to-date reference for all configuration and behavior — prefer it over `.junie/guidelines.md`, which describes an older config shape (`clientName`, singular `provide` block only) and is stale.
+`docs/` has deeper guides: `configuration.md` (full `sanshain.yaml`/property/env reference), `lifecycle.md` (Maven phase integration), `code-generation.md` (OpenAPI Generator integration), `corporate-usage.md` (parent-POM/CI patterns). The canonical, up-to-date reference for all configuration and behavior is the plugin's page on the Sanshain site, https://paxel.github.io/sanshain-service/developer/clients/maven.html (source: `site/developer/clients/maven.html` in `paxel/sanshain-service`); the root `README.md` points there. Prefer it over `.junie/guidelines.md`, which describes an older config shape (`clientName`, singular `provide` block only) and is stale.
 
 ## Manual/integration testing
 
