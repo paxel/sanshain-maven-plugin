@@ -151,7 +151,7 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 
 | Setting                     | `sanshain.yaml` | Maven Property           | Env Variable            | Default                                            |
 |-----------------------------|-----------------|--------------------------|-------------------------|----------------------------------------------------|
-| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
+| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:3000`                            |
 | Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
 | GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | unset (provide as `snapshot`)                      |
@@ -182,7 +182,7 @@ environment.
 |---------------|-------------------------|-------------------------------------------|------------------------------------------------------------------------------------|
 | `serviceName` | `sanshain.service.name` | —                                         | **Required.** The name of the service providing the API.                           |
 | `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                                             |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                                       |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:3000`                   | URL of the Sanshain service.                                                       |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable).                      |
 | `ga`          | `sanshain.ga`           | unset                                     | `true`: `ga`, `false`: `snapshot`, over `$SANSHAIN_GA` and `autoGa`.               |
 | `trunk`       | `sanshain.trunk`        | `false`                                   | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`.                        |
@@ -220,7 +220,7 @@ to get both formats list the entry twice with different `outputDirectory`s. See 
 | Parameter     | Property                | Default                 | Description                                                                  |
 |---------------|-------------------------|-------------------------|------------------------------------------------------------------------------|
 | `serviceName` | `sanshain.service.name` | —                       | **Required.** The name of the client service requesting the endpoints.       |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:3000` | URL of the Sanshain service.                                                 |
 | `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
 | `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
 | `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |

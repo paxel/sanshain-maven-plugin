@@ -216,6 +216,12 @@ public class SanshainMojoDelegateTest {
     }
 
     @Test
+    public void testDefaultUrlIsTheServicePort() throws Exception {
+        SanshainConfig config = loadConfig("serviceName: my-service\n", Collections.emptyMap());
+        assertEquals("http://localhost:3000", delegate(null, Collections.emptyMap()).resolveUrl(null, config));
+    }
+
+    @Test
     public void testExplicitPropertyOverridesSanshainUrlEnv() throws Exception {
         SanshainConfig config = loadConfig("sanshainUrl: http://yaml\n", env("SANSHAIN_URL", "http://env"));
         assertEquals("http://property", delegate(settingsWithUrl("http://settings"), Collections.emptyMap())

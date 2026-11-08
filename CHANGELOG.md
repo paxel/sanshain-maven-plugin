@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The require ETag cache is kept per output directory: the same endpoint required into two directories is written to both instead of the second getting a `304` and staying empty, and a deleted output file is fetched again instead of being skipped.
 - The GitHub Actions example in `docs/corporate-usage.md` sets `SANSHAIN_GA` on main only and leaves it empty elsewhere; the `false` it set off main kept `autoGa` from making a build GA.
 - `docs/lifecycle.md` names `initialize` as provide's default phase, as the plugin binds it; it said `validate`.
+- Without a configured URL the plugin calls `http://localhost:3000`, the port Sanshain listens on; it called `http://localhost:8080`.
 
 ---
 

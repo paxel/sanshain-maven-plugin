@@ -119,7 +119,7 @@ public class SanshainMojoDelegate {
 
         if (config.getSanshainUrl() != null) return config.getSanshainUrl();
 
-        return "http://localhost:8080";
+        return "http://localhost:3000";
     }
 
     private String resolveUrlFromSettings() {

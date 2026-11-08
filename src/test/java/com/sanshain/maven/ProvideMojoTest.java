@@ -260,21 +260,6 @@ public class ProvideMojoTest {
     }
 
     @Test
-    public void testDefaultSanshainUrl() throws Exception {
-        // When no URL is configured anywhere, defaults to http://localhost:8080
-        String yaml = "serviceName: my-service\n" +
-                "provide:\n" +
-                "  openApiFile: openapi.yaml\n";
-
-        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
-        setField(mojo, "sanshainUrl", null);
-
-        // This will fail to connect to localhost:8080, but we can verify the error message
-        Exception ex = assertThrows(Exception.class, mojo::execute);
-        assertTrue(ex.getMessage().contains("localhost:8080") || ex.getMessage().contains("Failed to connect"));
-    }
-
-    @Test
     public void testCompressionDefault() throws Exception {
         wireMock.stubFor(post(urlEqualTo("/provide"))
                 .willReturn(aResponse().withStatus(202)));
