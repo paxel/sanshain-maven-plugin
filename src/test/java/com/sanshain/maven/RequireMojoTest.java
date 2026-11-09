@@ -747,9 +747,14 @@ public class RequireMojoTest {
 
     @Test
     public void testNoRequiresOnlyWarnsWhenPropertyOverridesYamlStrict() throws Exception {
-        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n");
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n", log);
         setField(mojo, "strict", false);
         mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(
+                "No requires configured in sanshain.yaml. Skipping. Set sanshain.strict=true to fail in this case.");
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
     private static final String ONE_ENDPOINT = "serviceName: test-client\n" +
