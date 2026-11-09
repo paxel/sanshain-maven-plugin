@@ -22,7 +22,7 @@ public final class SanshainStream {
             "trunk and tag are mutually exclusive - this build is recorded in neither";
 
     private static final SanshainStream NONE = new SanshainStream(false, null, null, false);
-    private static final SanshainStream TRUNK = new SanshainStream(true, null, null, true);
+    private static final SanshainStream TRUNK_STREAM = new SanshainStream(true, null, null, true);
     /** Both trunk and a tag were declared: sends neither, and says so. */
     private static final SanshainStream NEITHER = new SanshainStream(false, null, MUTUALLY_EXCLUSIVE, true);
 
@@ -51,7 +51,7 @@ public final class SanshainStream {
      * @return the trunk stream
      */
     public static SanshainStream trunk() {
-        return TRUNK;
+        return TRUNK_STREAM;
     }
 
     /**
