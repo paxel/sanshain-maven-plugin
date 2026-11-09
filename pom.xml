@@ -41,6 +41,21 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven-plugin-api.version>3.6.3</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
+
+        <!-- SonarQube Cloud (.github/workflows/sonar.yml). The scanner's default sources are
+             src/main/java and pom.xml; setting them replaces that default, so both stay listed
+             beside the workflows. -->
+        <sonar.sources>src/main/java,pom.xml,.github</sonar.sources>
+
+        <!-- Findings that stay as they are, each with its reason. Patterns name single files,
+             so a new file with the same finding is still reported. -->
+        <sonar.issue.ignore.multicriteria>insecure</sonar.issue.ignore.multicriteria>
+        <!-- The trust-all TrustManager exists for the explicit insecure switch
+             (-Dsanshain.insecure, SANSHAIN_INSECURE, insecure: in sanshain.yaml), which defaults
+             to off; it is built only when that switch is on, for a self-signed service a user
+             chose to trust. -->
+        <sonar.issue.ignore.multicriteria.insecure.ruleKey>java:S4830</sonar.issue.ignore.multicriteria.insecure.ruleKey>
+        <sonar.issue.ignore.multicriteria.insecure.resourceKey>src/main/java/com/sanshain/maven/SanshainHttpClient.java</sonar.issue.ignore.multicriteria.insecure.resourceKey>
     </properties>
 
     <dependencies>
