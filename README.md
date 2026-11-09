@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml)
 [![Security](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=coverage)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/paxel/sanshain-maven-plugin/badge)](https://scorecard.dev/viewer/?uri=github.com/paxel/sanshain-maven-plugin)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.paxel.sanshain/sanshain-maven-plugin)](https://central.sonatype.com/artifact/io.github.paxel.sanshain/sanshain-maven-plugin)
 [![Java 11+](https://img.shields.io/badge/java-11%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
 [![Maven 3.6.3+](https://img.shields.io/badge/maven-3.6.3%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
