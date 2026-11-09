@@ -30,6 +30,25 @@ public class SanshainConfigTest {
     }
 
     @Test
+    public void testEmptyProvidesEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nprovides:\n  -\n");
+        assertTrue(e.getMessage().contains("provides[0]: empty entry"), e.getMessage());
+    }
+
+    @Test
+    public void testEmptyRequiresEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nrequires:\n  -\n");
+        assertTrue(e.getMessage().contains("requires[0]: empty entry"), e.getMessage());
+    }
+
+    @Test
+    public void testEmptyEndpointEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nrequires:\n  - serviceName: p\n    version: 1.0.0\n"
+                + "    endpoints:\n      - method: GET\n        path: /a\n      -\n");
+        assertTrue(e.getMessage().contains("requires[0] (p): endpoints[1] is an empty entry"), e.getMessage());
+    }
+
+    @Test
     public void testLoadFullConfig() throws IOException, MojoExecutionException {
         String yaml = "sanshainUrl: https://api.sanshain.com\n" +
                 "serviceName: my-service\n" +

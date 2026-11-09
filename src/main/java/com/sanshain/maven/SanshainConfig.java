@@ -285,6 +285,10 @@ public class SanshainConfig {
         }
         if (provides != null) {
             for (int i = 0; i < provides.size(); i++) {
+                if (provides.get(i) == null) {
+                    errors.add("provides[" + i + "]: empty entry — remove the lone '-' or give it a file");
+                    continue;
+                }
                 validateProvide(provides.get(i), "provides[" + i + "]", legacyErrors, errors);
             }
         }
@@ -294,7 +298,18 @@ public class SanshainConfig {
         if (requires != null) {
             for (int i = 0; i < requires.size(); i++) {
                 RequireConfig req = requires.get(i);
+                if (req == null) {
+                    errors.add("requires[" + i + "]: empty entry — remove the lone '-' or give it serviceName, version and endpoints");
+                    continue;
+                }
                 String label = "requires[" + i + "]" + (req.getServiceName() != null ? " (" + req.getServiceName() + ")" : "");
+                if (req.getEndpoints() != null) {
+                    for (int j = 0; j < req.getEndpoints().size(); j++) {
+                        if (req.getEndpoints().get(j) == null) {
+                            errors.add(label + ": endpoints[" + j + "] is an empty entry — remove the lone '-' or give it method and path");
+                        }
+                    }
+                }
                 if (req.branch != null) {
                     legacy(legacyErrors, errors, label + ": 'branch' is no longer supported — the branch model was removed in "
                             + "Sanshain 2.0; replace with an exact 'version' pin");

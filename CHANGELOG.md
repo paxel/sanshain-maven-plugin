@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An unknown `requires[].apiType` fails the build as a configuration error before any call, as an unknown provide `apiType` does; it was sent to `/require` as OpenAPI.
 - The POM's SCM connections use `https://` and a valid `ssh://git@github.com/…` URL; GitHub no longer serves the `git://` protocol.
 - The CI, release and security workflows pin every action to a full commit SHA; they referenced tags.
+- An empty entry (a lone `-`) in `provides`, `requires` or a require's `endpoints` is refused by name as an invalid `sanshain.yaml` before any call; it failed with a `NullPointerException`.
 
 ---
 
