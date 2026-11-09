@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Properties;
 
 /**
@@ -121,15 +122,19 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
-        SanshainConfig config = new SanshainConfig().loadConfig(configFile, delegate);
+        // A broken sanshain.yaml fails; best effort from the property or the variable skips.
+        Optional<SanshainConfig> loaded = delegate.loadConfig(configFile, bestEffort);
+        if (loaded.isEmpty()) {
+            return;
+        }
+        SanshainConfig config = loaded.get();
         boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = resolveServiceName(config);
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort, config);
             return;
         }
 
@@ -147,7 +152,7 @@ public class RequireMojo extends AbstractMojo {
 
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
         if (requires == null || requires.isEmpty()) {
-            delegate.abort("No requires configured in sanshain.yaml.", resolvedBestEffort);
+            delegate.abort("No requires configured in sanshain.yaml.", resolvedBestEffort, config);
             return;
         }
 

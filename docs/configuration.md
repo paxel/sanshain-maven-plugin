@@ -201,7 +201,8 @@ environment.
 
 `sanshain:catalog` pushes the Backstage `catalog-info.yaml` named by `catalogInfo` (relative to
 `sanshain.yaml`) to `PUT /catalog/<serviceName>`. It needs Sanshain Service 2.4.0 or later; all other
-goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict). It
+goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict); without
+`sanshain.yaml` it fails (best effort skips it). It
 takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecure`, `bestEffort`,
 `trunk`, `skip`, `dryRun` and `strict` like the other goals (under `-Dsanshain.dry.run=true` it reads
 and checks the file locally and pushes nothing); see the
@@ -234,7 +235,8 @@ to get both formats list the entry twice with different `outputDirectory`s. See 
 ## Advanced Modes
 
 ### Strict Mode
-By default, the plugin warns and skips when configuration is incomplete. Enable strict mode to fail the build instead:
+By default, the plugin warns and skips when an existing `sanshain.yaml` leaves configuration out.
+Enable strict mode to fail the build instead:
 ```bash
 mvn verify -Dsanshain.strict=true
 ```
@@ -246,9 +248,20 @@ best-effort does not soften these.
 ### Best-Effort Mode
 Designed for non-critical builds or parent POMs. When enabled, a failed call (server error, refusal,
 timeout, network error) is logged as a warning and the goal goes on with the next `provides` or
-`requires` entry. Configuration errors still fail the build: an unreadable or invalid
-`sanshain.yaml` (removed 1.x fields included), an unsupported `apiType`, and missing configuration
-under strict mode.
+`requires` entry. Missing configuration warns `Sanshain goal skipped (best effort): <message>`.
+
+A broken `sanshain.yaml` (unreadable, invalid, removed 1.x fields, an unsupported `apiType`) fails
+the build before any call. Best effort from `-Dsanshain.bestEffort` or `SANSHAIN_BEST_EFFORT` skips
+the goal instead, with `Sanshain goal skipped (best effort): <message>`; `bestEffort: true` in the
+broken file itself does not count.
+
+Without `sanshain.yaml` the POM alone may configure a goal (`sanshain.service.name`, `sanshain.url`,
+the default `target/openapi.yaml`). A goal that then lacks something it needs (a service name, a
+spec file, `requires`, `catalogInfo`) fails with `Configuration file <path> not found: <message>`;
+best effort skips it with a warning.
+
+Strict mode wins over best effort: missing configuration, a broken file and a missing one a goal needs (strict
+from `-Dsanshain.strict`), unknown fields, warnings, trunk and tag, and annotations still fail.
 ```bash
 mvn verify -Dsanshain.bestEffort=true
 ```

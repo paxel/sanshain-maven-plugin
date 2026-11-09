@@ -455,7 +455,7 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
+    public void testBestEffortSkipsTheGoalOnInvalidYaml() throws Exception {
         // Create an invalid YAML file
         Path configPath = tempDir.resolve("sanshain.yaml");
         Files.writeString(configPath, "invalid: yaml: : content");
@@ -467,13 +467,35 @@ public class RequireMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        // A broken sanshain.yaml skips the goal under best effort from the property.
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from "
+                + configPath.toFile().getAbsolutePath());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testInvalidYamlFailsWithoutBestEffort() throws Exception {
+        RequireMojo mojo = createMojo("invalid: yaml: : content");
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
         assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
     }
 
     @Test
-    public void testBestEffortDoesNotSoftenARemovedField() throws Exception {
+    public void testStrictWinsOverBestEffortOnInvalidYaml() throws Exception {
+        RequireMojo mojo = createMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnARemovedField() throws Exception {
         String yaml = "serviceName: test-client\n" +
                 "requires:\n" +
                 "  - serviceName: user-service\n" +
@@ -484,8 +506,22 @@ public class RequireMojoTest {
                 "        path: /api/v1/users\n";
         RequireMojo mojo = createMojo(yaml);
         setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
 
-        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("'branch' is no longer supported"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+
+        RequireMojo strictMojo = createMojo(yaml);
+        setField(strictMojo, "bestEffort", true);
+        setField(strictMojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, strictMojo::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+
+        RequireMojo plain = createMojo(yaml);
+        ex = assertThrows(MojoExecutionException.class, plain::execute);
         assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
@@ -528,7 +564,58 @@ public class RequireMojoTest {
 
         // Missing configuration under strict is an error best effort does not soften.
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
-        assertEquals("serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+        assertEquals("Configuration file " + tempDir.resolve("non-existent.yaml").toFile().getAbsolutePath()
+                + " not found: serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+    }
+
+    private RequireMojo missingFileMojo() throws Exception {
+        RequireMojo mojo = new RequireMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("sanshain.yaml").toFile());
+        setField(mojo, "sanshainUrl", baseUrl);
+        setField(mojo, "serviceName", "test-client");
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
+
+    @Test
+    public void testMissingFileFailsWithNothingToRequire() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, missingFileMojo()::execute);
+        assertEquals("Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath()
+                + " not found: No requires configured in sanshain.yaml.", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameFails() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", null);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().endsWith(" not found: serviceName is required (either in pom.xml or sanshain.yaml)"), ex.getMessage());
+    }
+
+    @Test
+    public void testMissingFileIsSkippedWithBestEffort() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Configuration file "
+                + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: No requires configured in sanshain.yaml.");
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileFailsUnderStrictEvenWithBestEffort() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().endsWith(" not found: No requires configured in sanshain.yaml."), ex.getMessage());
     }
 
     @Test
@@ -627,10 +714,10 @@ public class RequireMojoTest {
         setField(mojo, "bestEffort", true);
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         mojo.setLog(log);
-        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        mojo.execute();
 
         org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
-        assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml"), ex.getMessage());
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.startsWith("Sanshain goal skipped (best effort): Invalid sanshain.yaml"));
         wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
     }
 
@@ -889,12 +976,15 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testFormatConfigErrorUnderBestEffortFailsAndCallsNothing() throws Exception {
+    public void testFormatConfigErrorUnderBestEffortSkipsAndCallsNothing() throws Exception {
         RequireMojo mojo = createMojo(asyncYaml("avro", null));
         setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
 
-        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
-        assertTrue(ex.getMessage().contains("format 'avro' is not supported"), ex.getMessage());
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("format 'avro' is not supported"));
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 

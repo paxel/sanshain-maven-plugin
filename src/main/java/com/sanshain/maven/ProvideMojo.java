@@ -11,6 +11,7 @@ import org.apache.maven.settings.Settings;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Optional;
 import java.util.Properties;
 
 /**
@@ -168,8 +169,12 @@ public class ProvideMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
-        SanshainConfig config = new SanshainConfig().loadConfig(configFile, delegate);
+        // A broken sanshain.yaml fails; best effort from the property or the variable skips.
+        Optional<SanshainConfig> loaded = delegate.loadConfig(configFile, bestEffort);
+        if (loaded.isEmpty()) {
+            return;
+        }
+        SanshainConfig config = loaded.get();
         boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
@@ -189,7 +194,7 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort, config);
             return;
         }
 
@@ -273,7 +278,10 @@ public class ProvideMojo extends AbstractMojo {
         }
 
         if (!providedAnything) {
-            delegate.abort("No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.", bestEffort);
+            String message = config.getMissingFile() != null
+                    ? "No specification file to provide: " + openApiFile.getPath() + " does not exist."
+                    : "No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.";
+            delegate.abort(message, bestEffort, config);
         }
     }
 

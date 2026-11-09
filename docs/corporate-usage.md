@@ -104,8 +104,8 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
 </build>
 ```
 
-- **Safety**: If a child project lacks `sanshain.yaml`, the plugin logs a warning and continues.
-- **Catalog**: The `catalog` goal pushes a project's Backstage `catalog-info.yaml` when its `sanshain.yaml` has `catalogInfo`, and warns and skips otherwise. It needs Sanshain Service 2.4.0 or later; drop it from the parent POM while your service is older.
+- **Safety**: If a child project lacks `sanshain.yaml` and so a goal lacks what it needs, the goal fails; the parent's `<bestEffort>true</bestEffort>` turns that into a warning and the build continues.
+- **Catalog**: The `catalog` goal pushes a project's Backstage `catalog-info.yaml` when its `sanshain.yaml` has `catalogInfo`, and warns and skips otherwise (without `sanshain.yaml` it fails, which best effort turns into a warning). It needs Sanshain Service 2.4.0 or later; drop it from the parent POM while your service is older.
 - **Opt-out**: Child projects can disable the plugin by setting `<sanshain.skip>true</sanshain.skip>`.
 
 ## Understanding the Build Cache

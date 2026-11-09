@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 
 /**
@@ -110,8 +111,12 @@ public class CatalogMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
-        SanshainConfig config = new SanshainConfig().loadConfig(configFile, delegate);
+        // A broken sanshain.yaml fails; best effort from the property or the variable skips.
+        Optional<SanshainConfig> loaded = delegate.loadConfig(configFile, bestEffort);
+        if (loaded.isEmpty()) {
+            return;
+        }
+        SanshainConfig config = loaded.get();
         boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
@@ -123,13 +128,18 @@ public class CatalogMojo extends AbstractMojo {
         SanshainAnnotations annotations = delegate.resolveAnnotations(config, userProperties);
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort, config);
             return;
         }
 
-        // Only the missing catalogInfo itself is strict's business here; best-effort covers
-        // failed calls, not this configuration check.
+        // In an existing sanshain.yaml only the missing catalogInfo itself is strict's business;
+        // best-effort covers failed calls, not this configuration check. Without the file the
+        // goal lacks what only the file can give, which fails unless best effort skips it.
         if (config.getCatalogInfo() == null) {
+            if (config.getMissingFile() != null) {
+                delegate.abort("No catalogInfo configured.", resolvedBestEffort, config);
+                return;
+            }
             if (delegate.isStrict()) {
                 throw new MojoExecutionException("strict: sanshain.yaml has no catalogInfo");
             }

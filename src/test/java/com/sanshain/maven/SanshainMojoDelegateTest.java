@@ -493,4 +493,157 @@ public class SanshainMojoDelegateTest {
         assertEquals("strict: " + LEFT_OUT, e.getMessage());
         Mockito.verify(log).warn(LEFT_OUT);
     }
+
+    // --- A missing or broken sanshain.yaml ---
+
+    private static final String INVALID_YAML = "invalid: yaml: : content";
+    private static final String LEGACY_YAML = "serviceName: s\nprovide:\n  openApiFile: o.yaml\n  branch: main\n";
+
+    private SanshainMojoDelegate delegate(Log log, Boolean strict, Map<String, String> env) {
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, strict);
+        d.setEnvironmentVariables(env);
+        return d;
+    }
+
+    private java.io.File configFile(String yaml) throws IOException {
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, yaml);
+        return configPath.toFile();
+    }
+
+    @Test
+    public void testBrokenFileFailsWithoutBestEffort() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null));
+        assertEquals("Failed to load configuration from " + file.getAbsolutePath(), e.getMessage());
+    }
+
+    @Test
+    public void testBrokenFileIsSkippedWithTheBestEffortProperty() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, NO_ENV).loadConfig(file, true).isEmpty());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from " + file.getAbsolutePath());
+    }
+
+    @Test
+    public void testBrokenFileIsSkippedWithTheBestEffortVariable() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, env("SANSHAIN_BEST_EFFORT", "1")).loadConfig(file, null).isEmpty());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from " + file.getAbsolutePath());
+    }
+
+    @Test
+    public void testBestEffortPropertyFalseBeatsTheVariableForABrokenFile() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, env("SANSHAIN_BEST_EFFORT", "true")).loadConfig(file, false));
+    }
+
+    @Test
+    public void testLegacyFieldIsSkippedWithTheBestEffortVariable() throws Exception {
+        java.io.File file = configFile(LEGACY_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, env("SANSHAIN_BEST_EFFORT", "true")).loadConfig(file, null).isEmpty());
+        Mockito.verify(log).warn(Mockito.startsWith("Sanshain goal skipped (best effort): Invalid sanshain.yaml for Sanshain 2.0:"));
+    }
+
+    @Test
+    public void testBrokenFilesOwnBestEffortDoesNotCount() throws Exception {
+        java.io.File file = configFile("bestEffort: true\n" + LEGACY_YAML);
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null));
+        assertTrue(e.getMessage().contains("'branch' is no longer supported"), e.getMessage());
+    }
+
+    @Test
+    public void testStrictPropertyWinsOverBestEffortForABrokenFile() throws Exception {
+        java.io.File invalid = configFile(INVALID_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, NO_ENV).loadConfig(invalid, true));
+        java.io.File legacy = configFile(LEGACY_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, env("SANSHAIN_BEST_EFFORT", "1")).loadConfig(legacy, null));
+    }
+
+    @Test
+    public void testBrokenFilesOwnStrictDoesNotCount() throws Exception {
+        java.io.File file = configFile("strict: true\n" + LEGACY_YAML);
+        assertTrue(delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true).isEmpty());
+    }
+
+    @Test
+    public void testUnknownFieldUnderStrictFailsEvenWhenBestEffortSkipsBrokenFiles() throws Exception {
+        java.io.File file = configFile("strict: true\nserviceName: s\ncatalogInf: c.yaml\n");
+        MojoFailureException e = assertThrows(MojoFailureException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true));
+        assertEquals("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)", e.getMessage());
+    }
+
+    @Test
+    public void testValidFileLoads() throws Exception {
+        java.io.File file = configFile("serviceName: s\n");
+        SanshainConfig config = delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true).orElseThrow();
+        assertEquals("s", config.getServiceName());
+        assertNull(config.getMissingFile());
+    }
+
+    @Test
+    public void testMissingFileLoadsAnEmptyConfigNamingTheFile() throws Exception {
+        java.io.File file = tempDir.resolve("sanshain.yaml").toFile();
+        SanshainConfig config = delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null).orElseThrow();
+        assertEquals(file.getAbsoluteFile(), config.getMissingFile());
+        assertNull(config.getServiceName());
+    }
+
+    private SanshainConfig missingConfig() throws Exception {
+        return new SanshainConfig().loadConfig(tempDir.resolve("sanshain.yaml").toFile());
+    }
+
+    private String missingReason(String message) {
+        return "Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: " + message;
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileFails() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainConfig config = missingConfig();
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(log, null, NO_ENV).abort("serviceName is required", false, config));
+        assertEquals(missingReason("serviceName is required"), e.getMessage());
+        Mockito.verifyNoInteractions(log);
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileIsSkippedWithBestEffort() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        delegate(log, null, NO_ENV).abort("serviceName is required", true, missingConfig());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingReason("serviceName is required"));
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileIsSkippedWithTheBestEffortVariable() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = delegate(log, null, env("SANSHAIN_BEST_EFFORT", "true"));
+        SanshainConfig config = missingConfig();
+        d.abort("serviceName is required", d.resolveBestEffort(null, config), config);
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingReason("serviceName is required"));
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileFailsUnderStrictEvenWithBestEffort() throws Exception {
+        SanshainConfig config = missingConfig();
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, NO_ENV).abort("serviceName is required", true, config));
+        assertEquals(missingReason("serviceName is required"), e.getMessage());
+    }
+
+    @Test
+    public void testMissingConfigurationInAnExistingFileWarnsAndSkips() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        delegate(log, null, NO_ENV).abort("serviceName is required", false, loadConfig("compression: true\n", NO_ENV));
+        Mockito.verify(log).warn("serviceName is required Skipping. Set sanshain.strict=true to fail in this case.");
+    }
 }

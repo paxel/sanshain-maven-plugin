@@ -6,9 +6,11 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
@@ -93,19 +95,52 @@ public class SanshainMojoDelegate {
     }
 
     /**
+     * Loads sanshain.yaml for a goal. A broken file (unreadable, invalid YAML, 1.x fields, an
+     * unsupported {@code apiType}, any other validation error) fails the goal. With best effort
+     * switched on by the property or {@code SANSHAIN_BEST_EFFORT} the goal is skipped with a
+     * warning instead; the broken file's own {@code bestEffort} does not count, and the
+     * {@code sanshain.strict} property wins over best effort. Unknown fields under strict always
+     * fail. A missing file is not an error here (see {@link #abort(String, boolean, SanshainConfig)}).
+     *
+     * @param configFile the sanshain.yaml to read
+     * @param bestEffort the {@code sanshain.bestEffort} property, or null if unset
+     * @return the configuration, or empty when best effort skips the goal
+     * @throws MojoExecutionException if the file is broken and best effort does not skip
+     * @throws MojoFailureException   if unknown fields are rejected under strict
+     */
+    public Optional<SanshainConfig> loadConfig(File configFile, Boolean bestEffort)
+            throws MojoExecutionException, MojoFailureException {
+        try {
+            return Optional.of(new SanshainConfig().loadConfig(configFile, this));
+        } catch (MojoExecutionException e) {
+            if (Boolean.TRUE.equals(strictProperty) || !resolveBestEffort(bestEffort, null)) {
+                throw e;
+            }
+            log.warn("Sanshain goal skipped (best effort): " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
      * Stops the goal on missing configuration. Under strict that is an error, also with best
-     * effort, which covers failed calls only; otherwise the goal warns and skips.
+     * effort, which covers failed calls only. When sanshain.yaml does not exist, the goal lacks
+     * what neither the file nor the POM gave: that is an error naming the file, which best effort
+     * turns into a skip with a warning. Otherwise the goal warns and skips.
      *
      * @param message    what is missing
-     * @param bestEffort whether best effort is on (it only changes the warning)
-     * @throws MojoExecutionException under strict
+     * @param bestEffort whether best effort is on
+     * @param config     the loaded configuration, which knows whether its file is missing
+     * @throws MojoExecutionException under strict, or when the file is missing without best effort
      */
-    public void abort(String message, boolean bestEffort) throws MojoExecutionException {
-        if (strict) {
-            throw new MojoExecutionException(message);
+    public void abort(String message, boolean bestEffort, SanshainConfig config) throws MojoExecutionException {
+        File missingFile = config.getMissingFile();
+        String reason = missingFile == null ? message
+                : "Configuration file " + missingFile.getPath() + " not found: " + message;
+        if (strict || (missingFile != null && !bestEffort)) {
+            throw new MojoExecutionException(reason);
         }
         if (bestEffort) {
-            log.warn("Sanshain goal skipped (best effort): " + message);
+            log.warn("Sanshain goal skipped (best effort): " + reason);
             return;
         }
         log.warn(message + " Skipping. Set sanshain.strict=true to fail in this case.");

@@ -42,7 +42,7 @@ graph TD
 ### `sanshain:catalog`
 - **Default Phase**: `initialize`
 - **Purpose**: Pushes the service's Backstage `catalog-info.yaml` (the `catalogInfo` field of `sanshain.yaml`) so the network graph shows the peripheral resources it depends on. Needs Sanshain Service 2.4.0 or later.
-- **Optional**: Without `catalogInfo` the goal warns and skips (fails under strict), so it is safe to add to every project.
+- **Optional**: Without `catalogInfo` the goal warns and skips (fails under strict). Without `sanshain.yaml` it fails, so add it to every project only with best effort.
 
 ## Key Mechanisms
 

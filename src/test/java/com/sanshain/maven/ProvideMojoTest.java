@@ -547,26 +547,78 @@ public class ProvideMojoTest {
         assertTrue(delegate.resolveBestEffort(null, new SanshainConfig()));
     }
 
-    @Test
-    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
-        // Create an invalid YAML file
+    private ProvideMojo brokenFileMojo(String yaml) throws Exception {
         Path configPath = tempDir.resolve("sanshain.yaml");
-        Files.writeString(configPath, "invalid: yaml: : content");
-
+        Files.writeString(configPath, yaml);
         ProvideMojo mojo = new ProvideMojo();
         setField(mojo, "baseDir", tempDir.toFile());
         setField(mojo, "configFile", configPath.toFile());
-        setField(mojo, "bestEffort", true);
+        setField(mojo, "sanshainUrl", baseUrl);
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
 
-        // A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+    @Test
+    public void testInvalidYamlFailsWithoutBestEffort() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
         assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
     }
 
     @Test
-    public void testBestEffortDoesNotSoftenAnUnsupportedApiType() throws Exception {
+    public void testBestEffortSkipsTheGoalOnInvalidYaml() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from "
+                + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnA1xField() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.startsWith(
+                "Sanshain goal skipped (best effort): Invalid sanshain.yaml for Sanshain 2.0:"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBrokenFilesOwnBestEffortDoesNotSkipTheGoal() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("bestEffort: true\nserviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testStrictWinsOverBestEffortOnABrokenFile() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+
+        ProvideMojo legacy = brokenFileMojo("serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        setField(legacy, "bestEffort", true);
+        setField(legacy, "strict", true);
+        ex = assertThrows(MojoExecutionException.class, legacy::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnAnUnsupportedApiType() throws Exception {
         String yaml = "sanshainUrl: " + baseUrl + "\n" +
                 "serviceName: my-service\n" +
                 "provides:\n" +
@@ -574,9 +626,89 @@ public class ProvideMojoTest {
                 "    apiType: raml\n";
         ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
         setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("provides[0]: Unsupported apiType: raml"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testUnsupportedApiTypeFailsWithoutBestEffort() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "    apiType: raml\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
 
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
         assertTrue(ex.getMessage().contains("provides[0]: Unsupported apiType: raml"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    // --- No sanshain.yaml: the POM alone may configure provide ---
+
+    private ProvideMojo missingFileMojo() throws Exception {
+        ProvideMojo mojo = new ProvideMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("sanshain.yaml").toFile());
+        setField(mojo, "sanshainUrl", baseUrl);
+        setField(mojo, "compression", false);
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
+
+    private String missingFile() {
+        return "Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: ";
+    }
+
+    @Test
+    public void testPomOnlyProvideRunsWithoutSanshainYaml() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        Path openapi = tempDir.resolve("target/openapi.yaml");
+        Files.createDirectories(openapi.getParent());
+        Files.writeString(openapi, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", "my-service");
+
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.producername", equalTo("my-service"))));
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameFails() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, missingFileMojo()::execute);
+        assertEquals(missingFile() + "serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutSpecFails() throws Exception {
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", "my-service");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals(missingFile() + "No specification file to provide: "
+                + new File(new File(tempDir.toFile(), "target"), "openapi.yaml").getPath() + " does not exist.", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameIsSkippedWithBestEffort() throws Exception {
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingFile()
+                + "serviceName is required (either in pom.xml or sanshain.yaml)");
         assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
@@ -636,7 +768,8 @@ public class ProvideMojoTest {
 
         // Missing configuration under strict is an error best effort does not soften.
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
-        assertEquals("serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+        assertEquals("Configuration file " + tempDir.resolve("non-existent.yaml").toFile().getAbsolutePath()
+                + " not found: serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
     }
 
     @Test

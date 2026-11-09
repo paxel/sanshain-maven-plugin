@@ -64,6 +64,10 @@ public class SanshainConfig {
     @JsonIgnore
     private File configDirectory;
 
+    /** The sanshain.yaml that was looked for and does not exist; null when the file was read. */
+    @JsonIgnore
+    private File missingFile;
+
     /** Fields of sanshain.yaml no Sanshain client knows, as paths in file order. */
     @JsonIgnore
     private List<String> unknownFields = Collections.emptyList();
@@ -128,6 +132,7 @@ public class SanshainConfig {
             throws MojoExecutionException, MojoFailureException {
         if (configFile == null || !configFile.exists()) {
             configDirectory = configDirectoryOf(configFile);
+            missingFile = configFile != null ? configFile.getAbsoluteFile() : new File(configDirectory, "sanshain.yaml");
             applyEnvOverrides(this);
             return this;
         }
@@ -587,6 +592,14 @@ public class SanshainConfig {
      */
     @JsonIgnore
     public List<String> getUnknownFields() { return unknownFields; }
+
+    /**
+     * The sanshain.yaml this configuration was looked for in, when that file does not exist; the
+     * configuration then holds only the environment overrides.
+     * @return the absolute path of the missing file, or null when the file was read
+     */
+    @JsonIgnore
+    public File getMissingFile() { return missingFile; }
 
     /**
      * Gets the configuration for the provide goal.

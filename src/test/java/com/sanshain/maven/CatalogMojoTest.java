@@ -352,13 +352,74 @@ public class CatalogMojoTest {
         Mockito.verify(log).warn("Sanshain goal failed (best effort): Unexpected response 400: {\"error\":\"bad\"}");
     }
 
+    private static final String LEGACY = "serviceName: orders-service\ncatalogInfo: catalog-info.yaml\nprovide:\n  branch: main\n";
+
     @Test
-    public void testBestEffortDoesNotSoftenInvalidYaml() throws Exception {
-        CatalogMojo mojo = createMojo("serviceName: orders-service\ncatalogInfo: catalog-info.yaml\nprovide:\n  branch: main\n");
+    public void testBestEffortSkipsTheGoalOnInvalidYaml() throws Exception {
+        CatalogMojo mojo = createMojo(LEGACY);
         setField(mojo, "bestEffort", true);
-        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        mojo.execute();
+        Mockito.verify(log).warn(Mockito.startsWith("Sanshain goal skipped (best effort): Invalid sanshain.yaml for Sanshain 2.0:"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testInvalidYamlFailsWithoutBestEffortAndUnderStrict() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, createMojo(LEGACY)::execute);
+        assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml for Sanshain 2.0:"), ex.getMessage());
+
+        CatalogMojo strictMojo = createMojo(LEGACY);
+        setField(strictMojo, "bestEffort", true);
+        setField(strictMojo, "strict", true);
+        ex = assertThrows(MojoExecutionException.class, strictMojo::execute);
+        assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml for Sanshain 2.0:"), ex.getMessage());
+
+        CatalogMojo ownBestEffort = createMojo("bestEffort: true\n" + LEGACY);
+        ex = assertThrows(MojoExecutionException.class, ownBestEffort::execute);
         assertTrue(ex.getMessage().startsWith("Invalid sanshain.yaml for Sanshain 2.0:"), ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    private CatalogMojo missingFileMojo() throws Exception {
+        CatalogMojo mojo = new CatalogMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("sanshain.yaml").toFile());
+        setField(mojo, "sanshainUrl", baseUrl);
+        setField(mojo, "serviceName", "orders-service");
+        setField(mojo, "serverId", "sanshain");
+        setField(mojo, "trunk", false);
+        mojo.setLog(log);
+        return mojo;
+    }
+
+    private String missingCatalogInfo() {
+        return "Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath()
+                + " not found: No catalogInfo configured.";
+    }
+
+    @Test
+    public void testMissingFileFailsWithoutCatalogInfo() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, missingFileMojo()::execute);
+        assertEquals(missingCatalogInfo(), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileIsSkippedWithBestEffort() throws Exception {
+        CatalogMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        mojo.execute();
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingCatalogInfo());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileFailsUnderStrictEvenWithBestEffort() throws Exception {
+        CatalogMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals(missingCatalogInfo(), ex.getMessage());
     }
 
     @Test
