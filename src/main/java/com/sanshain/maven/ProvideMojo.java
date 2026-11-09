@@ -280,7 +280,7 @@ public class ProvideMojo extends AbstractMojo {
         if (!providedAnything) {
             String message = config.getMissingFile() != null
                     ? "No specification file to provide: " + openApiFile.getPath() + " does not exist."
-                    : "No specification files found to provide. Configure provide in sanshain.yaml or disable sanshain.strict.";
+                    : "No specification files found to provide. Configure provide in sanshain.yaml.";
             delegate.abort(message, bestEffort, config);
         }
     }

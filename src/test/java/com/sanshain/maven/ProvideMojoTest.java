@@ -975,6 +975,19 @@ public class ProvideMojoTest {
         assertTrue(ex.getMessage().contains("No specification files found"), ex.getMessage());
     }
 
+    @Test
+    public void testNothingToProvideWarnsWithoutContradictingItself() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo("serviceName: my-service\n", "openapi: 3.0.0");
+        mojo.setLog(log);
+        setField(mojo, "openApiFile", tempDir.resolve("missing.yaml").toFile());
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("No specification files found to provide. Configure provide in sanshain.yaml."
+                + " Skipping. Set sanshain.strict=true to fail in this case.");
+    }
+
     private static final String UNKNOWN_TAG =
             "no sanshain-branch 'release-9' - this build was not recorded in a release graph";
 
