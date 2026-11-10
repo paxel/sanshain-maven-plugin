@@ -197,15 +197,15 @@ public class SpecCombinerTest {
     }
 
     /**
-     * The package line pattern was simplified to avoid backtracking; it matches exactly the lines
-     * the earlier pattern matched. {@code [^;]+} already takes whitespace, so the earlier
-     * {@code \s+} and {@code \s*} around it only added ways to match the same line.
+     * The package line pattern takes a {@code package} statement with any spacing, an optional
+     * trailing comment, and nothing else. The lines are the ones the earlier, backtracking pattern
+     * {@code ^\\s*package\\s+[^;]+\\s*;\\s*(?://.*)?$} decided the same way, so the simpler
+     * pattern changed no answer.
      */
     @Test
-    public void testPackagePatternMatchesTheSameLinesAsBefore() {
-        Pattern before = Pattern.compile("^\\s*package\\s+[^;]+\\s*;\\s*(?://.*)?$");
-        Pattern now = combiner.packagePattern;
-        List<String> lines = List.of(
+    public void testPackagePatternTakesPackageLinesOnly() {
+        Pattern pattern = combiner.packagePattern;
+        List<String> packageLines = List.of(
                 "package foo.bar;",
                 "package foo;",
                 "  package foo.bar;",
@@ -216,7 +216,8 @@ public class SpecCombinerTest {
                 "package foo.bar;// comment",
                 "package a . b;",
                 "package   ;",
-                "package\tfoo;",
+                "package\tfoo;");
+        List<String> otherLines = List.of(
                 "package foo",
                 "package;",
                 "package ;x",
@@ -229,11 +230,12 @@ public class SpecCombinerTest {
                 "message Foo { string package = 1; }",
                 "",
                 "   ");
-        for (String line : lines) {
-            assertEquals(before.matcher(line).matches(), now.matcher(line).matches(), line);
+        for (String line : packageLines) {
+            assertTrue(pattern.matcher(line).matches(), line);
         }
-        assertTrue(now.matcher("package foo.bar;").matches());
-        assertFalse(now.matcher("package foo").matches());
+        for (String line : otherLines) {
+            assertFalse(pattern.matcher(line).matches(), line);
+        }
     }
 
     @Test
