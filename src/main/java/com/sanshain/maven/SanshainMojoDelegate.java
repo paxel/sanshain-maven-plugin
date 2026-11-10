@@ -6,9 +6,12 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +28,7 @@ public class SanshainMojoDelegate {
     /** The resolved strict mode: the property if set, else sanshain.yaml's {@code strict}, else off. */
     private boolean strict;
     private Map<String, String> environmentVariables = System.getenv();
+    private Properties systemProperties = System.getProperties();
 
     public SanshainMojoDelegate(Log log, Settings settings, String serverId, Boolean strict) {
         this.log = log;
@@ -90,13 +94,54 @@ public class SanshainMojoDelegate {
         }
     }
 
-    public void abort(String message, boolean bestEffort) throws MojoExecutionException {
-        if (bestEffort) {
-            log.warn("Sanshain goal skipped (best effort): " + message);
-            return;
+    /**
+     * Loads sanshain.yaml for a goal. A broken file (unreadable, invalid YAML, 1.x fields, an
+     * unsupported {@code apiType}, any other validation error) fails the goal. With best effort
+     * switched on by the property or {@code SANSHAIN_BEST_EFFORT} the goal is skipped with a
+     * warning instead; the broken file's own {@code bestEffort} does not count, and the
+     * {@code sanshain.strict} property wins over best effort. Unknown fields under strict always
+     * fail. A missing file is not an error here (see {@link #abort(String, boolean, SanshainConfig)}).
+     *
+     * @param configFile the sanshain.yaml to read
+     * @param bestEffort the {@code sanshain.bestEffort} property, or null if unset
+     * @return the configuration, or empty when best effort skips the goal
+     * @throws MojoExecutionException if the file is broken and best effort does not skip
+     * @throws MojoFailureException   if unknown fields are rejected under strict
+     */
+    public Optional<SanshainConfig> loadConfig(File configFile, Boolean bestEffort)
+            throws MojoExecutionException, MojoFailureException {
+        try {
+            return Optional.of(new SanshainConfig().loadConfig(configFile, this));
+        } catch (MojoExecutionException e) {
+            if (Boolean.TRUE.equals(strictProperty) || !resolveBestEffort(bestEffort, null)) {
+                throw e;
+            }
+            log.warn("Sanshain goal skipped (best effort): " + e.getMessage());
+            return Optional.empty();
         }
-        if (strict) {
-            throw new MojoExecutionException(message);
+    }
+
+    /**
+     * Stops the goal on missing configuration. Under strict that is an error, also with best
+     * effort, which covers failed calls only. When sanshain.yaml does not exist, the goal lacks
+     * what neither the file nor the POM gave: that is an error naming the file, which best effort
+     * turns into a skip with a warning. Otherwise the goal warns and skips.
+     *
+     * @param message    what is missing
+     * @param bestEffort whether best effort is on
+     * @param config     the loaded configuration, which knows whether its file is missing
+     * @throws MojoExecutionException under strict, or when the file is missing without best effort
+     */
+    public void abort(String message, boolean bestEffort, SanshainConfig config) throws MojoExecutionException {
+        File missingFile = config.getMissingFile();
+        String reason = missingFile == null ? message
+                : "Configuration file " + missingFile.getPath() + " not found: " + message;
+        if (strict || (missingFile != null && !bestEffort)) {
+            throw new MojoExecutionException(reason);
+        }
+        if (bestEffort) {
+            log.warn("Sanshain goal skipped (best effort): " + reason);
+            return;
         }
         log.warn(message + " Skipping. Set sanshain.strict=true to fail in this case.");
     }
@@ -109,7 +154,7 @@ public class SanshainMojoDelegate {
 
         if (config.getSanshainUrl() != null) return config.getSanshainUrl();
 
-        return "http://localhost:8080";
+        return "http://localhost:3000";
     }
 
     private String resolveUrlFromSettings() {
@@ -171,19 +216,29 @@ public class SanshainMojoDelegate {
     }
 
     /**
-     * Resolves the stability declared on every Provide. Always {@code snapshot} unless the
-     * explicit GA switch is set: the {@code -Dsanshain.ga=true} Maven property or the
-     * {@code SANSHAIN_GA=true} environment variable. There is no git magic and no stability
-     * field in sanshain.yaml — CI sets the switch on release pipelines, and that is the whole
-     * mechanism.
+     * Resolves the stability declared on every Provide; the first rule that is set decides:
+     * <ol>
+     *   <li>the {@code -Dsanshain.ga} Maven property, true or false;</li>
+     *   <li>the {@code SANSHAIN_GA} environment variable, unless absent or blank (an explicit
+     *       {@code false} counts as set);</li>
+     *   <li>{@code autoGa: true} in sanshain.yaml on a build that declares a stream (trunk, a
+     *       tag, or both);</li>
+     *   <li>otherwise {@code snapshot}.</li>
+     * </ol>
+     * There is no git magic and no stability field in sanshain.yaml: CI sets the switch, or
+     * declares the stream, on its protected pipelines, and that is the whole mechanism.
      *
-     * @param ga the value of the {@code sanshain.ga} Maven property
-     * @return {@code "ga"} if the switch is set, otherwise {@code "snapshot"}
+     * @param ga     the {@code sanshain.ga} Maven property, or null if unset
+     * @param stream the stream this build declared (resolve it first)
+     * @param config the loaded configuration, for {@code autoGa}
+     * @return {@code "ga"} or {@code "snapshot"}
      */
-    public String resolveStability(boolean ga) {
-        if (ga) return "ga";
+    public String resolveStability(Boolean ga, SanshainStream stream, SanshainConfig config) {
+        if (ga != null) return ga ? "ga" : "snapshot";
         String envGa = environmentVariables.get("SANSHAIN_GA");
-        if (isSwitchOn(envGa)) return "ga";
+        if (envGa != null && !envGa.isBlank()) return isSwitchOn(envGa) ? "ga" : "snapshot";
+        boolean autoGa = config != null && Boolean.TRUE.equals(config.getAutoGa());
+        if (autoGa && stream != null && stream.isDeclared()) return "ga";
         return "snapshot";
     }
 
@@ -233,6 +288,34 @@ public class SanshainMojoDelegate {
      */
     public SanshainOrigin resolveOrigin(String buildUrl, String changeUrl, String tickets, String note) {
         return SanshainOrigin.resolve(buildUrl, changeUrl, tickets, note, environmentVariables);
+    }
+
+    /**
+     * Fills the {@code annotations} of sanshain.yaml, on the same terms as the other build facts:
+     * a placeholder {@code {{NAME}}} takes the Maven property {@code NAME} ({@code -DNAME=value}:
+     * the user property, else the system property of that name), else the environment variable
+     * {@code SANSHAIN_SET_NAME}. Every entry left out for an unfilled placeholder is warned
+     * about; under strict the first such warning fails the goal before any request. Best-effort
+     * does not soften that.
+     *
+     * @param config         the loaded configuration
+     * @param userProperties the Maven user properties ({@code -D}), or null
+     * @return the filled annotations
+     * @throws MojoFailureException under strict, if an entry was left out
+     */
+    public SanshainAnnotations resolveAnnotations(SanshainConfig config, Properties userProperties)
+            throws MojoFailureException {
+        SanshainAnnotations annotations = SanshainAnnotations.resolve(config.getAnnotations(), name -> {
+            String value = userProperties != null ? userProperties.getProperty(name) : null;
+            return value != null ? value : systemProperties.getProperty(name);
+        }, environmentVariables);
+        for (String warning : annotations.getWarnings()) {
+            log.warn(warning);
+        }
+        if (strict && !annotations.getWarnings().isEmpty()) {
+            throw new MojoFailureException("strict: " + annotations.getWarnings().get(0));
+        }
+        return annotations;
     }
 
     /**
@@ -311,6 +394,10 @@ public class SanshainMojoDelegate {
 
     void setEnvironmentVariables(Map<String, String> environmentVariables) {
         this.environmentVariables = environmentVariables;
+    }
+
+    void setSystemProperties(Properties systemProperties) {
+        this.systemProperties = systemProperties;
     }
 
     public String resolveServiceName(String serviceName, SanshainConfig config) {

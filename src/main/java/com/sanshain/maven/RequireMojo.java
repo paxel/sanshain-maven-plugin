@@ -13,6 +13,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Properties;
 
 /**
  * Goal which requires endpoint snippets from the Sanshain service at exact pinned versions.
@@ -85,8 +88,18 @@ public class RequireMojo extends AbstractMojo {
     @Parameter(property = "sanshain.tag")
     private String tag;
 
+    /**
+     * The Maven user properties ({@code -DNAME=value}): the values of the {@code {{NAME}}}
+     * placeholders in the annotations of sanshain.yaml, before {@code SANSHAIN_SET_NAME}.
+     */
+    @Parameter(defaultValue = "${session.userProperties}", readonly = true)
+    private Properties userProperties;
+
     /** Resolved once in {@link #execute()}; the graph every pin of this run belongs to. */
     private SanshainStream stream;
+
+    /** Resolved once in {@link #execute()}; every require of this run sends the system ones. */
+    private SanshainAnnotations annotations;
 
     private void initDefaults() {
         if (baseDir == null) {
@@ -109,27 +122,19 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        // Early resolution of bestEffort to handle config loading errors
-        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
-
-        SanshainConfig config;
-        try {
-            config = new SanshainConfig().loadConfig(configFile, delegate);
-            // Re-resolve to incorporate potential YAML overrides
-            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
-        } catch (MojoFailureException e) {
-            // Unknown fields under strict: a configuration error best-effort does not soften.
-            throw e;
-        } catch (Exception e) {
-            delegate.handleException(e, resolvedBestEffort);
-            config = new SanshainConfig();
+        // A broken sanshain.yaml fails; best effort from the property or the variable skips.
+        Optional<SanshainConfig> loaded = delegate.loadConfig(configFile, bestEffort);
+        if (loaded.isEmpty()) {
+            return;
         }
+        SanshainConfig config = loaded.get();
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = resolveServiceName(config);
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort, config);
             return;
         }
 
@@ -137,6 +142,7 @@ public class RequireMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         stream = delegate.resolveStream(trunk, tag);
+        annotations = delegate.resolveAnnotations(config, userProperties);
 
         if (resolvedToken == null) {
             getLog().warn("No authentication token configured. Requests will be unauthenticated.");
@@ -146,7 +152,7 @@ public class RequireMojo extends AbstractMojo {
 
         List<SanshainConfig.RequireConfig> requires = config.getRequires();
         if (requires == null || requires.isEmpty()) {
-            delegate.abort("No requires configured in sanshain.yaml.", resolvedBestEffort);
+            delegate.abort("No requires configured in sanshain.yaml.", resolvedBestEffort, config);
             return;
         }
 
@@ -174,11 +180,12 @@ public class RequireMojo extends AbstractMojo {
         getLog().debug("Resolved insecure: " + ins);
         getLog().debug("Resolved token: " + (tok != null ? "[set]" : "[not set]"));
         getLog().debug("Resolved stream: " + stream);
+        getLog().debug("Resolved " + annotations);
     }
 
     private void processRequire(SanshainConfig.RequireConfig req, SanshainConfig config, SanshainHttpClient client, SanshainCache cache, String url, String token, String serviceName, boolean compression, boolean bestEffort, SanshainMojoDelegate delegate) throws MojoExecutionException, MojoFailureException {
         String reqServiceName = req.getServiceName();
-        String apiType = req.getApiType();
+        String apiType = canonicalApiType(req.getApiType());
         String version = req.getVersion();
 
         File outputDirectory = resolveOutputDirectory(req, config);
@@ -200,6 +207,19 @@ public class RequireMojo extends AbstractMojo {
         }
     }
 
+    /**
+     * The require's apiType as the service's contract spells it: lower case, and {@code grpc},
+     * which a provide accepts too, as {@code proto}. The wire and the output file's extension
+     * only know {@code proto}.
+     */
+    private static String canonicalApiType(String apiType) {
+        if (apiType == null) {
+            return null;
+        }
+        String type = apiType.toLowerCase(Locale.ROOT);
+        return type.equals("grpc") ? "proto" : type;
+    }
+
     private File resolveOutputDirectory(SanshainConfig.RequireConfig req, SanshainConfig config) {
         String outputDir = req.getOutputDirectory();
         // A yaml path resolves next to sanshain.yaml; the default belongs to the build's target.
@@ -216,18 +236,18 @@ public class RequireMojo extends AbstractMojo {
         String reqServiceName = req.getServiceName();
         getLog().info("Requiring bundle: " + reqServiceName + "@" + version + " (" + req.getEndpoints().size() + " endpoints)");
 
-        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version, req.getFormat());
-        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+        String fileName = reqServiceName + "_bundle." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+        Path outputFile = outputDirectory.toPath().resolve(fileName);
+        String cacheKey = SanshainCache.requireBundleKey(reqServiceName, version, req.getFormat(), outputKey(outputDirectory));
+        String cachedEtag = cachedEtag(cache, cacheKey, outputFile);
 
         RequireResult result = delegate.checked(client, () -> client.postRequireBundleWithEtag(url, token, serviceName,
-                reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat()));
+                reqServiceName, version, req.getEndpoints(), compression, dryRun, apiType, cachedEtag, stream, req.getFormat(),
+                annotations));
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
-            String fileName = reqServiceName + "_bundle." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
-            Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved bundle: " + outputFile + servedAs(result));
 
@@ -246,18 +266,18 @@ public class RequireMojo extends AbstractMojo {
 
         getLog().info("Requiring: " + reqServiceName + "@" + version + " " + method + " " + path);
 
-        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path, req.getFormat());
-        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
-        String cachedEtag = cachedEntry != null ? cachedEntry.etag : null;
+        String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
+        Path outputFile = outputDirectory.toPath().resolve(fileName);
+        String cacheKey = SanshainCache.requireKey(reqServiceName, version, method, path, req.getFormat(), outputKey(outputDirectory));
+        String cachedEtag = cachedEtag(cache, cacheKey, outputFile);
 
         RequireResult result = delegate.checked(client, () -> client.getRequireWithEtag(url, token, serviceName,
-                reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat()));
+                reqServiceName, version, path, method, compression, dryRun, apiType, cachedEtag, stream, req.getFormat(),
+                annotations));
 
         if (result.isNotModified()) {
             getLog().info("⏭ " + reqServiceName + " spec unchanged (304), skipping code generation.");
         } else {
-            String fileName = reqServiceName + "_" + path.replace("/", "_").replaceFirst("^_", "") + "_" + method + "." + ("proto".equalsIgnoreCase(apiType) ? "proto" : "yaml");
-            Path outputFile = outputDirectory.toPath().resolve(fileName);
             Files.writeString(outputFile, result.getContent());
             getLog().info("Saved: " + outputFile + servedAs(result));
 
@@ -267,6 +287,33 @@ public class RequireMojo extends AbstractMojo {
                 cache.save();
             }
         }
+    }
+
+    /**
+     * The output directory as the cache key names it: relative to the project directory, with
+     * forward slashes, so two entries writing to different directories never share an ETag.
+     */
+    private String outputKey(File outputDirectory) {
+        Path project = baseDir.toPath().toAbsolutePath().normalize();
+        Path output = outputDirectory.toPath().toAbsolutePath().normalize();
+        try {
+            return project.relativize(output).toString().replace(File.separatorChar, '/');
+        } catch (IllegalArgumentException e) {
+            // Another root (a different drive): there is no relative path.
+            return output.toString().replace(File.separatorChar, '/');
+        }
+    }
+
+    /**
+     * The ETag to send as If-None-Match: none when the output file is gone, so the answer is a
+     * 200 that writes it again instead of a 304 that would leave the directory empty.
+     */
+    private static String cachedEtag(SanshainCache cache, String cacheKey, Path outputFile) {
+        SanshainCache.RequireEntry cachedEntry = cache.getRequireEntry(cacheKey);
+        if (cachedEntry == null || !Files.exists(outputFile)) {
+            return null;
+        }
+        return cachedEntry.etag;
     }
 
     private String servedAs(RequireResult result) {

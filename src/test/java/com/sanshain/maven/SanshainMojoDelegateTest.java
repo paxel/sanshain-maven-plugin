@@ -81,10 +81,77 @@ public class SanshainMojoDelegateTest {
 
     @Test
     public void testGaEnvSwitchValues() {
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "1")).resolveStability(false));
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "TRUE")).resolveStability(false));
-        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " true ")).resolveStability(false));
-        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "yes")).resolveStability(false));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "1")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "TRUE")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " true ")).resolveStability(null, SanshainStream.none(), null));
+        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "yes")).resolveStability(null, SanshainStream.none(), null));
+    }
+
+    // --- autoGa: the ga flag, then SANSHAIN_GA, then autoGa with a declared stream, then snapshot ---
+
+    private static SanshainConfig autoGa(Boolean autoGa) {
+        SanshainConfig config = new SanshainConfig();
+        config.setAutoGa(autoGa);
+        return config;
+    }
+
+    private static final Map<String, String> NO_ENV = Collections.emptyMap();
+
+    @Test
+    public void testAutoGaOnTrunkIsGa() {
+        assertEquals("ga", delegate(null, NO_ENV).resolveStability(null, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTagIsGa() {
+        assertEquals("ga", delegate(null, NO_ENV).resolveStability(null, SanshainStream.tag("release-1"), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaWithoutStreamIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(null, SanshainStream.none(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTrunkWithEnvGaFalseIsSnapshot() {
+        assertEquals("snapshot", delegate(null, env("SANSHAIN_GA", "false"))
+                .resolveStability(null, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaOnTrunkWithGaFlagFalseIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(false, SanshainStream.trunk(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaFalseOnTrunkIsSnapshot() {
+        assertEquals("snapshot", delegate(null, NO_ENV).resolveStability(null, SanshainStream.trunk(), autoGa(false)));
+    }
+
+    @Test
+    public void testAutoGaAbsentWithEnvGaTrueIsGa() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "true"))
+                .resolveStability(null, SanshainStream.none(), autoGa(null)));
+    }
+
+    @Test
+    public void testGaFlagTrueWinsOverEnvGaFalseWithAutoGa() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", "false"))
+                .resolveStability(true, SanshainStream.none(), autoGa(true)));
+    }
+
+    @Test
+    public void testAutoGaWithTrunkAndTagIsGa() throws MojoFailureException {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_TAG", "release-1"));
+        SanshainStream both = d.resolveStream(true, null);
+        assertTrue(both.isNone());
+        assertEquals("ga", d.resolveStability(null, both, autoGa(true)));
+    }
+
+    @Test
+    public void testBlankEnvGaIsUnsetSoAutoGaDecides() {
+        assertEquals("ga", delegate(null, env("SANSHAIN_GA", " "))
+                .resolveStability(null, SanshainStream.trunk(), autoGa(true)));
     }
 
     @Test
@@ -146,6 +213,12 @@ public class SanshainMojoDelegateTest {
         SanshainConfig config = loadConfig("sanshainUrl: http://yaml\n", env("SANSHAIN_URL", "http://env"));
         assertEquals("http://settings", delegate(settingsWithUrl("http://settings"), Collections.emptyMap())
                 .resolveUrl(null, config));
+    }
+
+    @Test
+    public void testDefaultUrlIsTheServicePort() throws Exception {
+        SanshainConfig config = loadConfig("serviceName: my-service\n", Collections.emptyMap());
+        assertEquals("http://localhost:3000", delegate(null, Collections.emptyMap()).resolveUrl(null, config));
     }
 
     @Test
@@ -350,5 +423,227 @@ public class SanshainMojoDelegateTest {
         SanshainMojoDelegate d = new SanshainMojoDelegate(Mockito.mock(Log.class), null, null, true);
         MojoFailureException strict = new MojoFailureException("strict: Sanshain warned: w");
         assertSame(strict, assertThrows(MojoFailureException.class, () -> d.handleException(strict, true)));
+    }
+
+    // --- annotations: -DNAME (user property, then system property), then SANSHAIN_SET_NAME ---
+
+    private static SanshainConfig annotated(String value) {
+        return annotatedConfig(new SanshainConfig.AnnotationConfig("version", "requirements", value));
+    }
+
+    private static SanshainConfig annotatedConfig(SanshainConfig.AnnotationConfig... entries) {
+        SanshainConfig config = Mockito.spy(new SanshainConfig());
+        Mockito.doReturn(Arrays.asList(entries)).when(config).getAnnotations();
+        return config;
+    }
+
+    private static java.util.Properties props(String name, String value) {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty(name, value);
+        return props;
+    }
+
+    private static final String LEFT_OUT = "annotation 'requirements' left out: {{ID}} is not set (-DID=… or SANSHAIN_SET_ID)";
+
+    @Test
+    public void testUserPropertyWinsOverSystemPropertyAndEnv() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(props("ID", "system"));
+        SanshainAnnotations a = d.resolveAnnotations(annotated("r-{{ID}}"), props("ID", "user"));
+        assertEquals("r-user", a.forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testSystemPropertyWinsOverEnv() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(props("ID", "system"));
+        assertEquals("r-system", d.resolveAnnotations(annotated("r-{{ID}}"), null).forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testEnvFillsWhenNoPropertyIsSet() throws Exception {
+        SanshainMojoDelegate d = delegate(null, env("SANSHAIN_SET_ID", "env"));
+        d.setSystemProperties(new java.util.Properties());
+        assertEquals("r-env", d.resolveAnnotations(annotated("r-{{ID}}"), new java.util.Properties())
+                .forProvide().get(0).get("value"));
+    }
+
+    @Test
+    public void testUnfilledAnnotationWarnsAndKeepsTheOthers() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, false);
+        d.setEnvironmentVariables(NO_ENV);
+        d.setSystemProperties(new java.util.Properties());
+        SanshainAnnotations a = d.resolveAnnotations(annotatedConfig(
+                new SanshainConfig.AnnotationConfig("version", "requirements", "r-{{ID}}"),
+                new SanshainConfig.AnnotationConfig("system", "jenkins", "https://jenkins.corp/job/payments")), null);
+        Mockito.verify(log).warn(LEFT_OUT);
+        assertEquals(1, a.forProvide().size());
+        assertEquals("jenkins", a.forProvide().get(0).get("name"));
+    }
+
+    @Test
+    public void testUnfilledAnnotationUnderStrictFails() {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, true);
+        d.setEnvironmentVariables(NO_ENV);
+        d.setSystemProperties(new java.util.Properties());
+        MojoFailureException e = assertThrows(MojoFailureException.class,
+                () -> d.resolveAnnotations(annotated("r-{{ID}}"), null));
+        assertEquals("strict: " + LEFT_OUT, e.getMessage());
+        Mockito.verify(log).warn(LEFT_OUT);
+    }
+
+    // --- A missing or broken sanshain.yaml ---
+
+    private static final String INVALID_YAML = "invalid: yaml: : content";
+    private static final String LEGACY_YAML = "serviceName: s\nprovide:\n  openApiFile: o.yaml\n  branch: main\n";
+
+    private SanshainMojoDelegate delegate(Log log, Boolean strict, Map<String, String> env) {
+        SanshainMojoDelegate d = new SanshainMojoDelegate(log, null, null, strict);
+        d.setEnvironmentVariables(env);
+        return d;
+    }
+
+    private java.io.File configFile(String yaml) throws IOException {
+        Path configPath = tempDir.resolve("sanshain.yaml");
+        Files.writeString(configPath, yaml);
+        return configPath.toFile();
+    }
+
+    @Test
+    public void testBrokenFileFailsWithoutBestEffort() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null));
+        assertEquals("Failed to load configuration from " + file.getAbsolutePath(), e.getMessage());
+    }
+
+    @Test
+    public void testBrokenFileIsSkippedWithTheBestEffortProperty() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, NO_ENV).loadConfig(file, true).isEmpty());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from " + file.getAbsolutePath());
+    }
+
+    @Test
+    public void testBrokenFileIsSkippedWithTheBestEffortVariable() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, env("SANSHAIN_BEST_EFFORT", "1")).loadConfig(file, null).isEmpty());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from " + file.getAbsolutePath());
+    }
+
+    @Test
+    public void testBestEffortPropertyFalseBeatsTheVariableForABrokenFile() throws Exception {
+        java.io.File file = configFile(INVALID_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, env("SANSHAIN_BEST_EFFORT", "true")).loadConfig(file, false));
+    }
+
+    @Test
+    public void testLegacyFieldIsSkippedWithTheBestEffortVariable() throws Exception {
+        java.io.File file = configFile(LEGACY_YAML);
+        Log log = Mockito.mock(Log.class);
+        assertTrue(delegate(log, null, env("SANSHAIN_BEST_EFFORT", "true")).loadConfig(file, null).isEmpty());
+        Mockito.verify(log).warn(Mockito.startsWith("Sanshain goal skipped (best effort): Invalid sanshain.yaml for Sanshain 2.0:"));
+    }
+
+    @Test
+    public void testBrokenFilesOwnBestEffortDoesNotCount() throws Exception {
+        java.io.File file = configFile("bestEffort: true\n" + LEGACY_YAML);
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null));
+        assertTrue(e.getMessage().contains("'branch' is no longer supported"), e.getMessage());
+    }
+
+    @Test
+    public void testStrictPropertyWinsOverBestEffortForABrokenFile() throws Exception {
+        java.io.File invalid = configFile(INVALID_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, NO_ENV).loadConfig(invalid, true));
+        java.io.File legacy = configFile(LEGACY_YAML);
+        assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, env("SANSHAIN_BEST_EFFORT", "1")).loadConfig(legacy, null));
+    }
+
+    @Test
+    public void testBrokenFilesOwnStrictDoesNotCount() throws Exception {
+        java.io.File file = configFile("strict: true\n" + LEGACY_YAML);
+        assertTrue(delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true).isEmpty());
+    }
+
+    @Test
+    public void testUnknownFieldUnderStrictFailsEvenWhenBestEffortSkipsBrokenFiles() throws Exception {
+        java.io.File file = configFile("strict: true\nserviceName: s\ncatalogInf: c.yaml\n");
+        MojoFailureException e = assertThrows(MojoFailureException.class,
+                () -> delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true));
+        assertEquals("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)", e.getMessage());
+    }
+
+    @Test
+    public void testValidFileLoads() throws Exception {
+        java.io.File file = configFile("serviceName: s\n");
+        SanshainConfig config = delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, true).orElseThrow();
+        assertEquals("s", config.getServiceName());
+        assertNull(config.getMissingFile());
+    }
+
+    @Test
+    public void testMissingFileLoadsAnEmptyConfigNamingTheFile() throws Exception {
+        java.io.File file = tempDir.resolve("sanshain.yaml").toFile();
+        SanshainConfig config = delegate(Mockito.mock(Log.class), null, NO_ENV).loadConfig(file, null).orElseThrow();
+        assertEquals(file.getAbsoluteFile(), config.getMissingFile());
+        assertNull(config.getServiceName());
+    }
+
+    private SanshainConfig missingConfig() throws Exception {
+        return new SanshainConfig().loadConfig(tempDir.resolve("sanshain.yaml").toFile());
+    }
+
+    private String missingReason(String message) {
+        return "Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: " + message;
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileFails() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainConfig config = missingConfig();
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(log, null, NO_ENV).abort("serviceName is required", false, config));
+        assertEquals(missingReason("serviceName is required"), e.getMessage());
+        Mockito.verifyNoInteractions(log);
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileIsSkippedWithBestEffort() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        delegate(log, null, NO_ENV).abort("serviceName is required", true, missingConfig());
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingReason("serviceName is required"));
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileIsSkippedWithTheBestEffortVariable() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        SanshainMojoDelegate d = delegate(log, null, env("SANSHAIN_BEST_EFFORT", "true"));
+        SanshainConfig config = missingConfig();
+        d.abort("serviceName is required", d.resolveBestEffort(null, config), config);
+        Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingReason("serviceName is required"));
+    }
+
+    @Test
+    public void testMissingConfigurationWithoutTheFileFailsUnderStrictEvenWithBestEffort() throws Exception {
+        SanshainConfig config = missingConfig();
+        MojoExecutionException e = assertThrows(MojoExecutionException.class,
+                () -> delegate(Mockito.mock(Log.class), true, NO_ENV).abort("serviceName is required", true, config));
+        assertEquals(missingReason("serviceName is required"), e.getMessage());
+    }
+
+    @Test
+    public void testMissingConfigurationInAnExistingFileWarnsAndSkips() throws Exception {
+        Log log = Mockito.mock(Log.class);
+        delegate(log, null, NO_ENV).abort("serviceName is required", false, loadConfig("compression: true\n", NO_ENV));
+        Mockito.verify(log).warn("serviceName is required Skipping. Set sanshain.strict=true to fail in this case.");
     }
 }

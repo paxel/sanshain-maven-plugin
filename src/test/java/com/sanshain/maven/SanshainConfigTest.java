@@ -30,6 +30,25 @@ public class SanshainConfigTest {
     }
 
     @Test
+    public void testEmptyProvidesEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nprovides:\n  -\n");
+        assertTrue(e.getMessage().contains("provides[0]: empty entry"), e.getMessage());
+    }
+
+    @Test
+    public void testEmptyRequiresEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nrequires:\n  -\n");
+        assertTrue(e.getMessage().contains("requires[0]: empty entry"), e.getMessage());
+    }
+
+    @Test
+    public void testEmptyEndpointEntryIsRefusedByName() throws IOException {
+        MojoExecutionException e = loadExpectingError("serviceName: s\nrequires:\n  - serviceName: p\n    version: 1.0.0\n"
+                + "    endpoints:\n      - method: GET\n        path: /a\n      -\n");
+        assertTrue(e.getMessage().contains("requires[0] (p): endpoints[1] is an empty entry"), e.getMessage());
+    }
+
+    @Test
     public void testLoadFullConfig() throws IOException, MojoExecutionException {
         String yaml = "sanshainUrl: https://api.sanshain.com\n" +
                 "serviceName: my-service\n" +
@@ -441,5 +460,80 @@ public class SanshainConfigTest {
                 "    version: 1.0.0\n");
         assertTrue(ex.getMessage().contains("requires[0] (events): format 'json-schema' is not supported"), ex.getMessage());
         assertTrue(ex.getMessage().contains("apiType: asyncapi with format: openapi"), ex.getMessage());
+    }
+
+    @Test
+    public void testAutoGaIsKnownAndRead() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\nautoGa: true\n");
+        assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
+        assertEquals(Boolean.TRUE, config.getAutoGa());
+        assertNull(load("serviceName: x\n").getAutoGa());
+    }
+
+    private static final String ANNOTATIONS_YAML = "serviceName: x\n" +
+            "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{AREA}}/requirements/{{ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+
+    @Test
+    public void testAnnotationsAreReadInFileOrder() throws IOException, MojoExecutionException {
+        SanshainConfig config = load(ANNOTATIONS_YAML);
+        assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
+        assertEquals(2, config.getAnnotations().size());
+        SanshainConfig.AnnotationConfig first = config.getAnnotations().get(0);
+        assertEquals("version", first.getScope());
+        assertEquals("requirements", first.getName());
+        assertEquals("http://solar.system/id-{{AREA}}/requirements/{{ID}}", first.getValue());
+        assertEquals("system", config.getAnnotations().get(1).getScope());
+    }
+
+    @Test
+    public void testNoAnnotationsIsEmpty() throws IOException, MojoExecutionException {
+        assertTrue(load("serviceName: x\n").getAnnotations().isEmpty());
+    }
+
+    @Test
+    public void testAnnotationMissingFieldIsNamedError() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\nannotations:\n  - scope: system\n    name: jenkins\n");
+        assertTrue(ex.getMessage().contains("annotations[0] (jenkins): missing 'value'"), ex.getMessage());
+    }
+
+    @Test
+    public void testAnnotationWrongTypeIsNamedError() throws IOException {
+        MojoExecutionException ex = loadExpectingError(
+                "serviceName: x\nannotations:\n  - scope: system\n    name: build\n    value: 42\n");
+        assertTrue(ex.getMessage().contains("annotations[0] (build): 'value' must be a string"), ex.getMessage());
+    }
+
+    @Test
+    public void testAnnotationOtherScopeIsNamedError() throws IOException {
+        MojoExecutionException ex = loadExpectingError(
+                "serviceName: x\nannotations:\n  - scope: product\n    name: a\n    value: b\n");
+        assertTrue(ex.getMessage().contains("annotations[0] (a): scope 'product' is not supported — use version or system"),
+                ex.getMessage());
+    }
+
+    @Test
+    public void testAnnotationsNotAListIsNamedError() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\nannotations: jenkins\n");
+        assertTrue(ex.getMessage().contains("annotations: must be a list of entries with scope, name and value"),
+                ex.getMessage());
+    }
+
+    @Test
+    public void testAnnotationEntryNotAnObjectIsNamedError() throws IOException {
+        MojoExecutionException ex = loadExpectingError("serviceName: x\nannotations:\n  - jenkins\n");
+        assertTrue(ex.getMessage().contains("annotations[0]: must be an entry with scope, name and value"), ex.getMessage());
+    }
+
+    @Test
+    public void testUnknownAnnotationFieldIsNamedByPath() throws IOException, MojoExecutionException {
+        SanshainConfig config = load("serviceName: x\nannotations:\n  - scope: system\n    name: a\n    value: b\n    vlaue: c\n");
+        assertEquals(java.util.Arrays.asList("annotations[0].vlaue"), config.getUnknownFields());
+        assertEquals(1, config.getAnnotations().size());
     }
 }

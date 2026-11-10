@@ -9,8 +9,8 @@ The following diagram shows how the Sanshain goals interact with the Maven lifec
 ```mermaid
 graph TD
     subgraph Maven Lifecycle
-        init[validate phase] --> sans_p[sanshain:provide]
-        gen[initialize phase] --> sans_r[sanshain:require]
+        gen[initialize phase] --> sans_p[sanshain:provide]
+        gen --> sans_r[sanshain:require]
         gen_s[generate-sources phase] --> openapi[openapi-generator]
         openapi --> compile[compile phase]
     end
@@ -28,10 +28,10 @@ graph TD
 ## Goals & Phases
 
 ### `sanshain:provide`
-- **Default Phase**: `validate`
-- **Note**: While a default phase is defined, we recommend explicitly specifying `<phase>validate</phase>` in your `pom.xml` for maximum compatibility across different Maven versions.
+- **Default Phase**: `initialize`
+- **Note**: While a default phase is defined, we recommend explicitly specifying `<phase>initialize</phase>` in your `pom.xml` for maximum compatibility across different Maven versions.
 - **Purpose**: Uploads the service's API specifications to the Sanshain service under the version declared in the spec file and the stability declared for this build.
-- **Why `validate`?**: It ensures that the contract is registered and validated at the very beginning of the build. If the provide is rejected by the version rules (e.g. a GA version whose content changed without a version bump), the build fails as early as possible — with the server's `proposed_version` in the error.
+- **Why `initialize`?**: It ensures that the contract is registered and validated at the very beginning of the build. If the provide is rejected by the version rules (e.g. a GA version whose content changed without a version bump), the build fails as early as possible — with the server's `proposed_version` in the error.
 
 ### `sanshain:require`
 - **Default Phase**: `initialize`
@@ -42,7 +42,7 @@ graph TD
 ### `sanshain:catalog`
 - **Default Phase**: `initialize`
 - **Purpose**: Pushes the service's Backstage `catalog-info.yaml` (the `catalogInfo` field of `sanshain.yaml`) so the network graph shows the peripheral resources it depends on. Needs Sanshain Service 2.4.0 or later.
-- **Optional**: Without `catalogInfo` the goal warns and skips (fails under strict), so it is safe to add to every project.
+- **Optional**: Without `catalogInfo` the goal warns and skips (fails under strict). Without `sanshain.yaml` it fails, so add it to every project only with best effort.
 
 ## Key Mechanisms
 

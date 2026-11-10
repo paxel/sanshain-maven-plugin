@@ -21,19 +21,21 @@ public final class SanshainStream {
     public static final String MUTUALLY_EXCLUSIVE =
             "trunk and tag are mutually exclusive - this build is recorded in neither";
 
-    private static final SanshainStream NONE = new SanshainStream(false, null, null);
-    private static final SanshainStream TRUNK = new SanshainStream(true, null, null);
+    private static final SanshainStream NONE = new SanshainStream(false, null, null, false);
+    private static final SanshainStream TRUNK_STREAM = new SanshainStream(true, null, null, true);
     /** Both trunk and a tag were declared: sends neither, and says so. */
-    private static final SanshainStream NEITHER = new SanshainStream(false, null, MUTUALLY_EXCLUSIVE);
+    private static final SanshainStream NEITHER = new SanshainStream(false, null, MUTUALLY_EXCLUSIVE, true);
 
     private final boolean trunk;
     private final String tag;
     private final String warning;
+    private final boolean declared;
 
-    private SanshainStream(boolean trunk, String tag, String warning) {
+    private SanshainStream(boolean trunk, String tag, String warning, boolean declared) {
         this.trunk = trunk;
         this.tag = tag;
         this.warning = warning;
+        this.declared = declared;
     }
 
     /**
@@ -49,7 +51,7 @@ public final class SanshainStream {
      * @return the trunk stream
      */
     public static SanshainStream trunk() {
-        return TRUNK;
+        return TRUNK_STREAM;
     }
 
     /**
@@ -63,7 +65,7 @@ public final class SanshainStream {
         if (tag == null || tag.isBlank()) {
             return NONE;
         }
-        return new SanshainStream(false, tag.trim(), null);
+        return new SanshainStream(false, tag.trim(), null, true);
     }
 
     /**
@@ -114,6 +116,16 @@ public final class SanshainStream {
      */
     public String getWarning() {
         return warning;
+    }
+
+    /**
+     * Whether the build declared a stream at all: trunk, a tag, or both. A build declaring both
+     * sends neither ({@link #isNone()} is true) but still declared one, which is what
+     * {@code autoGa} asks.
+     * @return true if trunk or a tag was declared
+     */
+    public boolean isDeclared() {
+        return declared;
     }
 
     /**

@@ -61,11 +61,46 @@ does not soften this, because it is a configuration error, not a failed call. Fi
 clients know but this plugin does not use (for example `force`) are accepted silently. The removed
 1.x fields still fail by name first.
 
+## Annotations
+
+Annotations are entries the project declares and the build fills in: a link to the requirements of
+this release, the job that builds the system. Sanshain shows them; it never invents or interprets
+them. They need Sanshain Service 2.13.0 or later.
+
+```yaml
+annotations:
+  - scope: version
+    name: requirements
+    value: "http://solar.system/id-{{AREA}}/requirements/{{ID}}"
+  - scope: system
+    name: jenkins
+    value: "https://jenkins.corp/job/payments"
+```
+
+- Every entry has exactly `scope` (`version` or `system`), `name` and `value`, all strings; anything
+  else fails the goal with an error naming the entry, before any request. The service checks the
+  limits (at most 20 per scope, a name of at most 40 letters, digits, `-` and `_`, a value of at most
+  2048 characters) and answers `400` naming the entry.
+- A placeholder `{{NAME}}` (letters, digits and `_` only, no spaces inside the braces) takes its value
+  from the Maven property `-DNAME=value`, else the environment variable `SANSHAIN_SET_NAME`; the
+  property wins and an empty value does not count. Anything else between double braces stays as
+  written. `mvn verify -DAREA=payments -DID=4711` fills the example above.
+- An entry with a placeholder nobody filled is left out with a warning, for example
+  `annotation 'requirements' left out: {{ID}} is not set (-DID=… or SANSHAIN_SET_ID)`; the other
+  entries are still sent. In strict mode the warning fails the goal before any request.
+- `scope: version` entries travel on every provide and are stored with that version. `scope: system`
+  entries travel on every call naming the system (provide, require, require bundle, catalog push) and
+  are stored once per system, the latest call winning per name. A retire sends none; a dry run sends
+  them as a real call would (the service stores nothing).
+- A Sanshain Service before 2.13.0 refuses them; the plugin then repeats the call without them and
+  warns once: `Sanshain Service before 2.13.0 does not take annotations; sending without them`.
+
 ## Versions and stability
 
 - The **version** of a provide is never configured — it lives in the spec file itself (`info.version` for OpenAPI/AsyncAPI, a mandatory `// sanshain-version:` comment for proto). Accepted spellings are `MAJOR[.MINOR[.PATCH]]` with an optional leading `v`; omitted parts are zero (`v2` becomes `2.0.0`) and the stored version is always the full three-part form. The same applies to a `version` pin in `requires`.
 - Every `requires` entry pins an **exact version** (`version: MAJOR.MINOR.PATCH`). No ranges, no `latest`. A pin that does not exist on the server fails the require immediately (`404`).
 - **Stability** is declared per build: the default is `snapshot`; `-Dsanshain.ga=true` or `SANSHAIN_GA=true` provides as `ga`. There is no stability field in `sanshain.yaml`.
+- **`autoGa: true`** in `sanshain.yaml` provides as `ga` whenever the build declares a stream: trunk (`-Dsanshain.trunk` / `SANSHAIN_TRUNK`) or a tag (`-Dsanshain.tag` / `SANSHAIN_TAG`), or both. Without a stream it stays `snapshot`. The first that is set decides: `-Dsanshain.ga` (true or false), then `SANSHAIN_GA` (an explicit `false` counts), then `autoGa` with a stream, then `snapshot`. There is no branch detection: CI declares trunk and tag on its protected pipelines only. The CI token's user needs the `releaser` role, and a trunk build that changes the spec without a version bump fails with `409 immutable_ga` and the proposed version. A retire never carries a stability.
 
 ## Streams: trunk and release branches
 
@@ -116,10 +151,11 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 
 | Setting                     | `sanshain.yaml` | Maven Property           | Env Variable            | Default                                            |
 |-----------------------------|-----------------|--------------------------|-------------------------|----------------------------------------------------|
-| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:8080`                            |
+| Sanshain URL                | `sanshainUrl`   | `-Dsanshain.url`         | `$SANSHAIN_URL`         | `http://localhost:3000`                            |
 | Sanshain URL (settings.xml) | —               | —                        | —                       | via `<configuration><sanshainUrl>` in server entry |
 | Token                       | —               | `-Dsanshain.token`       | `$SANSHAIN_TOKEN`       | — (optional)                                       |
-| GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | `false` (provide as `snapshot`)                    |
+| GA switch (provide only)    | —               | `-Dsanshain.ga`          | `$SANSHAIN_GA`          | unset (provide as `snapshot`)                      |
+| Auto GA (provide only)      | `autoGa`        | —                        | —                       | `false` (GA on every trunk or tag build)           |
 | Trunk stream                | —               | `-Dsanshain.trunk`       | `$SANSHAIN_TRUNK`       | `false`                                            |
 | Branch stream               | —               | `-Dsanshain.tag`         | `$SANSHAIN_TAG`         | — (no branch)                                      |
 | Compression                 | `compression`   | `-Dsanshain.compression` | `$SANSHAIN_COMPRESSION` | `true`                                             |
@@ -133,6 +169,7 @@ The following settings can be specified in `sanshain.yaml`, overridden via Maven
 | Change URL (provide only)   | —               | `-Dsanshain.changeUrl`   | `$SANSHAIN_CHANGE_URL`  | the runner's variable (GitHub, GitLab, Jenkins)    |
 | Tickets (provide only)      | —               | `-Dsanshain.tickets`     | `$SANSHAIN_TICKETS`     | — (comma-separated ids)                            |
 | Note (provide only)         | —               | `-Dsanshain.note`        | `$SANSHAIN_NOTE`        | — (one line, at most 200 characters)               |
+| Annotation placeholder      | `annotations`   | `-DNAME`                 | `$SANSHAIN_SET_NAME`    | — (entry left out with a warning)                  |
 
 Boolean environment switches (`$SANSHAIN_GA`, `$SANSHAIN_TRUNK`, `$SANSHAIN_BEST_EFFORT`,
 `$SANSHAIN_COMPRESSION`, `$SANSHAIN_INSECURE`, `$SANSHAIN_COMBINE`) are on when the value, trimmed and
@@ -145,9 +182,9 @@ environment.
 |---------------|-------------------------|-------------------------------------------|------------------------------------------------------------------------------------|
 | `serviceName` | `sanshain.service.name` | —                                         | **Required.** The name of the service providing the API.                           |
 | `openApiFile` | `sanshain.openapi.file` | `${project.build.directory}/openapi.yaml` | Path to the default OpenAPI YAML file.                                             |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080`                   | URL of the Sanshain service.                                                       |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:3000`                   | URL of the Sanshain service.                                                       |
 | `token`       | `sanshain.token`        | —                                         | Authentication token (prefer `settings.xml` or env variable).                      |
-| `ga`          | `sanshain.ga`           | `false`                                   | Provide as `ga` instead of `snapshot`. Also settable via `$SANSHAIN_GA`.           |
+| `ga`          | `sanshain.ga`           | unset                                     | `true`: `ga`, `false`: `snapshot`, over `$SANSHAIN_GA` and `autoGa`.               |
 | `trunk`       | `sanshain.trunk`        | `false`                                   | This build is trunk's. Also settable via `$SANSHAIN_TRUNK`.                        |
 | `tag`         | `sanshain.tag`          | —                                         | This build is a sanshain-branch's. Also settable via `$SANSHAIN_TAG`.              |
 | `compression` | `sanshain.compression`  | `true`                                    | Enable gzip compression for the upload.                                            |
@@ -164,11 +201,12 @@ environment.
 
 `sanshain:catalog` pushes the Backstage `catalog-info.yaml` named by `catalogInfo` (relative to
 `sanshain.yaml`) to `PUT /catalog/<serviceName>`. It needs Sanshain Service 2.4.0 or later; all other
-goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict). It
+goals work with any 2.x service. Without `catalogInfo` it warns and skips (fails under strict); without
+`sanshain.yaml` it fails (best effort skips it). It
 takes `serviceName`, `sanshainUrl`, `token`, `serverId`, `compression`, `insecure`, `bestEffort`,
 `trunk`, `skip`, `dryRun` and `strict` like the other goals (under `-Dsanshain.dry.run=true` it reads
 and checks the file locally and pushes nothing); see the
-[README](../README.md#goal-catalog) for output and failure modes.
+[Maven client page](https://paxel.github.io/sanshain-service/developer/clients/maven.html#failure-modes) for output and failure modes.
 
 ## `requires`: `format: openapi`
 
@@ -176,14 +214,14 @@ A `requires` entry with `apiType: asyncapi` may set `format: openapi` to receive
 OpenAPI document instead of AsyncAPI (needs Sanshain Service 2.4.0 or later). It is the only allowed
 combination; any other `apiType` or value fails before any call. The output file name is unchanged, so
 to get both formats list the entry twice with different `outputDirectory`s. See the
-[README](../README.md#asyncapi-as-openapi-format-openapi) for the consumer pom example.
+[Maven client page](https://paxel.github.io/sanshain-service/developer/clients/maven.html#openapi-generator) for the consumer pom example.
 
 ## Goal: `require` Parameters
 
 | Parameter     | Property                | Default                 | Description                                                                  |
 |---------------|-------------------------|-------------------------|------------------------------------------------------------------------------|
 | `serviceName` | `sanshain.service.name` | —                       | **Required.** The name of the client service requesting the endpoints.       |
-| `sanshainUrl` | `sanshain.url`          | `http://localhost:8080` | URL of the Sanshain service.                                                 |
+| `sanshainUrl` | `sanshain.url`          | `http://localhost:3000` | URL of the Sanshain service.                                                 |
 | `token`       | `sanshain.token`        | —                       | Authentication token (prefer `settings.xml` or env variable).                |
 | `compression` | `sanshain.compression`  | `true`                  | Enable gzip compression for downloads.                                       |
 | `insecure`    | `sanshain.insecure`     | `false`                 | Ignore SSL certificate errors.                                               |
@@ -197,7 +235,8 @@ to get both formats list the entry twice with different `outputDirectory`s. See 
 ## Advanced Modes
 
 ### Strict Mode
-By default, the plugin warns and skips when configuration is incomplete. Enable strict mode to fail the build instead:
+By default, the plugin warns and skips when an existing `sanshain.yaml` leaves configuration out.
+Enable strict mode to fail the build instead:
 ```bash
 mvn verify -Dsanshain.strict=true
 ```
@@ -207,7 +246,22 @@ or set `strict: true` in `sanshain.yaml`. An explicitly set `sanshain.strict` pr
 best-effort does not soften these.
 
 ### Best-Effort Mode
-Designed for non-critical builds or parent POMs. When enabled, server errors or timeouts are logged as warnings instead of failing the build.
+Designed for non-critical builds or parent POMs. When enabled, a failed call (server error, refusal,
+timeout, network error) is logged as a warning and the goal goes on with the next `provides` or
+`requires` entry. Missing configuration warns `Sanshain goal skipped (best effort): <message>`.
+
+A broken `sanshain.yaml` (unreadable, invalid, removed 1.x fields, an unsupported `apiType`) fails
+the build before any call. Best effort from `-Dsanshain.bestEffort` or `SANSHAIN_BEST_EFFORT` skips
+the goal instead, with `Sanshain goal skipped (best effort): <message>`; `bestEffort: true` in the
+broken file itself does not count.
+
+Without `sanshain.yaml` the POM alone may configure a goal (`sanshain.service.name`, `sanshain.url`,
+the default `target/openapi.yaml`). A goal that then lacks something it needs (a service name, a
+spec file, `requires`, `catalogInfo`) fails with `Configuration file <path> not found: <message>`;
+best effort skips it with a warning.
+
+Strict mode wins over best effort: missing configuration, a broken file and a missing one a goal needs (strict
+from `-Dsanshain.strict`), unknown fields, warnings, trunk and tag, and annotations still fail.
 ```bash
 mvn verify -Dsanshain.bestEffort=true
 ```
@@ -222,6 +276,8 @@ mvn verify -Dsanshain.dry.run=true
 
 The plugin uses a local cache at `target/.sanshain-cache.json` for:
 - **ETag Caching**: Avoiding file rewrites if the downloaded snippet is unchanged (`304 Not Modified`). A dry run writes no ETag.
+  The ETag is kept per output directory, so the same endpoint required into two directories is
+  written to both, and a deleted output file is fetched again without `If-None-Match`.
 
 Provides are never cached: every `provide` uploads, and the server treats a byte-identical
 re-provide as a no-op.

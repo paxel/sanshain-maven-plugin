@@ -42,6 +42,7 @@ public class SanshainConfig {
     private Boolean insecure;
     private Boolean bestEffort;
     private Boolean strict;
+    private Boolean autoGa;
     private Boolean combine;
     private String catalogInfo;
     private ProvideConfig provide;
@@ -49,6 +50,11 @@ public class SanshainConfig {
     private List<ProvideConfig> provides;
     @JsonProperty("requires")
     private List<RequireConfig> requires;
+    /** Read from the YAML tree, not bound: a wrong shape is an error naming the entry. */
+    @JsonIgnore
+    private List<AnnotationConfig> annotations = Collections.emptyList();
+    @JsonIgnore
+    private JsonNode annotationsNode;
 
     // Legacy 1.x fields — parse targets for named validation errors only.
     private Integer timeout;
@@ -58,6 +64,10 @@ public class SanshainConfig {
     @JsonIgnore
     private File configDirectory;
 
+    /** The sanshain.yaml that was looked for and does not exist; null when the file was read. */
+    @JsonIgnore
+    private File missingFile;
+
     /** Fields of sanshain.yaml no Sanshain client knows, as paths in file order. */
     @JsonIgnore
     private List<String> unknownFields = Collections.emptyList();
@@ -66,7 +76,7 @@ public class SanshainConfig {
     // this plugin is accepted silently; the legacy names are rejected by name instead.
     private static final Set<String> KNOWN_TOP = new HashSet<>(Arrays.asList(
             "sanshainUrl", "serviceName", "clientName", "compression", "bestEffort", "strict", "force",
-            "insecure", "combine", "catalogInfo", "provide", "provides", "requires",
+            "insecure", "combine", "catalogInfo", "autoGa", "annotations", "provide", "provides", "requires",
             "timeout", "releaseBranches"));
     private static final Set<String> KNOWN_PROVIDE = new HashSet<>(Arrays.asList(
             "file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine",
@@ -76,6 +86,11 @@ public class SanshainConfig {
             "branch", "timeout"));
     private static final Set<String> KNOWN_ENDPOINT = new HashSet<>(Arrays.asList(
             "method", "path"));
+    private static final Set<String> KNOWN_ANNOTATION = new HashSet<>(Arrays.asList(
+            "scope", "name", "value"));
+    /** The apiType spellings a provide and a require take, in lower case; {@code grpc} means proto. */
+    private static final Set<String> API_TYPES = new HashSet<>(Arrays.asList(
+            "openapi", "asyncapi", "proto", "grpc"));
 
     /** The environment the overrides are read from; replaceable in tests. */
     @JsonIgnore
@@ -117,6 +132,7 @@ public class SanshainConfig {
             throws MojoExecutionException, MojoFailureException {
         if (configFile == null || !configFile.exists()) {
             configDirectory = configDirectoryOf(configFile);
+            missingFile = configFile != null ? configFile.getAbsoluteFile() : new File(configDirectory, "sanshain.yaml");
             applyEnvOverrides(this);
             return this;
         }
@@ -144,6 +160,7 @@ public class SanshainConfig {
             reporter.resolveStrict(config);
         }
         config.configDirectory = configDirectoryOf(configFile);
+        config.annotationsNode = tree == null ? null : tree.get("annotations");
         applyEnvOverrides(config);
 
         List<String> legacyErrors = new ArrayList<>();
@@ -196,6 +213,10 @@ public class SanshainConfig {
             } else if (name.equals("requires") && value.isArray()) {
                 for (int i = 0; i < value.size(); i++) {
                     collectUnknown(value.get(i), "requires[" + i + "].", KNOWN_REQUIRE, unknown);
+                }
+            } else if (name.equals("annotations") && value.isArray()) {
+                for (int i = 0; i < value.size(); i++) {
+                    collectUnknown(value.get(i), "annotations[" + i + "].", KNOWN_ANNOTATION, unknown);
                 }
             }
         }
@@ -264,14 +285,31 @@ public class SanshainConfig {
         }
         if (provides != null) {
             for (int i = 0; i < provides.size(); i++) {
+                if (provides.get(i) == null) {
+                    errors.add("provides[" + i + "]: empty entry — remove the lone '-' or give it a file");
+                    continue;
+                }
                 validateProvide(provides.get(i), "provides[" + i + "]", legacyErrors, errors);
             }
         }
 
+        annotations = readAnnotations(annotationsNode, errors);
+
         if (requires != null) {
             for (int i = 0; i < requires.size(); i++) {
                 RequireConfig req = requires.get(i);
+                if (req == null) {
+                    errors.add("requires[" + i + "]: empty entry — remove the lone '-' or give it serviceName, version and endpoints");
+                    continue;
+                }
                 String label = "requires[" + i + "]" + (req.getServiceName() != null ? " (" + req.getServiceName() + ")" : "");
+                if (req.getEndpoints() != null) {
+                    for (int j = 0; j < req.getEndpoints().size(); j++) {
+                        if (req.getEndpoints().get(j) == null) {
+                            errors.add(label + ": endpoints[" + j + "] is an empty entry — remove the lone '-' or give it method and path");
+                        }
+                    }
+                }
                 if (req.branch != null) {
                     legacy(legacyErrors, errors, label + ": 'branch' is no longer supported — the branch model was removed in "
                             + "Sanshain 2.0; replace with an exact 'version' pin");
@@ -285,6 +323,9 @@ public class SanshainConfig {
                     errors.add(label + ": missing 'version' — Sanshain 2.0 pins exact versions; "
                             + "add version: 1.2.0 (list available: GET /producers/" + producer + "/versions)");
                 }
+                if (req.getApiType() != null && !API_TYPES.contains(req.getApiType().toLowerCase(java.util.Locale.ROOT))) {
+                    errors.add(label + ": Unsupported apiType: " + req.getApiType() + " — use openapi, asyncapi or proto (grpc means proto)");
+                }
                 if (req.getFormat() != null) {
                     if (!"openapi".equals(req.getFormat())) {
                         errors.add(label + ": format '" + req.getFormat() + "' is not supported — the only "
@@ -297,6 +338,58 @@ public class SanshainConfig {
                 }
             }
         }
+    }
+
+    /**
+     * Reads the {@code annotations} list: every entry has exactly the strings {@code scope}
+     * ({@code version} or {@code system}), {@code name} and {@code value}. Each violation is
+     * named by its entry; the size limits are the service's to check.
+     */
+    private static List<AnnotationConfig> readAnnotations(JsonNode node, List<String> errors) {
+        if (node == null || node.isNull()) {
+            return Collections.emptyList();
+        }
+        if (!node.isArray()) {
+            errors.add("annotations: must be a list of entries with scope, name and value");
+            return Collections.emptyList();
+        }
+        List<AnnotationConfig> read = new ArrayList<>();
+        for (int i = 0; i < node.size(); i++) {
+            JsonNode entry = node.get(i);
+            String label = "annotations[" + i + "]";
+            if (entry == null || !entry.isObject()) {
+                errors.add(label + ": must be an entry with scope, name and value");
+                continue;
+            }
+            JsonNode nameNode = entry.get("name");
+            if (nameNode != null && nameNode.isTextual()) {
+                label += " (" + nameNode.asText() + ")";
+            }
+            String scope = annotationField(entry, "scope", label, errors);
+            String name = annotationField(entry, "name", label, errors);
+            String value = annotationField(entry, "value", label, errors);
+            if (scope != null && !scope.equals(SanshainAnnotations.VERSION) && !scope.equals(SanshainAnnotations.SYSTEM)) {
+                errors.add(label + ": scope '" + scope + "' is not supported — use version or system");
+                continue;
+            }
+            if (scope != null && name != null && value != null) {
+                read.add(new AnnotationConfig(scope, name, value));
+            }
+        }
+        return read;
+    }
+
+    private static String annotationField(JsonNode entry, String field, String label, List<String> errors) {
+        JsonNode value = entry.get(field);
+        if (value == null || value.isNull()) {
+            errors.add(label + ": missing '" + field + "'");
+            return null;
+        }
+        if (!value.isTextual()) {
+            errors.add(label + ": '" + field + "' must be a string");
+            return null;
+        }
+        return value.asText();
     }
 
     private static void legacy(List<String> legacyErrors, List<String> errors, String message) {
@@ -316,6 +409,9 @@ public class SanshainConfig {
         if (p.stability != null) {
             legacy(legacyErrors, errors, label + ": 'stability' is not configured in sanshain.yaml — declare it per build via "
                     + "-Dsanshain.ga=true / SANSHAIN_GA=true (default: snapshot)");
+        }
+        if (p.getApiType() != null && !API_TYPES.contains(p.getApiType().toLowerCase(java.util.Locale.ROOT))) {
+            errors.add(label + ": Unsupported apiType: " + p.getApiType() + " — use openapi, asyncapi or proto (grpc means proto)");
         }
     }
 
@@ -460,6 +556,19 @@ public class SanshainConfig {
     public void setStrict(Boolean strict) { this.strict = strict; }
 
     /**
+     * Gets the yaml autoGa switch: provide as {@code ga} whenever the build declares a stream
+     * (trunk or a tag), unless the explicit GA switch says otherwise.
+     * @return the yaml autoGa value, or null if not set
+     */
+    public Boolean getAutoGa() { return autoGa; }
+
+    /**
+     * Sets the yaml autoGa switch.
+     * @param autoGa true to provide as {@code ga} on every build that declares a stream
+     */
+    public void setAutoGa(Boolean autoGa) { this.autoGa = autoGa; }
+
+    /**
      * Gets whether to recursively resolve and inline relative references/imports.
      * @return true if files should be combined
      */
@@ -485,12 +594,27 @@ public class SanshainConfig {
     public void setCatalogInfo(String catalogInfo) { this.catalogInfo = catalogInfo; }
 
     /**
+     * Gets the {@code annotations} entries of sanshain.yaml, as written (placeholders unfilled).
+     * @return the entries in file order; empty when there are none
+     */
+    @JsonIgnore
+    public List<AnnotationConfig> getAnnotations() { return annotations; }
+
+    /**
      * Fields of sanshain.yaml that no Sanshain client knows, as paths in file order
      * (e.g. {@code catalogInf}, {@code requires[0].verison}).
      * @return the unknown field paths; empty when there are none
      */
     @JsonIgnore
     public List<String> getUnknownFields() { return unknownFields; }
+
+    /**
+     * The sanshain.yaml this configuration was looked for in, when that file does not exist; the
+     * configuration then holds only the environment overrides.
+     * @return the absolute path of the missing file, or null when the file was read
+     */
+    @JsonIgnore
+    public File getMissingFile() { return missingFile; }
 
     /**
      * Gets the configuration for the provide goal.
@@ -802,5 +926,47 @@ public class SanshainConfig {
          * @param path the API path
          */
         public void setPath(String path) { this.path = path; }
+    }
+
+    /**
+     * One {@code annotations} entry of sanshain.yaml: a named value Sanshain shows with the
+     * provided version ({@code scope: version}) or with the system ({@code scope: system}).
+     * The value may hold {@code {{NAME}}} placeholders the build fills in.
+     */
+    public static class AnnotationConfig {
+
+        private final String scope;
+        private final String name;
+        private final String value;
+
+        /**
+         * Creates an entry.
+         * @param scope {@code version} or {@code system}
+         * @param name  the entry's name
+         * @param value the value as written, placeholders unfilled
+         */
+        public AnnotationConfig(String scope, String name, String value) {
+            this.scope = scope;
+            this.name = name;
+            this.value = value;
+        }
+
+        /**
+         * Gets the scope: {@code version} or {@code system}.
+         * @return the scope
+         */
+        public String getScope() { return scope; }
+
+        /**
+         * Gets the entry's name.
+         * @return the name
+         */
+        public String getName() { return name; }
+
+        /**
+         * Gets the value as written in sanshain.yaml, placeholders unfilled.
+         * @return the value
+         */
+        public String getValue() { return value; }
     }
 }

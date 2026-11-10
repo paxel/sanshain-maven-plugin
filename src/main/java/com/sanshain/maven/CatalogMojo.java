@@ -12,6 +12,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Optional;
+import java.util.Properties;
 
 /**
  * Goal which pushes this system's Backstage {@code catalog-info.yaml} (the {@code catalogInfo}
@@ -81,6 +83,13 @@ public class CatalogMojo extends AbstractMojo {
     @Parameter(property = "sanshain.tag")
     private String tag;
 
+    /**
+     * The Maven user properties ({@code -DNAME=value}): the values of the {@code {{NAME}}}
+     * placeholders in the annotations of sanshain.yaml, before {@code SANSHAIN_SET_NAME}.
+     */
+    @Parameter(defaultValue = "${session.userProperties}", readonly = true)
+    private Properties userProperties;
+
     private void initDefaults() {
         if (baseDir == null) {
             baseDir = new File(".");
@@ -102,19 +111,13 @@ public class CatalogMojo extends AbstractMojo {
         getLog().debug("Sanshain Maven Plugin v" + getClass().getPackage().getImplementationVersion());
         getLog().debug("Config file: " + configFile.getAbsolutePath() + " (exists: " + configFile.exists() + ")");
 
-        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, null);
-
-        SanshainConfig config;
-        try {
-            config = new SanshainConfig().loadConfig(configFile, delegate);
-            resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
-        } catch (MojoFailureException e) {
-            // Unknown fields under strict: a configuration error best-effort does not soften.
-            throw e;
-        } catch (Exception e) {
-            delegate.handleException(e, resolvedBestEffort);
-            config = new SanshainConfig();
+        // A broken sanshain.yaml fails; best effort from the property or the variable skips.
+        Optional<SanshainConfig> loaded = delegate.loadConfig(configFile, bestEffort);
+        if (loaded.isEmpty()) {
+            return;
         }
+        SanshainConfig config = loaded.get();
+        boolean resolvedBestEffort = delegate.resolveBestEffort(bestEffort, config);
 
         String resolvedUrl = delegate.resolveUrl(sanshainUrl, config);
         String resolvedServiceName = delegate.resolveServiceName(serviceName, config);
@@ -122,15 +125,21 @@ public class CatalogMojo extends AbstractMojo {
         boolean resolvedCompression = delegate.resolveCompression(compression, config);
         boolean resolvedInsecure = delegate.resolveInsecure(insecure, config);
         SanshainStream stream = delegate.resolveStream(trunk, tag);
+        SanshainAnnotations annotations = delegate.resolveAnnotations(config, userProperties);
 
         if (resolvedServiceName == null) {
-            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort);
+            delegate.abort("serviceName is required (either in pom.xml or sanshain.yaml)", resolvedBestEffort, config);
             return;
         }
 
-        // Only the missing catalogInfo itself is strict's business here; best-effort covers
-        // failed calls, not this configuration check.
+        // In an existing sanshain.yaml only the missing catalogInfo itself is strict's business;
+        // best-effort covers failed calls, not this configuration check. Without the file the
+        // goal lacks what only the file can give, which fails unless best effort skips it.
         if (config.getCatalogInfo() == null) {
+            if (config.getMissingFile() != null) {
+                delegate.abort("No catalogInfo configured.", resolvedBestEffort, config);
+                return;
+            }
             if (delegate.isStrict()) {
                 throw new MojoExecutionException("strict: sanshain.yaml has no catalogInfo");
             }
@@ -148,6 +157,7 @@ public class CatalogMojo extends AbstractMojo {
         getLog().debug("Resolved token: " + (resolvedToken != null ? "[set]" : "[not set]"));
         getLog().debug("Best effort: " + resolvedBestEffort);
         getLog().debug("Resolved stream: " + stream);
+        getLog().debug("Resolved " + annotations);
         getLog().debug("Dry run: " + dryRun);
 
         try {
@@ -170,7 +180,7 @@ public class CatalogMojo extends AbstractMojo {
             CatalogResponse response;
             try {
                 response = client.putCatalog(resolvedUrl, resolvedToken, resolvedServiceName, content,
-                        resolvedCompression, stream.isTrunk());
+                        resolvedCompression, stream.isTrunk(), annotations);
             } catch (MojoExecutionException e) {
                 delegate.failOnWarnings(client.takeWarnings(), e);
                 throw e;

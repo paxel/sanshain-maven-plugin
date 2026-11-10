@@ -1,0 +1,45 @@
+# SonarQube Cloud analysis of summer on every push there; the free plan
+# analyses the main branch only. Report only: the quality gate shows on
+# https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin and
+# fails no build. Coverage comes from JaCoCo during the same test run.
+#
+# Runs on Java 17, which the scanner needs; the plugin still compiles for
+# Java 11 (maven.compiler.target), and CI tests it on 11.
+#
+# One-time setup: the project paxel_sanshain-maven-plugin on SonarQube Cloud
+# with Automatic Analysis off, and the repository secret SQ_TOKEN.
+name: SonarQube Cloud
+
+on:
+  push:
+    branches: [summer]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    name: SonarQube Cloud analysis
+    runs-on: ubuntu-latest
+    steps:
+      # The full history for the blame and the new-code period.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Tests with coverage, then the analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SQ_TOKEN }}
+        run: >-
+          mvn -B
+          org.jacoco:jacoco-maven-plugin:0.8.16:prepare-agent
+          verify
+          org.jacoco:jacoco-maven-plugin:0.8.16:report
+          org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.organization=paxel
+          -Dsonar.projectKey=paxel_sanshain-maven-plugin

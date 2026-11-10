@@ -164,6 +164,46 @@ public class RequireMojoTest {
         assertEquals("merged yaml", Files.readString(outputFile));
     }
 
+    @Test
+    public void testGrpcRequireIsProtoOnTheWireAndOnDisk() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: greeter\n" +
+                "    apiType: grpc\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: single\n" +
+                "    endpoints:\n" +
+                "      - method: SayHello\n" +
+                "        path: helloworld.Greeter\n" +
+                "  - serviceName: greeter\n" +
+                "    apiType: GRPC\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: bundle\n" +
+                "    endpoints:\n" +
+                "      - method: SayHello\n" +
+                "        path: helloworld.Greeter\n" +
+                "      - method: SayBye\n" +
+                "        path: helloworld.Greeter\n";
+
+        wireMock.stubFor(get(urlPathEqualTo("/require/grpc"))
+                .willReturn(aResponse().withStatus(200).withBody("syntax = \"proto3\";")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle"))
+                .willReturn(aResponse().withStatus(200).withBody("syntax = \"proto3\"; // bundle")));
+
+        createMojo(yaml).execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require/grpc"))
+                .withQueryParam("producername", equalTo("greeter"))
+                .withQueryParam("method", equalTo("SayHello")));
+        wireMock.verify(postRequestedFor(urlEqualTo("/require-bundle"))
+                .withRequestBody(matchingJsonPath("$.api_type", equalTo("proto"))));
+        assertEquals("syntax = \"proto3\";",
+                Files.readString(tempDir.resolve("single/greeter_helloworld.Greeter_SayHello.proto")));
+        assertEquals("syntax = \"proto3\"; // bundle",
+                Files.readString(tempDir.resolve("bundle/greeter_bundle.proto")));
+    }
+
     // --- Config validation: parse-time named errors, before any network call ---
 
     @Test
@@ -184,6 +224,28 @@ public class RequireMojoTest {
         assertTrue(ex.getMessage().contains("Sanshain 2.0 pins exact versions"), ex.getMessage());
         assertTrue(ex.getMessage().contains("GET /producers/user-service/versions"), ex.getMessage());
         // Validation happens before any network call
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/require-bundle")));
+    }
+
+    @Test
+    public void testUnknownApiTypeIsAConfigErrorAlsoWithBestEffort() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: test-client\n" +
+                "bestEffort: true\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    apiType: raml\n" +
+                "    version: 1.0.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+
+        RequireMojo mojo = createMojo(yaml);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+
+        assertTrue(ex.getMessage().contains("requires[0] (user-service): Unsupported apiType: raml"), ex.getMessage());
         wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
         wireMock.verify(0, postRequestedFor(urlEqualTo("/require-bundle")));
     }
@@ -393,7 +455,7 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
+    public void testBestEffortSkipsTheGoalOnInvalidYaml() throws Exception {
         // Create an invalid YAML file
         Path configPath = tempDir.resolve("sanshain.yaml");
         Files.writeString(configPath, "invalid: yaml: : content");
@@ -405,8 +467,63 @@ public class RequireMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // Should not throw even with invalid YAML because bestEffort=true
-        assertDoesNotThrow(mojo::execute);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        // A broken sanshain.yaml skips the goal under best effort from the property.
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from "
+                + configPath.toFile().getAbsolutePath());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testInvalidYamlFailsWithoutBestEffort() throws Exception {
+        RequireMojo mojo = createMojo("invalid: yaml: : content");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testStrictWinsOverBestEffortOnInvalidYaml() throws Exception {
+        RequireMojo mojo = createMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnARemovedField() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.0.0\n" +
+                "    branch: main\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n";
+        RequireMojo mojo = createMojo(yaml);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("'branch' is no longer supported"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+
+        RequireMojo strictMojo = createMojo(yaml);
+        setField(strictMojo, "bestEffort", true);
+        setField(strictMojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, strictMojo::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+
+        RequireMojo plain = createMojo(yaml);
+        ex = assertThrows(MojoExecutionException.class, plain::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
     @Test
@@ -445,8 +562,60 @@ public class RequireMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // With strict=true and bestEffort=true, it should NOT throw
-        assertDoesNotThrow(mojo::execute);
+        // Missing configuration under strict is an error best effort does not soften.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("Configuration file " + tempDir.resolve("non-existent.yaml").toFile().getAbsolutePath()
+                + " not found: serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+    }
+
+    private RequireMojo missingFileMojo() throws Exception {
+        RequireMojo mojo = new RequireMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("sanshain.yaml").toFile());
+        setField(mojo, "sanshainUrl", baseUrl);
+        setField(mojo, "serviceName", "test-client");
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
+
+    @Test
+    public void testMissingFileFailsWithNothingToRequire() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, missingFileMojo()::execute);
+        assertEquals("Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath()
+                + " not found: No requires configured in sanshain.yaml.", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameFails() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", null);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().endsWith(" not found: serviceName is required (either in pom.xml or sanshain.yaml)"), ex.getMessage());
+    }
+
+    @Test
+    public void testMissingFileIsSkippedWithBestEffort() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Configuration file "
+                + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: No requires configured in sanshain.yaml.");
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileFailsUnderStrictEvenWithBestEffort() throws Exception {
+        RequireMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().endsWith(" not found: No requires configured in sanshain.yaml."), ex.getMessage());
     }
 
     @Test
@@ -547,9 +716,8 @@ public class RequireMojoTest {
         mojo.setLog(log);
         mojo.execute();
 
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(log);
-        inOrder.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
-        inOrder.verify(log).warn(org.mockito.ArgumentMatchers.startsWith("Sanshain goal failed (best effort): Invalid sanshain.yaml"));
+        org.mockito.Mockito.verify(log).warn("  ( O_o )   sanshain.yaml: unknown field 'requires[0].verison' - ignored");
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.startsWith("Sanshain goal skipped (best effort): Invalid sanshain.yaml"));
         wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")));
     }
 
@@ -579,9 +747,14 @@ public class RequireMojoTest {
 
     @Test
     public void testNoRequiresOnlyWarnsWhenPropertyOverridesYamlStrict() throws Exception {
-        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n");
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        RequireMojo mojo = createMojo("serviceName: test-client\nstrict: true\n", log);
         setField(mojo, "strict", false);
         mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(
+                "No requires configured in sanshain.yaml. Skipping. Set sanshain.strict=true to fail in this case.");
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
     }
 
     private static final String ONE_ENDPOINT = "serviceName: test-client\n" +
@@ -612,8 +785,8 @@ public class RequireMojoTest {
         bundle.execute();
 
         SanshainCache cache = new SanshainCache(tempDir.resolve("target").toFile());
-        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null)));
-        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0", null)));
+        assertNull(cache.getRequireEntry(SanshainCache.requireKey("user-service", "1.2.0", "GET", "/api/v1/users", null, "output")));
+        assertNull(cache.getRequireEntry(SanshainCache.requireBundleKey("user-service", "1.2.0", null, "output")));
 
         // The next real run therefore asks without If-None-Match.
         createMojo(ONE_ENDPOINT).execute();
@@ -629,6 +802,48 @@ public class RequireMojoTest {
         createMojo(ONE_ENDPOINT).execute();
 
         wireMock.verify(1, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
+
+    @Test
+    public void testSameEndpointInTwoOutputDirectoriesIsWrittenToBoth() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"e1\"")));
+        String yaml = ONE_ENDPOINT + ONE_ENDPOINT.substring(ONE_ENDPOINT.indexOf("  - serviceName"))
+                .replace("outputDirectory: output", "outputDirectory: other");
+
+        createMojo(yaml).execute();
+
+        assertEquals("openapi: 3.0.0", Files.readString(tempDir.resolve("output/user-service_api_v1_users_GET.yaml")));
+        assertEquals("openapi: 3.0.0", Files.readString(tempDir.resolve("other/user-service_api_v1_users_GET.yaml")));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+    }
+
+    @Test
+    public void testDeletedOutputFileIsFetchedAgainWithoutIfNoneMatch() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"e1\"").withBody("openapi: 3.0.0")));
+        wireMock.stubFor(get(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"e1\"")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).withHeader("If-None-Match", absent())
+                .willReturn(aResponse().withStatus(200).withHeader("ETag", "\"b1\"").withBody("bundle: 1")));
+        wireMock.stubFor(post(urlEqualTo("/require-bundle")).withHeader("If-None-Match", equalTo("\"b1\""))
+                .willReturn(aResponse().withStatus(304).withHeader("ETag", "\"b1\"")));
+        Path single = tempDir.resolve("output/user-service_api_v1_users_GET.yaml");
+        Path bundle = tempDir.resolve("output/user-service_bundle.yaml");
+
+        createMojo(ONE_ENDPOINT).execute();
+        createMojo(TWO_ENDPOINTS).execute();
+        Files.delete(single);
+        Files.delete(bundle);
+        createMojo(ONE_ENDPOINT).execute();
+        createMojo(TWO_ENDPOINTS).execute();
+
+        assertEquals("openapi: 3.0.0", Files.readString(single));
+        assertEquals("bundle: 1", Files.readString(bundle));
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/require")).withHeader("If-None-Match", equalTo("\"e1\"")));
+        wireMock.verify(0, postRequestedFor(urlEqualTo("/require-bundle")).withHeader("If-None-Match", equalTo("\"b1\"")));
     }
 
     private static String asyncYaml(String format, String extraEndpoint) {
@@ -743,7 +958,7 @@ public class RequireMojoTest {
                 + "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.1)");
         assertFalse(Files.exists(tempDir.resolve("out/events_orders_SUB.yaml")));
         assertNull(new SanshainCache(tempDir.resolve("target").toFile())
-                .getRequireEntry(SanshainCache.requireKey("events", "1.0.0", "SUB", "orders", "openapi")));
+                .getRequireEntry(SanshainCache.requireKey("events", "1.0.0", "SUB", "orders", "openapi", "out")));
     }
 
     @Test
@@ -766,11 +981,12 @@ public class RequireMojoTest {
     }
 
     @Test
-    public void testFormatConfigErrorUnderBestEffortWarnsAndCallsNothing() throws Exception {
+    public void testFormatConfigErrorUnderBestEffortSkipsAndCallsNothing() throws Exception {
         RequireMojo mojo = createMojo(asyncYaml("avro", null));
         setField(mojo, "bestEffort", true);
         org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
         mojo.setLog(log);
+
         mojo.execute();
 
         org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("format 'avro' is not supported"));
@@ -963,5 +1179,37 @@ public class RequireMojoTest {
                 assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
         assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testRequireSendsOnlySystemAnnotations() throws Exception {
+        String yaml = "serviceName: test-client\n" +
+                "requires:\n" +
+                "  - serviceName: user-service\n" +
+                "    version: 1.2.0\n" +
+                "    outputDirectory: output\n" +
+                "    endpoints:\n" +
+                "      - method: GET\n" +
+                "        path: /api/v1/users\n" +
+                "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+        wireMock.stubFor(get(urlPathEqualTo("/require"))
+                .willReturn(aResponse().withStatus(200).withBody("openapi: 3.0.0")));
+
+        RequireMojo mojo = createMojo(yaml);
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("PLUGIN_TEST_AREA", "pay");
+        props.setProperty("PLUGIN_TEST_ID", "42");
+        setField(mojo, "userProperties", props);
+        mojo.execute();
+
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/require"))
+                .withQueryParam("annotations", equalToJson(
+                        "[{\"scope\":\"system\",\"name\":\"jenkins\",\"value\":\"https://jenkins.corp/job/payments\"}]")));
     }
 }

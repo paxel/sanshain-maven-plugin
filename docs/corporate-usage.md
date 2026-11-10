@@ -52,8 +52,8 @@ Stability is declared per build: feature pipelines publish overwritable `snapsho
   env:
     SANSHAIN_URL: ${{ secrets.SANSHAIN_URL }}
     SANSHAIN_TOKEN: ${{ secrets.SANSHAIN_TOKEN }}
-    # GA only on the release branch pipeline
-    SANSHAIN_GA: ${{ github.ref == 'refs/heads/main' }}
+    # GA only on main; empty elsewhere, since SANSHAIN_GA=false would override autoGa
+    SANSHAIN_GA: ${{ github.ref == 'refs/heads/main' && 'true' || '' }}
 ```
 
 ### Dry-Run for Pull Requests
@@ -80,7 +80,7 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
         <plugin>
             <groupId>io.github.paxel.sanshain</groupId>
             <artifactId>sanshain-maven-plugin</artifactId>
-            <version>2.4.1</version>
+            <version>2.5.0</version>
             <executions>
                 <execution>
                     <phase>validate</phase>
@@ -104,8 +104,8 @@ Combine with `bestEffort` mode to ensure that projects not yet using Sanshain ar
 </build>
 ```
 
-- **Safety**: If a child project lacks `sanshain.yaml`, the plugin logs a warning and continues.
-- **Catalog**: The `catalog` goal pushes a project's Backstage `catalog-info.yaml` when its `sanshain.yaml` has `catalogInfo`, and warns and skips otherwise. It needs Sanshain Service 2.4.0 or later; drop it from the parent POM while your service is older.
+- **Safety**: If a child project lacks `sanshain.yaml` and so a goal lacks what it needs, the goal fails; the parent's `<bestEffort>true</bestEffort>` turns that into a warning and the build continues.
+- **Catalog**: The `catalog` goal pushes a project's Backstage `catalog-info.yaml` when its `sanshain.yaml` has `catalogInfo`, and warns and skips otherwise (without `sanshain.yaml` it fails, which best effort turns into a warning). It needs Sanshain Service 2.4.0 or later; drop it from the parent POM while your service is older.
 - **Opt-out**: Child projects can disable the plugin by setting `<sanshain.skip>true</sanshain.skip>`.
 
 ## Understanding the Build Cache

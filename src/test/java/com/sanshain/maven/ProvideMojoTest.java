@@ -149,13 +149,13 @@ public class ProvideMojoTest {
     @Test
     public void testResolveStabilityDefaultIsSnapshot() {
         SanshainMojoDelegate delegate = createDelegate();
-        assertEquals("snapshot", delegate.resolveStability(false));
+        assertEquals("snapshot", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
     public void testResolveStabilityGaProperty() {
         SanshainMojoDelegate delegate = createDelegate();
-        assertEquals("ga", delegate.resolveStability(true));
+        assertEquals("ga", delegate.resolveStability(true, SanshainStream.none(), null));
     }
 
     @Test
@@ -164,7 +164,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "true");
         delegate.setEnvironmentVariables(env);
-        assertEquals("ga", delegate.resolveStability(false));
+        assertEquals("ga", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
@@ -173,7 +173,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "false");
         delegate.setEnvironmentVariables(env);
-        assertEquals("snapshot", delegate.resolveStability(false));
+        assertEquals("snapshot", delegate.resolveStability(null, SanshainStream.none(), null));
     }
 
     @Test
@@ -182,7 +182,7 @@ public class ProvideMojoTest {
         Map<String, String> env = new HashMap<>();
         env.put("SANSHAIN_GA", "false");
         delegate.setEnvironmentVariables(env);
-        assertEquals("ga", delegate.resolveStability(true));
+        assertEquals("ga", delegate.resolveStability(true, SanshainStream.none(), null));
     }
 
     // --- Config validation happens before any network call ---
@@ -257,21 +257,6 @@ public class ProvideMojoTest {
         mojo.execute();
 
         wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
-    }
-
-    @Test
-    public void testDefaultSanshainUrl() throws Exception {
-        // When no URL is configured anywhere, defaults to http://localhost:8080
-        String yaml = "serviceName: my-service\n" +
-                "provide:\n" +
-                "  openApiFile: openapi.yaml\n";
-
-        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0");
-        setField(mojo, "sanshainUrl", null);
-
-        // This will fail to connect to localhost:8080, but we can verify the error message
-        Exception ex = assertThrows(Exception.class, mojo::execute);
-        assertTrue(ex.getMessage().contains("localhost:8080") || ex.getMessage().contains("Failed to connect"));
     }
 
     @Test
@@ -562,21 +547,195 @@ public class ProvideMojoTest {
         assertTrue(delegate.resolveBestEffort(null, new SanshainConfig()));
     }
 
-    @Test
-    public void testBestEffortSuppressesInvalidYamlError() throws Exception {
-        // Create an invalid YAML file
+    private ProvideMojo brokenFileMojo(String yaml) throws Exception {
         Path configPath = tempDir.resolve("sanshain.yaml");
-        Files.writeString(configPath, "invalid: yaml: : content");
-
+        Files.writeString(configPath, yaml);
         ProvideMojo mojo = new ProvideMojo();
         setField(mojo, "baseDir", tempDir.toFile());
         setField(mojo, "configFile", configPath.toFile());
-        setField(mojo, "bestEffort", true);
+        setField(mojo, "sanshainUrl", baseUrl);
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
 
-        // Should not throw even with invalid YAML because bestEffort=true (Maven property)
-        assertDoesNotThrow(mojo::execute);
+    @Test
+    public void testInvalidYamlFailsWithoutBestEffort() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnInvalidYaml() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): Failed to load configuration from "
+                + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnA1xField() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.startsWith(
+                "Sanshain goal skipped (best effort): Invalid sanshain.yaml for Sanshain 2.0:"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBrokenFilesOwnBestEffortDoesNotSkipTheGoal() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("bestEffort: true\nserviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testStrictWinsOverBestEffortOnABrokenFile() throws Exception {
+        ProvideMojo mojo = brokenFileMojo("invalid: yaml: : content");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "strict", true);
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().startsWith("Failed to load configuration from"), ex.getMessage());
+
+        ProvideMojo legacy = brokenFileMojo("serviceName: my-service\nprovide:\n  openApiFile: openapi.yaml\n  branch: main\n");
+        setField(legacy, "bestEffort", true);
+        setField(legacy, "strict", true);
+        ex = assertThrows(MojoExecutionException.class, legacy::execute);
+        assertTrue(ex.getMessage().contains("'branch' is no longer supported"), ex.getMessage());
+    }
+
+    @Test
+    public void testBestEffortSkipsTheGoalOnAnUnsupportedApiType() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "    apiType: raml\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn(org.mockito.ArgumentMatchers.contains("provides[0]: Unsupported apiType: raml"));
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testUnsupportedApiTypeFailsWithoutBestEffort() throws Exception {
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "    apiType: raml\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertTrue(ex.getMessage().contains("provides[0]: Unsupported apiType: raml"), ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    // --- No sanshain.yaml: the POM alone may configure provide ---
+
+    private ProvideMojo missingFileMojo() throws Exception {
+        ProvideMojo mojo = new ProvideMojo();
+        setField(mojo, "baseDir", tempDir.toFile());
+        setField(mojo, "configFile", tempDir.resolve("sanshain.yaml").toFile());
+        setField(mojo, "sanshainUrl", baseUrl);
+        setField(mojo, "compression", false);
+        setField(mojo, "settings", null);
+        setField(mojo, "serverId", "sanshain");
+        return mojo;
+    }
+
+    private String missingFile() {
+        return "Configuration file " + tempDir.resolve("sanshain.yaml").toFile().getAbsolutePath() + " not found: ";
+    }
+
+    @Test
+    public void testPomOnlyProvideRunsWithoutSanshainYaml() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        Path openapi = tempDir.resolve("target/openapi.yaml");
+        Files.createDirectories(openapi.getParent());
+        Files.writeString(openapi, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", "my-service");
+
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.producername", equalTo("my-service"))));
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameFails() throws Exception {
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, missingFileMojo()::execute);
+        assertEquals(missingFile() + "serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutSpecFails() throws Exception {
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "serviceName", "my-service");
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals(missingFile() + "No specification file to provide: "
+                + new File(new File(tempDir.toFile(), "target"), "openapi.yaml").getPath() + " does not exist.", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testMissingFileWithoutServiceNameIsSkippedWithBestEffort() throws Exception {
+        ProvideMojo mojo = missingFileMojo();
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("Sanshain goal skipped (best effort): " + missingFile()
+                + "serviceName is required (either in pom.xml or sanshain.yaml)");
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testBestEffortGoesOnWithTheNextProvideAfterAFailedOne() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide"))
+                .willReturn(aResponse().withStatus(500).withBody("Internal Server Error")));
+        wireMock.stubFor(post(urlEqualTo("/provide/asyncapi"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"version\":\"1.0.0\",\"stability\":\"snapshot\"}")));
+        Files.writeString(tempDir.resolve("events.yaml"), "asyncapi: 2.6.0\ninfo:\n  version: 1.0.0\n");
+        String yaml = "sanshainUrl: " + baseUrl + "\n" +
+                "serviceName: my-service\n" +
+                "provides:\n" +
+                "  - file: openapi.yaml\n" +
+                "  - file: events.yaml\n" +
+                "    apiType: asyncapi\n";
+        ProvideMojo mojo = createMojo(yaml, "openapi: 3.0.0\ninfo:\n  version: 1.0.0");
+        setField(mojo, "bestEffort", true);
+        setField(mojo, "combine", false);
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        mojo.setLog(log);
+
+        mojo.execute();
+
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide")));
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/provide/asyncapi")));
+        org.mockito.Mockito.verify(log).warn("Sanshain goal failed (best effort): Unexpected response 500: Internal Server Error");
     }
 
     @Test
@@ -607,8 +766,10 @@ public class ProvideMojoTest {
         setField(mojo, "settings", null);
         setField(mojo, "serverId", "sanshain");
 
-        // With strict=true and bestEffort=true, it should NOT throw
-        assertDoesNotThrow(mojo::execute);
+        // Missing configuration under strict is an error best effort does not soften.
+        MojoExecutionException ex = assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("Configuration file " + tempDir.resolve("non-existent.yaml").toFile().getAbsolutePath()
+                + " not found: serviceName is required (either in pom.xml or sanshain.yaml)", ex.getMessage());
     }
 
     @Test
@@ -814,6 +975,19 @@ public class ProvideMojoTest {
         assertTrue(ex.getMessage().contains("No specification files found"), ex.getMessage());
     }
 
+    @Test
+    public void testNothingToProvideWarnsWithoutContradictingItself() throws Exception {
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo("serviceName: my-service\n", "openapi: 3.0.0");
+        mojo.setLog(log);
+        setField(mojo, "openApiFile", tempDir.resolve("missing.yaml").toFile());
+
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("No specification files found to provide. Configure provide in sanshain.yaml."
+                + " Skipping. Set sanshain.strict=true to fail in this case.");
+    }
+
     private static final String UNKNOWN_TAG =
             "no sanshain-branch 'release-9' - this build was not recorded in a release graph";
 
@@ -963,5 +1137,160 @@ public class ProvideMojoTest {
                 assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
         assertEquals("strict: trunk and tag are mutually exclusive - this build is recorded in neither", ex.getMessage());
         assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    // --- autoGa (the env rows of the table are covered on the delegate) ---
+
+    private static final String AUTO_GA_YAML = PROVIDE_YAML + "autoGa: true\n";
+
+    private String provideWith(String yaml, Boolean trunk, String tag, Boolean ga) throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "trunk", trunk);
+        setField(mojo, "tag", tag);
+        setField(mojo, "ga", ga);
+        mojo.execute();
+        return wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+    }
+
+    @Test
+    public void testAutoGaOnTrunkProvidesGa() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, true, null, null);
+        assertTrue(body.contains("\"stability\":\"ga\""), body);
+        assertTrue(body.contains("\"trunk\":true"), body);
+    }
+
+    @Test
+    public void testAutoGaOnTagProvidesGa() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, null, "release-1", null);
+        assertTrue(body.contains("\"stability\":\"ga\""), body);
+        assertTrue(body.contains("\"tag\":\"release-1\""), body);
+    }
+
+    @Test
+    public void testAutoGaWithoutStreamProvidesSnapshot() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, null, null, null);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testGaFalseBeatsAutoGaOnTrunk() throws Exception {
+        String body = provideWith(AUTO_GA_YAML, true, null, false);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testAutoGaFalseOnTrunkProvidesSnapshot() throws Exception {
+        String body = provideWith(PROVIDE_YAML + "autoGa: false\n", true, null, null);
+        assertTrue(body.contains("\"stability\":\"snapshot\""), body);
+    }
+
+    @Test
+    public void testRetireWithAutoGaOnTrunkSendsNoStability() throws Exception {
+        // A retire answers a body; the empty 202 of provideWith's stub is not one.
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202).withBody("{}")));
+        String yaml = "serviceName: my-service\nautoGa: true\nprovides:\n  - apiType: openapi\n    retired: true\n";
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "trunk", true);
+        mojo.execute();
+        String body = wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+        assertTrue(body.contains("\"retired\":true"), body);
+        assertFalse(body.contains("stability"), body);
+        assertFalse(body.contains("trunk"), body);
+        assertFalse(body.contains("\"tag\""), body);
+    }
+
+    // --- annotations ---
+
+    private static final String ANNOTATED_YAML = PROVIDE_YAML + "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+
+    private static java.util.Properties userProperties(String... nameValue) {
+        java.util.Properties props = new java.util.Properties();
+        for (int i = 0; i < nameValue.length; i += 2) {
+            props.setProperty(nameValue[i], nameValue[i + 1]);
+        }
+        return props;
+    }
+
+    @Test
+    public void testProvideSendsFilledAnnotationsOfBothScopes() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.annotations[0].scope", equalTo("version")))
+                .withRequestBody(matchingJsonPath("$.annotations[0].value", equalTo("http://solar.system/id-pay/requirements/42")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].scope", equalTo("system")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testDryRunProvideSendsAnnotations() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        setField(mojo, "dryRun", true);
+        mojo.execute();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.dry_run", equalTo("true")))
+                .withRequestBody(matchingJsonPath("$.annotations[1].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testUnfilledAnnotationIsLeftOutWithAWarning() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202)));
+        org.apache.maven.plugin.logging.Log log = org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class);
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        mojo.setLog(log);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay"));
+        mojo.execute();
+
+        org.mockito.Mockito.verify(log).warn("annotation 'requirements' left out: {{PLUGIN_TEST_ID}} is not set "
+                + "(-DPLUGIN_TEST_ID=… or SANSHAIN_SET_PLUGIN_TEST_ID)");
+        wireMock.verify(postRequestedFor(urlEqualTo("/provide"))
+                .withRequestBody(matchingJsonPath("$.annotations.length()", equalTo("1")))
+                .withRequestBody(matchingJsonPath("$.annotations[0].name", equalTo("jenkins"))));
+    }
+
+    @Test
+    public void testUnfilledAnnotationUnderStrictFailsBeforeAnyRequest() throws Exception {
+        ProvideMojo mojo = createMojo(ANNOTATED_YAML, SPEC);
+        mojo.setLog(org.mockito.Mockito.mock(org.apache.maven.plugin.logging.Log.class));
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay"));
+        setField(mojo, "strict", true);
+        setField(mojo, "bestEffort", true);
+        org.apache.maven.plugin.MojoFailureException ex =
+                assertThrows(org.apache.maven.plugin.MojoFailureException.class, mojo::execute);
+        assertEquals("strict: annotation 'requirements' left out: {{PLUGIN_TEST_ID}} is not set "
+                + "(-DPLUGIN_TEST_ID=… or SANSHAIN_SET_PLUGIN_TEST_ID)", ex.getMessage());
+        assertTrue(wireMock.getAllServeEvents().isEmpty());
+    }
+
+    @Test
+    public void testRetireSendsNoAnnotations() throws Exception {
+        wireMock.stubFor(post(urlEqualTo("/provide")).willReturn(aResponse().withStatus(202).withBody("{}")));
+        String yaml = "serviceName: my-service\nprovides:\n  - apiType: openapi\n    retired: true\n" + "annotations:\n" +
+            "  - scope: version\n" +
+            "    name: requirements\n" +
+            "    value: \"http://solar.system/id-{{PLUGIN_TEST_AREA}}/requirements/{{PLUGIN_TEST_ID}}\"\n" +
+            "  - scope: system\n" +
+            "    name: jenkins\n" +
+            "    value: \"https://jenkins.corp/job/payments\"\n";
+        ProvideMojo mojo = createMojo(yaml, SPEC);
+        setField(mojo, "userProperties", userProperties("PLUGIN_TEST_AREA", "pay", "PLUGIN_TEST_ID", "42"));
+        mojo.execute();
+
+        String body = wireMock.getAllServeEvents().get(0).getRequest().getBodyAsString();
+        assertTrue(body.contains("\"retired\":true"), body);
+        assertFalse(body.contains("annotations"), body);
     }
 }

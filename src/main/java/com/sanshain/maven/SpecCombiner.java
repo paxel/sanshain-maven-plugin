@@ -28,7 +28,7 @@ public class SpecCombiner {
 
     private final Pattern importPattern = Pattern.compile("^\\s*import\\s+(?:public\\s+|weak\\s+)?[\"']([^\"']+)[\"']\\s*;\\s*(?://.*)?$");
     private final Pattern syntaxPattern = Pattern.compile("^\\s*syntax\\s*=\\s*[\"'][^\"']+[\"']\\s*;\\s*(?://.*)?$");
-    private final Pattern packagePattern = Pattern.compile("^\\s*package\\s+[^;]+\\s*;\\s*(?://.*)?$");
+    final Pattern packagePattern = Pattern.compile("^\\s*package\\s[^;]+;\\s*(?://.*)?$");
 
     public SpecCombiner() {
     }

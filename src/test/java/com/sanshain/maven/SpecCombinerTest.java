@@ -8,6 +8,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -191,6 +194,53 @@ public class SpecCombinerTest {
         MojoExecutionException ex = assertThrows(MojoExecutionException.class, () ->
                 combiner.combine(pathA.toFile(), "proto"));
         assertTrue(ex.getMessage().contains("Circular dependency detected"));
+    }
+
+    /**
+     * The package line pattern was simplified to avoid backtracking; it matches exactly the lines
+     * the earlier pattern matched. {@code [^;]+} already takes whitespace, so the earlier
+     * {@code \s+} and {@code \s*} around it only added ways to match the same line.
+     */
+    @Test
+    public void testPackagePatternMatchesTheSameLinesAsBefore() {
+        Pattern before = Pattern.compile("^\\s*package\\s+[^;]+\\s*;\\s*(?://.*)?$");
+        Pattern now = combiner.packagePattern;
+        List<String> lines = List.of(
+                "package foo.bar;",
+                "package foo;",
+                "  package foo.bar;",
+                "\tpackage foo.bar;",
+                "package foo.bar ;",
+                "package   foo.bar   ;   ",
+                "package foo.bar; // the package",
+                "package foo.bar;// comment",
+                "package a . b;",
+                "package   ;",
+                "package\tfoo;",
+                "package foo",
+                "package;",
+                "package ;x",
+                "package foo; bar",
+                "packages foo;",
+                "packagefoo;",
+                "// package foo;",
+                "import \"other.proto\";",
+                "syntax = \"proto3\";",
+                "message Foo { string package = 1; }",
+                "",
+                "   ");
+        for (String line : lines) {
+            assertEquals(before.matcher(line).matches(), now.matcher(line).matches(), line);
+        }
+        assertTrue(now.matcher("package foo.bar;").matches());
+        assertFalse(now.matcher("package foo").matches());
+    }
+
+    @Test
+    public void testPackagePatternRejectsALongLineWithoutSemicolonQuickly() {
+        String line = "package" + " ".repeat(20_000);
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () ->
+                assertFalse(combiner.packagePattern.matcher(line).matches()));
     }
 
     private int countOccurrences(String str, String target) {

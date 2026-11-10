@@ -3,6 +3,14 @@
 This file contains historical changelog entries for the Sanshain Maven Plugin.
 For recent changes, see [CHANGELOG.md](CHANGELOG.md).
 
+## [2.4.1] - 2026-10-25
+
+### Changed
+- Jackson updated to 2.22.
+
+### Fixed
+- The plugin runs on Maven 3.6.3 and later again; 2.3.0 and 2.4.0 refused every Maven older than 3.9.16.
+
 ## [2.4.0] - 2026-10-21
 
 ### Added
