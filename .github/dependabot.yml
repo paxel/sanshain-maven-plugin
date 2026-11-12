@@ -16,6 +16,11 @@ updates:
       # JUnit 6 needs Java 17; the plugin builds for Java 11.
       - dependency-name: "org.junit*"
         update-types: ["version-update:semver-major"]
+      # The Maven API version is the oldest Maven the plugin runs on: maven-plugin-plugin
+      # writes it into plugin.xml as requiredMavenVersion (PluginDescriptorTest). Raising
+      # it is a decision of its own, not a dependency update.
+      - dependency-name: "org.apache.maven:maven-plugin-api"
+      - dependency-name: "org.apache.maven:maven-settings"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
