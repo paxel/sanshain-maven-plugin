@@ -2,14 +2,15 @@
 
 [![CI](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/ci.yml)
 [![Security](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/security.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=coverage)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
+[![CodeQL](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/codeql.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/paxel/sanshain-maven-plugin/badge)](https://scorecard.dev/viewer/?uri=github.com/paxel/sanshain-maven-plugin)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-maven-plugin&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-maven-plugin)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpaxel%2Fsanshain-maven-plugin%2Fsummer%2F.github%2Fbadges%2Fcoverage-java.json)](coverage-floors.toml)
+[![Fuzz](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/fuzz.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-maven-plugin/actions/workflows/fuzz.yml)
+[![Release](https://img.shields.io/github/v/release/paxel/sanshain-maven-plugin)](https://github.com/paxel/sanshain-maven-plugin/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.paxel.sanshain/sanshain-maven-plugin)](https://central.sonatype.com/artifact/io.github.paxel.sanshain/sanshain-maven-plugin)
-[![Java 11+](https://img.shields.io/badge/java-11%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
-[![Maven 3.6.3+](https://img.shields.io/badge/maven-3.6.3%2B-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/src/test/java/com/sanshain/maven/PluginDescriptorTest.java)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/paxel/sanshain-maven-plugin/blob/summer/LICENSE)
 
 The Sanshain Maven Plugin connects a Maven build to a [Sanshain](https://github.com/paxel/sanshain-service) service, which manages and distributes API specifications (OpenAPI, AsyncAPI, gRPC/Proto). A **Producer** provides its complete specification under the version declared in the spec file; a **Consumer** pins an exact version and requires only the endpoint snippets it uses.
 
