@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -52,7 +53,7 @@ public class SanshainCache {
      * @throws IOException if writing fails
      */
     public void save() throws IOException {
-        cacheFile.getParentFile().mkdirs();
+        Files.createDirectories(cacheFile.getParentFile().toPath());
         MAPPER.writeValue(cacheFile, state);
     }
 

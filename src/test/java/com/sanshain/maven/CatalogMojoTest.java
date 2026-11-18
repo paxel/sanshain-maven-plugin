@@ -29,9 +29,6 @@ public class CatalogMojoTest {
             + "  dependsOn:\n"
             + "    - resource:default/orders-db\n";
 
-    private static final String RECORDED = "{\"system\":\"orders-service\",\"trunk\":%s,"
-            + "\"resources\":[\"resource:default/orders-db\",\"resource:default/orders-queue\"]}";
-
     @TempDir
     Path tempDir;
 
@@ -82,7 +79,10 @@ public class CatalogMojoTest {
 
     private void stubRecorded(boolean trunk) {
         wireMock.stubFor(put(urlEqualTo("/catalog/orders-service"))
-                .willReturn(aResponse().withStatus(200).withBody(String.format(RECORDED, trunk))));
+                .willReturn(aResponse().withStatus(200).withBody(String.format(
+                        "{\"system\":\"orders-service\",\"trunk\":%s,"
+                                + "\"resources\":[\"resource:default/orders-db\",\"resource:default/orders-queue\"]}",
+                        trunk))));
     }
 
     private String sentBody() {

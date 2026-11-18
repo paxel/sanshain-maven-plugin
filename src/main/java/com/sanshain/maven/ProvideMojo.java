@@ -153,6 +153,7 @@ public class ProvideMojo extends AbstractMojo {
         }
     }
 
+    @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         initDefaults();
         delegate = new SanshainMojoDelegate(getLog(), settings, serverId, strict);
@@ -212,7 +213,7 @@ public class ProvideMojo extends AbstractMojo {
     /** One provide or retire of this run; best effort applies to each on its own. */
     @FunctionalInterface
     private interface ProvideStep {
-        void run() throws Exception;
+        void run() throws IOException, MojoExecutionException, MojoFailureException;
     }
 
     /**
@@ -222,7 +223,7 @@ public class ProvideMojo extends AbstractMojo {
     private void each(boolean bestEffort, ProvideStep step) throws MojoExecutionException, MojoFailureException {
         try {
             step.run();
-        } catch (Exception e) {
+        } catch (IOException | MojoExecutionException | MojoFailureException | RuntimeException e) {
             delegate.handleException(e, bestEffort);
         }
     }

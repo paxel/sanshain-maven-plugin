@@ -110,6 +110,7 @@ public class RequireMojo extends AbstractMojo {
         }
     }
 
+    @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         initDefaults();
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(getLog(), settings, serverId, strict);
@@ -202,7 +203,7 @@ public class RequireMojo extends AbstractMojo {
             } else {
                 requireSingle(req, endpoints.get(0), client, cache, url, token, serviceName, version, compression, apiType, outputDirectory, delegate);
             }
-        } catch (Exception e) {
+        } catch (IOException | MojoExecutionException | MojoFailureException | RuntimeException e) {
             delegate.handleException(e, bestEffort);
         }
     }
@@ -226,8 +227,9 @@ public class RequireMojo extends AbstractMojo {
         File dir = outputDir != null
                 ? config.resolvePath(outputDir)
                 : new File(baseDir, "target/generated-sources/sanshain");
-        if (!dir.exists()) {
-            dir.mkdirs();
+        if (!dir.exists() && !dir.mkdirs()) {
+            // Writing the first file into it reports the failure.
+            getLog().debug("Could not create " + dir.getAbsolutePath());
         }
         return dir;
     }

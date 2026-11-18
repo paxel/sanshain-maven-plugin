@@ -69,7 +69,7 @@ public class SanshainHttpClient {
      * @param log the Maven log
      */
     public SanshainHttpClient(Log log) {
-        this(log, false);
+        this(log, createHttpClient(log, false));
     }
 
     /**
@@ -78,12 +78,17 @@ public class SanshainHttpClient {
      * @param insecure true if SSL certificate errors should be ignored
      */
     public SanshainHttpClient(Log log, boolean insecure) {
-        this.log = log;
-        this.objectMapper = new ObjectMapper();
-        this.httpClient = createHttpClient(insecure);
+        // Built before the object exists: a failure leaves no half-constructed client behind.
+        this(log, createHttpClient(log, insecure));
     }
 
-    private HttpClient createHttpClient(boolean insecure) {
+    private SanshainHttpClient(Log log, HttpClient httpClient) {
+        this.log = log;
+        this.objectMapper = new ObjectMapper();
+        this.httpClient = httpClient;
+    }
+
+    private static HttpClient createHttpClient(Log log, boolean insecure) {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL);
 
@@ -206,6 +211,8 @@ public class SanshainHttpClient {
      * 2.13.0) — a 422 for a body field, a 400 for the require query parameter.
      */
     static final class AnnotationsNotSupported extends MojoExecutionException {
+        private static final long serialVersionUID = 1L;
+
         AnnotationsNotSupported(String message) {
             super(message);
         }
@@ -222,6 +229,8 @@ public class SanshainHttpClient {
 
     /** A 422 naming an origin field: the service predates the origin (before 2.9.0). */
     static final class OriginNotSupported extends MojoExecutionException {
+        private static final long serialVersionUID = 1L;
+
         OriginNotSupported(String message) {
             super(message);
         }
@@ -270,7 +279,7 @@ public class SanshainHttpClient {
             throw new MojoExecutionException("Failed to build JSON for " + path, e);
         }
         String body = postRetireInternal(baseUrl, path, token, json, compression);
-        if (body == null || body.isBlank()) {
+        if (body.isBlank()) {
             return null;
         }
         // The 202 already says the family is retired; a body that does not
@@ -442,7 +451,7 @@ public class SanshainHttpClient {
         return content.replace("\r\n", "\n").replace("\r", "\n");
     }
 
-    private static class ProvidePayload {
+    static final class ProvidePayload {
         public final String producername;
         public final String stability;
         @JsonProperty("dry_run")
@@ -497,7 +506,7 @@ public class SanshainHttpClient {
      * request that says both {@code retired} and anything a publish needs, so
      * this payload has no field to hold them.
      */
-    private static class RetirePayload {
+    static final class RetirePayload {
         public final String producername;
         public final boolean retired = true;
         @JsonProperty("dry_run")
@@ -549,7 +558,7 @@ public class SanshainHttpClient {
                     ProvideResponse provideResponse = objectMapper.readValue(responseBody, ProvideResponse.class);
                     log.info(provideResponse.toSummary());
                     return provideResponse;
-                } catch (Exception e) {
+                } catch (JsonProcessingException | RuntimeException e) {
                     log.debug("Could not parse provide response body: " + e.getMessage());
                     log.info("Specification accepted by Sanshain service.");
                     return null;
@@ -904,9 +913,9 @@ public class SanshainHttpClient {
 
     private static boolean isOlderThan240(String version) {
         try {
-            String[] parts = version.trim().replaceFirst("^v", "").split("\\.");
+            String[] parts = version.trim().replaceFirst("^v", "").split("\\.", -1);
             int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
+            int minor = parts.length > 1 && !parts[1].isEmpty() ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
             return major < 2 || (major == 2 && minor < 4);
         } catch (NumberFormatException e) {
             return true;

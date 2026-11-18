@@ -466,7 +466,7 @@ public class SanshainConfigTest {
     public void testAutoGaIsKnownAndRead() throws IOException, MojoExecutionException {
         SanshainConfig config = load("serviceName: x\nautoGa: true\n");
         assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
-        assertEquals(Boolean.TRUE, config.getAutoGa());
+        assertEquals(true, config.getAutoGa());
         assertNull(load("serviceName: x\n").getAutoGa());
     }
 

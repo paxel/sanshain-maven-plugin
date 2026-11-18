@@ -57,7 +57,7 @@ public final class SanshainOrigin {
         String resolvedNote = first(note, env.get("SANSHAIN_NOTE"));
         List<String> ids = new ArrayList<>();
         if (resolvedTickets != null) {
-            for (String raw : resolvedTickets.split(",")) {
+            for (String raw : resolvedTickets.split(",", -1)) {
                 String id = raw.trim();
                 if (!id.isEmpty() && !ids.contains(id)) {
                     ids.add(id);
@@ -106,7 +106,7 @@ public final class SanshainOrigin {
         String repository = env.get("GITHUB_REPOSITORY");
         String ref = env.get("GITHUB_REF");
         if (present(server) && present(repository) && present(ref) && ref.trim().startsWith("refs/pull/")) {
-            String[] parts = ref.trim().split("/");
+            String[] parts = ref.trim().split("/", -1);
             if (parts.length >= 3 && !parts[2].isEmpty()) {
                 return server.trim() + "/" + repository.trim() + "/pull/" + parts[2];
             }
