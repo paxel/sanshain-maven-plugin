@@ -26,7 +26,7 @@ Add the plugin to `pom.xml`:
 <plugin>
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>2.5.0</version>
+    <version>2.5.1</version>
     <executions>
         <execution>
             <phase>initialize</phase>
