@@ -2,3 +2,6 @@ target
 .idea
 # Coverage reports of the local runs and of CI; the floors and the badge are committed.
 /coverage
+# What a local fuzz run collects. A crash is kept as an input beside the seeds, in
+# src/test/resources/com/sanshain/maven/<Class>Inputs/, and committed with its fix.
+/.cifuzz-corpus

@@ -154,6 +154,10 @@ public class SanshainConfig {
             report(reporter, unknown);
             throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
         }
+        if (config == null) {
+            // A document that is nothing but null (`~`, `null`) binds to no configuration.
+            throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath());
+        }
         config.unknownFields = unknown;
         if (reporter != null) {
             reporter.resolveStrict(config);

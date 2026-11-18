@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -568,7 +569,7 @@ public class SanshainHttpClient {
             failOnPre2Server(baseUrl, token);
 
             if (status == 409) {
-                ErrorBody error = parseErrorBody(responseBody);
+                ErrorBody error = parseErrorBody(objectMapper, log, responseBody);
                 logAngryCat();
                 log.error("Provide rejected by the version rules (409): " + sanitize(error.message(responseBody)));
                 String message = "Provide rejected (409): " + sanitize(error.message(responseBody));
@@ -911,7 +912,7 @@ public class SanshainHttpClient {
         }
     }
 
-    private static boolean isOlderThan240(String version) {
+    static boolean isOlderThan240(String version) {
         try {
             String[] parts = version.trim().replaceFirst("^v", "").split("\\.", -1);
             int major = Integer.parseInt(parts[0]);
@@ -927,7 +928,7 @@ public class SanshainHttpClient {
                 + (version != null ? "server is " + version : "server version unknown") + ")");
     }
 
-    private static boolean isOpenApiDocument(String content) {
+    static boolean isOpenApiDocument(String content) {
         try {
             com.fasterxml.jackson.databind.JsonNode root = new ObjectMapper(
                     new com.fasterxml.jackson.dataformat.yaml.YAMLFactory()).readTree(content);
@@ -955,7 +956,7 @@ public class SanshainHttpClient {
         }
     }
 
-    private static String pre2Version(String version) {
+    static String pre2Version(String version) {
         if (version == null) {
             return null;
         }
@@ -1021,7 +1022,11 @@ public class SanshainHttpClient {
         }
     }
 
-    private ErrorBody parseErrorBody(String responseBody) {
+    /**
+     * Reads the body of a failed call. A body that is not the service's JSON, such as a
+     * proxy's HTML page, yields an empty {@link ErrorBody}, whose message is the body itself.
+     */
+    static ErrorBody parseErrorBody(ObjectMapper objectMapper, Log log, String responseBody) {
         try {
             return objectMapper.readValue(responseBody, ErrorBody.class);
         } catch (Exception e) {
@@ -1070,10 +1075,15 @@ public class SanshainHttpClient {
      * commas: each header line is one warning.
      */
     private void collectWarnings(HttpResponse<?> response) {
-        for (String warning : response.headers().allValues("Sanshain-Warning")) {
+        for (String warning : warningLines(response.headers())) {
             log.warn(warning);
             warnings.add(warning);
         }
+    }
+
+    /** The {@code Sanshain-Warning} header lines of a response, as received and in order. */
+    static List<String> warningLines(HttpHeaders headers) {
+        return headers.allValues("Sanshain-Warning");
     }
 
     /**

@@ -39,7 +39,15 @@ public class SanshainCache {
     private CacheState load() {
         if (cacheFile.exists()) {
             try {
-                return MAPPER.readValue(cacheFile, CacheState.class);
+                CacheState read = MAPPER.readValue(cacheFile, CacheState.class);
+                // A file that says `null`, or `"requires": null`, holds no entry.
+                if (read == null) {
+                    return new CacheState();
+                }
+                if (read.requires == null) {
+                    read.requires = new LinkedHashMap<>();
+                }
+                return read;
             } catch (IOException e) {
                 // Corrupted cache — start fresh
                 return new CacheState();

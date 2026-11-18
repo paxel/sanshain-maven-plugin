@@ -536,4 +536,13 @@ public class SanshainConfigTest {
         assertEquals(java.util.Arrays.asList("annotations[0].vlaue"), config.getUnknownFields());
         assertEquals(1, config.getAnnotations().size());
     }
+
+    @Test
+    public void testDocumentThatIsOnlyNullIsRefused() throws IOException {
+        // Found by ConfigFuzzTest: YAML reads each of these as null, which binds to no configuration.
+        for (String yaml : new String[] {"~\n", "null\n", "!"}) {
+            MojoExecutionException e = loadExpectingError(yaml);
+            assertTrue(e.getMessage().startsWith("Failed to load configuration from "), e.getMessage());
+        }
+    }
 }

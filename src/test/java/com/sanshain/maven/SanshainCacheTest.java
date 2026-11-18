@@ -81,4 +81,17 @@ public class SanshainCacheTest {
         assertNotEquals(SanshainCache.requireBundleKey("svc", "1.2.0", null, "a"),
                 SanshainCache.requireBundleKey("svc", "1.2.0", null, "b"));
     }
+
+    @Test
+    public void testStateWithoutRequiresStartsFresh() throws IOException {
+        // Found by StateFuzzTest: neither content may leave the state without its map of requires.
+        for (String content : new String[] {"null", "{\"requires\":null}"}) {
+            Files.writeString(new File(tempDir, ".sanshain-cache.json").toPath(), content);
+
+            SanshainCache cache = new SanshainCache(tempDir);
+            assertNull(cache.getRequireEntry("key"));
+            cache.updateRequireEntry("key", "etag");
+            assertEquals("etag", cache.getRequireEntry("key").etag);
+        }
+    }
 }

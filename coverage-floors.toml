@@ -6,4 +6,4 @@
 [[parts]]
 name = "java"
 lcov = "coverage/java.lcov"
-floor = 91.32
+floor = 91.94

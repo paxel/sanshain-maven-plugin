@@ -93,3 +93,19 @@ license.ignore = true
 effectiveUntil = 2027-02-18
 reason = """A part of JUnit, under the same EPL-2.0. It comes with junit-jupiter-engine, in \
 test scope only."""
+
+[[PackageOverrides]]
+name = "org.junit.jupiter:junit-jupiter-params"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. Jazzer, the fuzzer of the @FuzzTest \
+classes, runs through it; test scope only."""
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-launcher"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. Jazzer, the fuzzer of the @FuzzTest \
+classes, runs through it; test scope only."""

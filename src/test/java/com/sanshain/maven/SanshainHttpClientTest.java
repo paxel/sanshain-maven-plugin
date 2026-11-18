@@ -1341,4 +1341,45 @@ public class SanshainHttpClientTest {
         wireMock.verify(2, putRequestedFor(urlEqualTo("/catalog/my-service")));
         verify(annotationLog).warn("Sanshain Service before 2.13.0 does not take annotations; sending without them");
     }
+
+    @Test
+    public void testParseErrorBodyReadsTheServicesJson() {
+        SanshainHttpClient.ErrorBody error = SanshainHttpClient.parseErrorBody(
+                new com.fasterxml.jackson.databind.ObjectMapper(), Mockito.mock(Log.class),
+                "{\"error\":\"version 1.2.0 is GA and immutable\",\"proposed_version\":\"1.2.1\"}");
+        assertEquals("version 1.2.0 is GA and immutable", error.error);
+        assertEquals("1.2.1", error.proposedVersion);
+        assertEquals("version 1.2.0 is GA and immutable", error.message("raw"));
+    }
+
+    @Test
+    public void testParseErrorBodyKeepsABodyThatIsNotJson() {
+        SanshainHttpClient.ErrorBody error = SanshainHttpClient.parseErrorBody(
+                new com.fasterxml.jackson.databind.ObjectMapper(), Mockito.mock(Log.class), "<html>bad gateway</html>");
+        assertNull(error.error);
+        assertNull(error.proposedVersion);
+        assertEquals("<html>bad gateway</html>", error.message("<html>bad gateway</html>"));
+    }
+
+    @Test
+    public void testWarningLinesAreOnePerHeaderLineInOrder() {
+        java.net.http.HttpHeaders headers = java.net.http.HttpHeaders.of(
+                java.util.Map.of("sanshain-warning", List.of("first, with a comma", "second"),
+                        "Other", List.of("ignored")),
+                (name, value) -> true);
+        assertEquals(List.of("first, with a comma", "second"), SanshainHttpClient.warningLines(headers));
+        assertEquals(List.of(), SanshainHttpClient.warningLines(
+                java.net.http.HttpHeaders.of(java.util.Map.of(), (name, value) -> true)));
+    }
+
+    @Test
+    public void testVersionThatIsNoVersionCountsAsOlderThan240() {
+        // "." was an ArrayIndexOutOfBoundsException before ResponseFuzzTest.
+        for (String version : new String[] {".", "", "x.y", "2.", "1.9", "v2.3.9"}) {
+            assertTrue(SanshainHttpClient.isOlderThan240(version), version);
+        }
+        for (String version : new String[] {"2.4.0", "v2.13.0-rc1", "3.", "3.0"}) {
+            assertFalse(SanshainHttpClient.isOlderThan240(version), version);
+        }
+    }
 }

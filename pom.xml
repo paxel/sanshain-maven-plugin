@@ -87,6 +87,28 @@
             <version>5.14.4</version>
             <scope>test</scope>
         </dependency>
+        <!-- Jazzer asks for these two parts of JUnit in an older release; they are named here
+             so that every part of JUnit is the same release. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <version>5.14.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.14.4</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- The fuzzer behind the @FuzzTest classes: with JAZZER_FUZZ=1 it fuzzes, without it
+             the same methods run over their saved inputs as ordinary tests. -->
+        <dependency>
+            <groupId>com.code-intelligence</groupId>
+            <artifactId>jazzer-junit</artifactId>
+            <version>0.30.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
