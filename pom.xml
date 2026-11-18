@@ -40,6 +40,11 @@
              it is the one .java-version pins. -->
         <maven.compiler.release>11</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Every file in the jars carries this time instead of the time of the build, so two
+             builds of one commit on one JDK give the same bytes: the release deploys to Maven
+             Central only jars that are byte for byte the attested ones (release.yml). The
+             time itself means nothing and need not move with a release. -->
+        <project.build.outputTimestamp>2026-11-18T00:00:00Z</project.build.outputTimestamp>
         <maven-plugin-api.version>3.6.3</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
         <errorprone.version>2.52.0</errorprone.version>
