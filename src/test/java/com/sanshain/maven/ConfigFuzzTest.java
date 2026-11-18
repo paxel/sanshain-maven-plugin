@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 import org.apache.maven.plugin.MojoExecutionException;
 
@@ -19,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class ConfigFuzzTest {
 
     @FuzzTest
-    void config(byte[] data) throws IOException {
+    void config(FuzzedDataProvider input) throws IOException {
+        byte[] data = input.consumeRemainingAsBytes();
         Path directory = Files.createTempDirectory("sanshain-config-fuzz");
         Path file = directory.resolve("sanshain.yaml");
         try {

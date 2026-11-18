@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 class AnnotationsFuzzTest {
 
     @FuzzTest
-    void annotations(byte[] data) {
+    void annotations(FuzzedDataProvider input) {
+        byte[] data = input.consumeRemainingAsBytes();
         String[] lines = new String(data, StandardCharsets.UTF_8).split("\n", -1);
         Map<String, String> flags = new HashMap<>();
         Map<String, String> env = new HashMap<>();

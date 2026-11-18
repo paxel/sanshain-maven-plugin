@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 
 import java.io.IOException;
@@ -19,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class StateFuzzTest {
 
     @FuzzTest
-    void state(byte[] data) throws IOException {
+    void state(FuzzedDataProvider input) throws IOException {
+        byte[] data = input.consumeRemainingAsBytes();
         Path directory = Files.createTempDirectory("sanshain-state-fuzz");
         Path file = directory.resolve(".sanshain-cache.json");
         try {

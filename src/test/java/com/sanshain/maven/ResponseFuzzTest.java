@@ -1,5 +1,6 @@
 package com.sanshain.maven;
 
+import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.maven.plugin.logging.Log;
@@ -32,7 +33,8 @@ class ResponseFuzzTest {
     private static final Log LOG = Mockito.mock(Log.class, Mockito.withSettings().stubOnly());
 
     @FuzzTest
-    void response(byte[] data) {
+    void response(FuzzedDataProvider input) {
+        byte[] data = input.consumeRemainingAsBytes();
         String body = new String(data, StandardCharsets.UTF_8);
 
         SanshainHttpClient.ErrorBody error = SanshainHttpClient.parseErrorBody(MAPPER, LOG, body);
