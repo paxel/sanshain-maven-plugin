@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs findings that are false alarms here. One entry per bug pattern and class, each with
+  its reason; a new class with the same finding is still reported. A real finding is fixed in
+  the code, never listed here (AGENTS.md).
+-->
+<FindBugsFilter xmlns="https://github.com/spotbugs/filter/3.0.0">
+
+  <!-- The fields are the JSON body of a provide: Jackson reads them when it writes the
+       request. No Java code needs to read them. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainHttpClient$ProvidePayload"/>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+  </Match>
+
+  <!-- The fields are the JSON body of a retire: Jackson reads them when it writes the
+       request. No Java code needs to read them. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainHttpClient$RetirePayload"/>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+  </Match>
+
+  <!-- `retired` is always true and must be in the JSON body of every retire. Jackson writes
+       instance fields only, so a static field would drop it from the request. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainHttpClient$RetirePayload"/>
+    <Bug pattern="SS_SHOULD_BE_STATIC"/>
+  </Match>
+
+  <!-- The fields are the JSON body of a require bundle: Jackson reads them when it writes the
+       request. No Java code needs to read them. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainHttpClient$RequireBundlePayload"/>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+  </Match>
+
+  <!-- The fields are one endpoint in the JSON body of a require bundle: Jackson reads them
+       when it writes the request. No Java code needs to read them. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainHttpClient$RequireBundleEndpoint"/>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+  </Match>
+
+  <!-- `lastFetched` is written into the state file target/.sanshain-cache.json for the person
+       who opens it; Jackson reads the field when it writes the file. The class and the field
+       are public and stay as they are. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainCache$RequireEntry"/>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+  </Match>
+
+  <!-- SanshainConfig is the sanshain.yaml of one goal run: Jackson fills it through the
+       setters and the Mojos read it through the getters, in one thread, and nothing is kept
+       after the goal. Copies in the public getters would change what they return to a caller
+       that fills the lists they hand out. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainConfig"/>
+    <Bug pattern="EI_EXPOSE_REP"/>
+  </Match>
+
+  <!-- As above, for the public setters: Jackson hands over the lists it has just built. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainConfig"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+
+  <!-- One `requires` entry of sanshain.yaml, a part of SanshainConfig with the same life:
+       filled by Jackson, read by the require goal, dropped after it. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainConfig$RequireConfig"/>
+    <Bug pattern="EI_EXPOSE_REP"/>
+  </Match>
+
+  <!-- As above, for the public setter of the endpoints. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainConfig$RequireConfig"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+
+  <!-- The delegate keeps the Settings object Maven injects into the Mojo and only reads the
+       servers from it. It must be Maven's own object, not a copy. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainMojoDelegate"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+
+  <!-- SanshainOrigin is immutable: a final class with final fields, and its list of tickets
+       is an unmodifiable copy. Handing out the one empty instance exposes nothing. -->
+  <Match>
+    <Class name="com.sanshain.maven.SanshainOrigin"/>
+    <Bug pattern="MS_EXPOSE_REP"/>
+  </Match>
+
+</FindBugsFilter>

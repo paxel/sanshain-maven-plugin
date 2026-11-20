@@ -1,0 +1,5 @@
+servicName: typo
+provides:
+  -
+requires: 7
+annotations: {}

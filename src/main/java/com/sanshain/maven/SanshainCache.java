@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,7 +39,15 @@ public class SanshainCache {
     private CacheState load() {
         if (cacheFile.exists()) {
             try {
-                return MAPPER.readValue(cacheFile, CacheState.class);
+                CacheState read = MAPPER.readValue(cacheFile, CacheState.class);
+                // A file that says `null`, or `"requires": null`, holds no entry.
+                if (read == null) {
+                    return new CacheState();
+                }
+                if (read.requires == null) {
+                    read.requires = new LinkedHashMap<>();
+                }
+                return read;
             } catch (IOException e) {
                 // Corrupted cache — start fresh
                 return new CacheState();
@@ -52,7 +61,7 @@ public class SanshainCache {
      * @throws IOException if writing fails
      */
     public void save() throws IOException {
-        cacheFile.getParentFile().mkdirs();
+        Files.createDirectories(cacheFile.getParentFile().toPath());
         MAPPER.writeValue(cacheFile, state);
     }
 

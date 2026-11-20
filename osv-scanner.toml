@@ -1,12 +1,111 @@
-# The plugin is built against the Maven 3.6.3 plugin API so that it runs on
-# Maven 3.6.3 and later (see PluginDescriptorTest). These two libraries come
-# with that API in `provided` scope: they are never shipped with the plugin,
-# and at build time every user's Maven supplies its own copies.
+# osv-scanner's exceptions, read by the OSV gate (paxel/gates vulns.yml). Each one says why
+# the repository is not exposed and why no update removes it, and carries a date; when the
+# date passes, the gate fails again: that is the review.
+#
+# An advisory:
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2027-05-14
+# reason = "..."
+#
+# A licence outside the standard's allowlist (one package):
+# [[PackageOverrides]]
+# name = "group:artifact"
+# ecosystem = "Maven"
+# license.ignore = true
+# effectiveUntil = 2027-05-14
+# reason = "..."
+#
+# CI and the release list a notice that a package is unmaintained without failing; the weekly
+# Security run fails on it.
 
+# The plugin is built against the Maven 3.6.3 plugin API so that it runs on Maven 3.6.3 and
+# later (PluginDescriptorTest). What follows comes with that API in `provided` scope: it is
+# never shipped with the plugin, and at build time every user's Maven supplies its own copies.
+# An update would raise the oldest Maven the plugin runs on.
 [[IgnoredVulns]]
 id = "GHSA-j288-q9x7-2f5v"
+ignoreUntil = 2027-02-18
 reason = "commons-lang3 3.8.1 is provided by the user's Maven (maven-plugin-api 3.6.3), not shipped with the plugin"
 
 [[IgnoredVulns]]
 id = "GHSA-6fmv-xxpf-w3cw"
+ignoreUntil = 2027-02-18
 reason = "plexus-utils 3.2.1 is provided by the user's Maven (maven-plugin-api 3.6.3), not shipped with the plugin"
+
+[[PackageOverrides]]
+name = "org.eclipse.sisu:org.eclipse.sisu.inject"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """Eclipse Sisu, Maven's dependency injection, is under EPL-1.0, a weak copyleft \
+licence that covers changes to Sisu itself. It is provided by the user's Maven \
+(maven-plugin-api 3.6.3) and never shipped with the plugin."""
+
+[[PackageOverrides]]
+name = "org.eclipse.sisu:org.eclipse.sisu.plexus"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """Eclipse Sisu, Maven's dependency injection, is under EPL-1.0, a weak copyleft \
+licence that covers changes to Sisu itself. It is provided by the user's Maven \
+(maven-plugin-api 3.6.3) and never shipped with the plugin."""
+
+[[PackageOverrides]]
+name = "javax.annotation:jsr250-api"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """The JSR 250 annotations are under CDDL-1.0, a weak copyleft licence that covers \
+changes to the annotations themselves. They come with Eclipse Sisu, are provided by the \
+user's Maven (maven-plugin-api 3.6.3) and never shipped with the plugin."""
+
+# What follows is JUnit, in test scope: it runs the plugin's tests and is not in the published
+# plugin or among its dependencies.
+[[PackageOverrides]]
+name = "org.junit.jupiter:junit-jupiter-api"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """JUnit is under EPL-2.0, a weak copyleft licence that covers changes to JUnit \
+itself. Test scope only; no release of JUnit 5 carries another licence."""
+
+[[PackageOverrides]]
+name = "org.junit.jupiter:junit-jupiter-engine"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """JUnit is under EPL-2.0, a weak copyleft licence that covers changes to JUnit \
+itself. Test scope only; no release of JUnit 5 carries another licence."""
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-commons"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. It comes with junit-jupiter-api, in test \
+scope only."""
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-engine"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. It comes with junit-jupiter-engine, in \
+test scope only."""
+
+[[PackageOverrides]]
+name = "org.junit.jupiter:junit-jupiter-params"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. Jazzer, the fuzzer of the @FuzzTest \
+classes, runs through it; test scope only."""
+
+[[PackageOverrides]]
+name = "org.junit.platform:junit-platform-launcher"
+ecosystem = "Maven"
+license.ignore = true
+effectiveUntil = 2027-02-18
+reason = """A part of JUnit, under the same EPL-2.0. Jazzer, the fuzzer of the @FuzzTest \
+classes, runs through it; test scope only."""

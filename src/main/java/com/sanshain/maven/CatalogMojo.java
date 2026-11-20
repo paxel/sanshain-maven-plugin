@@ -99,6 +99,7 @@ public class CatalogMojo extends AbstractMojo {
         }
     }
 
+    @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         initDefaults();
         SanshainMojoDelegate delegate = new SanshainMojoDelegate(getLog(), settings, serverId, strict);
@@ -202,7 +203,7 @@ public class CatalogMojo extends AbstractMojo {
             for (String resource : response.getResources()) {
                 getLog().info("  " + resource);
             }
-        } catch (Exception e) {
+        } catch (MojoExecutionException | MojoFailureException | RuntimeException e) {
             delegate.handleException(e, resolvedBestEffort);
         }
     }

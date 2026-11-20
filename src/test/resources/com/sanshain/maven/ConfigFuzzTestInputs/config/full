@@ -1,0 +1,19 @@
+sanshainUrl: https://sanshain.example.com
+serviceName: orders-service
+autoGa: true
+compression: true
+annotations:
+  - scope: version
+    name: build
+    value: "{{BUILD_ID}}"
+provides:
+  - file: specs/openapi.yaml
+    apiType: openapi
+requires:
+  - serviceName: user-service
+    version: 1.2.0
+    apiType: grpc
+    outputDirectory: target/generated
+    endpoints:
+      - method: GET
+        path: /api/v1/users

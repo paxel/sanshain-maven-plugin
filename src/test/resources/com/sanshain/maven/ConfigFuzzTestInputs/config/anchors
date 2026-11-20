@@ -1,0 +1,2 @@
+a: &a [*a]
+provide: {file: !!binary x, apiType: 7}

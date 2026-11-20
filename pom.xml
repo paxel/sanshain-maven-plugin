@@ -5,7 +5,7 @@
 
     <groupId>io.github.paxel.sanshain</groupId>
     <artifactId>sanshain-maven-plugin</artifactId>
-    <version>2.5.0</version>
+    <version>2.5.1</version>
     <packaging>maven-plugin</packaging>
 
     <name>Sanshain Maven Plugin</name>
@@ -36,26 +36,18 @@
     </scm>
 
     <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <!-- The plugin runs on Java 11 and later (PluginDescriptorTest); the JDK that builds
+             it is the one .java-version pins. -->
+        <maven.compiler.release>11</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Every file in the jars carries this time instead of the time of the build, so two
+             builds of one commit on one JDK give the same bytes: the release deploys to Maven
+             Central only jars that are byte for byte the attested ones (release.yml). The
+             time itself means nothing and need not move with a release. -->
+        <project.build.outputTimestamp>2026-11-18T00:00:00Z</project.build.outputTimestamp>
         <maven-plugin-api.version>3.6.3</maven-plugin-api.version>
         <maven-plugin-annotations.version>3.16.0</maven-plugin-annotations.version>
-
-        <!-- SonarQube Cloud (.github/workflows/sonar.yml). The scanner's default sources are
-             src/main/java and pom.xml; setting them replaces that default, so both stay listed
-             beside the workflows. -->
-        <sonar.sources>src/main/java,pom.xml,.github</sonar.sources>
-
-        <!-- Findings that stay as they are, each with its reason. Patterns name single files,
-             so a new file with the same finding is still reported. -->
-        <sonar.issue.ignore.multicriteria>insecure</sonar.issue.ignore.multicriteria>
-        <!-- The trust-all TrustManager exists for the explicit insecure switch
-             (-Dsanshain.insecure, SANSHAIN_INSECURE, insecure: in sanshain.yaml), which defaults
-             to off; it is built only when that switch is on, for a self-signed service a user
-             chose to trust. -->
-        <sonar.issue.ignore.multicriteria.insecure.ruleKey>java:S4830</sonar.issue.ignore.multicriteria.insecure.ruleKey>
-        <sonar.issue.ignore.multicriteria.insecure.resourceKey>src/main/java/com/sanshain/maven/SanshainHttpClient.java</sonar.issue.ignore.multicriteria.insecure.resourceKey>
+        <errorprone.version>2.52.0</errorprone.version>
     </properties>
 
     <dependencies>
@@ -100,6 +92,28 @@
             <version>5.14.4</version>
             <scope>test</scope>
         </dependency>
+        <!-- Jazzer asks for these two parts of JUnit in an older release; they are named here
+             so that every part of JUnit is the same release. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <version>5.14.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.14.4</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- The fuzzer behind the @FuzzTest classes: with JAZZER_FUZZ=1 it fuzzes, without it
+             the same methods run over their saved inputs as ordinary tests. -->
+        <dependency>
+            <groupId>com.code-intelligence</groupId>
+            <artifactId>jazzer-junit</artifactId>
+            <version>0.30.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -116,6 +130,63 @@
 
     <build>
         <plugins>
+            <!-- The strict build of paxel/gates (configs/java/pom-snippet.xml): every javac
+                 warning and every Error Prone finding fails the build, tests included. Error
+                 Prone needs the javac exports in .mvn/jvm.config. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.16.0</version>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-Werror</arg>
+                        <arg>-Xlint:all</arg>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+                        <arg>--should-stop=ifError=FLOW</arg>
+                        <arg>-Xplugin:ErrorProne</arg>
+                    </compilerArgs>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>com.google.errorprone</groupId>
+                            <artifactId>error_prone_core</artifactId>
+                            <version>${errorprone.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.6.1</version>
+            </plugin>
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.10.5.0</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Low</threshold>
+                    <failOnError>true</failOnError>
+                    <!-- False alarms only, one entry per bug pattern and class, each with its
+                         reason. -->
+                    <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.16</version>
+                <executions>
+                    <execution><goals><goal>prepare-agent</goal></goals></execution>
+                    <execution><id>report</id><phase>verify</phase><goals><goal>report</goal></goals></execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-plugin-plugin</artifactId>
@@ -147,6 +218,43 @@
     </build>
 
     <profiles>
+        <!-- For the job in ci.yml that runs the tests on JDK 11, the oldest Java the plugin
+             promises: `mvn -Pjdk11 verify`. Error Prone and SpotBugs do not run on JDK 11, so
+             this profile leaves those two out and nothing else: the sources, -Werror,
+             -Xlint:all, the tests and JaCoCo are those of the default build. -->
+        <profile>
+            <id>jdk11</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <compilerArgs combine.self="override">
+                                <arg>-Werror</arg>
+                                <arg>-Xlint:all</arg>
+                                <!-- The build has no annotation processor. Without the
+                                     processor path of Error Prone javac would look for one
+                                     on the class path and warn that nobody claims the Mojo
+                                     and Jackson annotations. -->
+                                <arg>-proc:none</arg>
+                            </compilerArgs>
+                            <annotationProcessorPaths combine.self="override"/>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>default</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>release</id>
             <build>

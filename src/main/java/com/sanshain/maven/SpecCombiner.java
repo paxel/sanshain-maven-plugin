@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -53,7 +54,7 @@ public class SpecCombiner {
             apiType = "openapi";
         }
 
-        String type = apiType.toLowerCase();
+        String type = apiType.toLowerCase(Locale.ROOT);
         if (type.equals("proto") || type.equals("grpc")) {
             return combineProtobuf(file);
         } else if (type.equals("openapi") || type.equals("asyncapi")) {
@@ -154,10 +155,9 @@ public class SpecCombiner {
                 }
             }
 
-            java.util.Iterator<Map.Entry<String, JsonNode>> fields = objNode.fields();
             java.util.List<String> fieldNames = new java.util.ArrayList<>();
-            while (fields.hasNext()) {
-                fieldNames.add(fields.next().getKey());
+            for (Map.Entry<String, JsonNode> field : objNode.properties()) {
+                fieldNames.add(field.getKey());
             }
             for (String fieldName : fieldNames) {
                 JsonNode child = objNode.get(fieldName);
@@ -178,7 +178,7 @@ public class SpecCombiner {
     }
 
     private ObjectMapper getMapperForFile(File file) {
-        String name = file.getName().toLowerCase();
+        String name = file.getName().toLowerCase(Locale.ROOT);
         if (name.endsWith(".json")) {
             return jsonMapper;
         }

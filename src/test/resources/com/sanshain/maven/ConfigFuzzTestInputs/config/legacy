@@ -1,0 +1,7 @@
+serviceName: x
+branch: main
+timeout: 120
+requires:
+  - serviceName: y
+    endpoints:
+      -

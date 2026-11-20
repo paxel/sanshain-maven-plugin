@@ -1,0 +1,26 @@
+name: Fuzz
+
+# The @FuzzTest classes beside the tests (Jazzer through Maven), weekly and by hand, from
+# paxel/gates: what the client reads but did not write. ConfigFuzzTest is sanshain.yaml,
+# AnnotationsFuzzTest is the filling of the placeholders in annotation values, ResponseFuzzTest
+# is the body, the version and the warning headers of an answer of the service, StateFuzzTest
+# is the require state file. A crash fails the job and leaves its input in
+# src/test/resources/com/sanshain/maven/<Class>Inputs/<method>/, where `mvn test` replays it.
+on:
+  schedule:
+    - cron: "29 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    uses: paxel/gates/.github/workflows/fuzz.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    with:
+      stack: java
+      targets: |
+        ConfigFuzzTest
+        AnnotationsFuzzTest
+        ResponseFuzzTest
+        StateFuzzTest

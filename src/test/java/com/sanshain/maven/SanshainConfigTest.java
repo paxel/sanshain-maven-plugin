@@ -466,7 +466,7 @@ public class SanshainConfigTest {
     public void testAutoGaIsKnownAndRead() throws IOException, MojoExecutionException {
         SanshainConfig config = load("serviceName: x\nautoGa: true\n");
         assertTrue(config.getUnknownFields().isEmpty(), config.getUnknownFields().toString());
-        assertEquals(Boolean.TRUE, config.getAutoGa());
+        assertEquals(true, config.getAutoGa());
         assertNull(load("serviceName: x\n").getAutoGa());
     }
 
@@ -535,5 +535,14 @@ public class SanshainConfigTest {
         SanshainConfig config = load("serviceName: x\nannotations:\n  - scope: system\n    name: a\n    value: b\n    vlaue: c\n");
         assertEquals(java.util.Arrays.asList("annotations[0].vlaue"), config.getUnknownFields());
         assertEquals(1, config.getAnnotations().size());
+    }
+
+    @Test
+    public void testDocumentThatIsOnlyNullIsRefused() throws IOException {
+        // Found by ConfigFuzzTest: YAML reads each of these as null, which binds to no configuration.
+        for (String yaml : new String[] {"~\n", "null\n", "!"}) {
+            MojoExecutionException e = loadExpectingError(yaml);
+            assertTrue(e.getMessage().startsWith("Failed to load configuration from "), e.getMessage());
+        }
     }
 }

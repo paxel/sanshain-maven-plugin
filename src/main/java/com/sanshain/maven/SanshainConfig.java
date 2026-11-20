@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -155,6 +154,10 @@ public class SanshainConfig {
             report(reporter, unknown);
             throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath(), e);
         }
+        if (config == null) {
+            // A document that is nothing but null (`~`, `null`) binds to no configuration.
+            throw new MojoExecutionException("Failed to load configuration from " + configFile.getAbsolutePath());
+        }
         config.unknownFields = unknown;
         if (reporter != null) {
             reporter.resolveStrict(config);
@@ -197,9 +200,7 @@ public class SanshainConfig {
         if (root == null || !root.isObject()) {
             return unknown;
         }
-        Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : root.properties()) {
             String name = field.getKey();
             JsonNode value = field.getValue();
             if (!KNOWN_TOP.contains(name)) {
@@ -227,13 +228,11 @@ public class SanshainConfig {
         if (node == null || !node.isObject()) {
             return;
         }
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
             String name = field.getKey();
             if (!known.contains(name)) {
                 unknown.add(prefix + name);
-            } else if (known == KNOWN_REQUIRE && name.equals("endpoints") && field.getValue().isArray()) {
+            } else if (known.equals(KNOWN_REQUIRE) && name.equals("endpoints") && field.getValue().isArray()) {
                 JsonNode endpoints = field.getValue();
                 for (int j = 0; j < endpoints.size(); j++) {
                     collectUnknown(endpoints.get(j), prefix + "endpoints[" + j + "].", KNOWN_ENDPOINT, unknown);
@@ -347,24 +346,24 @@ public class SanshainConfig {
      */
     private static List<AnnotationConfig> readAnnotations(JsonNode node, List<String> errors) {
         if (node == null || node.isNull()) {
-            return Collections.emptyList();
+            return new ArrayList<>();
         }
         if (!node.isArray()) {
             errors.add("annotations: must be a list of entries with scope, name and value");
-            return Collections.emptyList();
+            return new ArrayList<>();
         }
         List<AnnotationConfig> read = new ArrayList<>();
         for (int i = 0; i < node.size(); i++) {
             JsonNode entry = node.get(i);
-            String label = "annotations[" + i + "]";
+            String index = "annotations[" + i + "]";
             if (entry == null || !entry.isObject()) {
-                errors.add(label + ": must be an entry with scope, name and value");
+                errors.add(index + ": must be an entry with scope, name and value");
                 continue;
             }
             JsonNode nameNode = entry.get("name");
-            if (nameNode != null && nameNode.isTextual()) {
-                label += " (" + nameNode.asText() + ")";
-            }
+            String label = nameNode != null && nameNode.isTextual()
+                    ? index + " (" + nameNode.asText() + ")"
+                    : index;
             String scope = annotationField(entry, "scope", label, errors);
             String name = annotationField(entry, "name", label, errors);
             String value = annotationField(entry, "value", label, errors);

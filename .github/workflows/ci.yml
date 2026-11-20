@@ -1,32 +1,52 @@
 name: CI
-on: [push, pull_request]
 
-# The token only reads the code: no job writes to the repository.
+# sanshain-maven-plugin's gates. The standard's part comes from paxel/gates: the OSV gate, the
+# Java gate (Error Prone, SpotBugs, tests, coverage ratchet) and SonarQube Cloud. The job on
+# the oldest supported Java is the repository's own (docs/adr/0001-move-to-gates.md).
+# A branch gets its run through its pull request; a run per push as well would be the same
+# jobs twice, and SonarQube Cloud analyses only the default branch and pull requests.
+on:
+  push:
+    branches: [summer]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          java-version: '11'
-          distribution: 'temurin'
-      - run: mvn verify -B
+  # Known vulnerabilities and licences of every dependency: osv-scanner decided by gates'
+  # osv_gate.py. What is accepted stands in osv-scanner.toml.
+  vulns:
+    uses: paxel/gates/.github/workflows/vulns.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
 
-  # The same scan as the weekly Security workflow, with the same job name, so a
-  # pull request that brings in a vulnerable dependency is stopped before the
-  # merge. Ignores live in osv-scanner.toml.
-  osv-scanner:
-    name: Vulnerable dependencies (OSV-Scanner)
-    runs-on: ubuntu-latest
+  # On the JDK .java-version pins.
+  java:
+    uses: paxel/gates/.github/workflows/java.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+
+  # The plugin promises Java 11 (requiredJavaVersion in plugin.xml, PluginDescriptorTest), so
+  # the tests run there, not just the compiler's --release 11. Error Prone and SpotBugs cannot
+  # run on JDK 11; the profile jdk11 of pom.xml leaves those two out and nothing else.
+  oldest:
+    name: Oldest Java (11)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: osv-scanner
-        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
-          scan-args: |-
-            --recursive
-            ./
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: maven
+      - name: Tests
+        run: mvn --batch-mode --no-transfer-progress -Pjdk11 verify
+
+  sonar:
+    needs: java
+    uses: paxel/gates/.github/workflows/sonar.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    secrets:
+      sonar-token: ${{ secrets.SQ_TOKEN }}

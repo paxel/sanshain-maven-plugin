@@ -14,7 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
 public class SanshainAnnotationsTest {
 
     private static final Map<String, String> NO_ENV = Collections.emptyMap();
-    private static final Function<String, String> NO_FLAGS = name -> null;
+    private static String noFlags(String name) {
+        return null;
+    }
 
     private static Function<String, String> flags(String... nameValue) {
         Map<String, String> flags = new HashMap<>();
@@ -53,7 +55,7 @@ public class SanshainAnnotationsTest {
 
     @Test
     public void testUnsetPlaceholderIsMissing() {
-        SanshainAnnotations.Fill fill = SanshainAnnotations.fill("{{MISSING}}", NO_FLAGS, NO_ENV);
+        SanshainAnnotations.Fill fill = SanshainAnnotations.fill("{{MISSING}}", SanshainAnnotationsTest::noFlags, NO_ENV);
         assertNull(fill.value);
         assertEquals("MISSING", fill.missing);
     }
@@ -67,17 +69,17 @@ public class SanshainAnnotationsTest {
 
     @Test
     public void testEmptyEnvIsUnfilled() {
-        assertEquals("A", SanshainAnnotations.fill("{{A}}", NO_FLAGS, env("SANSHAIN_SET_A", "")).missing);
+        assertEquals("A", SanshainAnnotations.fill("{{A}}", SanshainAnnotationsTest::noFlags, env("SANSHAIN_SET_A", "")).missing);
     }
 
     @Test
     public void testEnvNameIsCaseExact() {
-        assertEquals("a", SanshainAnnotations.fill("{{a}}", NO_FLAGS, env("SANSHAIN_SET_A", "x")).missing);
+        assertEquals("a", SanshainAnnotations.fill("{{a}}", SanshainAnnotationsTest::noFlags, env("SANSHAIN_SET_A", "x")).missing);
     }
 
     @Test
     public void testPlainValueIsUnchanged() {
-        assertEquals("plain value", SanshainAnnotations.fill("plain value", NO_FLAGS, NO_ENV).value);
+        assertEquals("plain value", SanshainAnnotations.fill("plain value", SanshainAnnotationsTest::noFlags, NO_ENV).value);
     }
 
     @Test
@@ -136,8 +138,8 @@ public class SanshainAnnotationsTest {
 
     @Test
     public void testNoEntriesIsNone() {
-        assertSame(SanshainAnnotations.none(), SanshainAnnotations.resolve(null, NO_FLAGS, NO_ENV));
-        assertSame(SanshainAnnotations.none(), SanshainAnnotations.resolve(Collections.emptyList(), NO_FLAGS, NO_ENV));
+        assertSame(SanshainAnnotations.none(), SanshainAnnotations.resolve(null, SanshainAnnotationsTest::noFlags, NO_ENV));
+        assertSame(SanshainAnnotations.none(), SanshainAnnotations.resolve(Collections.emptyList(), SanshainAnnotationsTest::noFlags, NO_ENV));
         assertTrue(SanshainAnnotations.none().forProvide().isEmpty());
         assertTrue(SanshainAnnotations.none().forSystem().isEmpty());
     }
