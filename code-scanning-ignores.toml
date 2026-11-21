@@ -48,3 +48,11 @@ reason = """The insecure switch (-Dsanshain.insecure, SANSHAIN_INSECURE, insecur
 sanshain.yaml) is the user's explicit choice for an instance with a self-signed certificate: \
 only then is the trust-all TrustManager built. The switch defaults to off, and without it the \
 default TLS settings apply."""
+
+[[IgnoredAlerts]]
+tool = "Scorecard"
+rule = "FuzzingID"
+ignoreUntil = 2027-05-21
+reason = """Scorecard detects fuzzing only through OSS-Fuzz, ClusterFuzzLite and a few \
+property-testing libraries; it knows no Jazzer JUnit test of its own. .github/workflows/fuzz.yml \
+runs StateFuzzTest and the other Jazzer targets with the java stack of paxel/gates."""

@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   fuzz:
-    uses: paxel/gates/.github/workflows/fuzz.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    uses: paxel/gates/.github/workflows/fuzz.yml@dbf6f6086174ef97fe465d3ffee31bf3985f5b81 # v1.4.1
     with:
       stack: java
       targets: |

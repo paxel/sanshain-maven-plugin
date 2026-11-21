@@ -21,11 +21,11 @@ jobs:
   # Known vulnerabilities and licences of every dependency: osv-scanner decided by gates'
   # osv_gate.py. What is accepted stands in osv-scanner.toml.
   vulns:
-    uses: paxel/gates/.github/workflows/vulns.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    uses: paxel/gates/.github/workflows/vulns.yml@dbf6f6086174ef97fe465d3ffee31bf3985f5b81 # v1.4.1
 
   # On the JDK .java-version pins.
   java:
-    uses: paxel/gates/.github/workflows/java.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    uses: paxel/gates/.github/workflows/java.yml@dbf6f6086174ef97fe465d3ffee31bf3985f5b81 # v1.4.1
 
   # The plugin promises Java 11 (requiredJavaVersion in plugin.xml, PluginDescriptorTest), so
   # the tests run there, not just the compiler's --release 11. Error Prone and SpotBugs cannot
@@ -47,6 +47,6 @@ jobs:
 
   sonar:
     needs: java
-    uses: paxel/gates/.github/workflows/sonar.yml@02a81ad45b815cbed94f9bb6841424a624e8155f # v1.2.0
+    uses: paxel/gates/.github/workflows/sonar.yml@dbf6f6086174ef97fe465d3ffee31bf3985f5b81 # v1.4.1
     secrets:
       sonar-token: ${{ secrets.SQ_TOKEN }}
